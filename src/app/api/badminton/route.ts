@@ -120,3 +120,56 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json({ date, name }, { status: 201 });
 }
+
+export async function DELETE(request: NextRequest) {
+  if (!getRedisCredentials()) {
+    return NextResponse.json(
+      { error: "Chưa kết nối Redis. Hãy cấu hình Redis để xóa đăng ký." },
+      { status: 503 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Dữ liệu gửi lên không hợp lệ." }, { status: 400 });
+  }
+
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    !("date" in body) ||
+    !("name" in body) ||
+    typeof body.date !== "string" ||
+    typeof body.name !== "string"
+  ) {
+    return NextResponse.json(
+      { error: "Vui lòng cung cấp ngày và tên cần xóa." },
+      { status: 400 },
+    );
+  }
+
+  const date = body.date;
+  const name = body.name.trim().replace(/\s+/g, " ");
+  if (!isValidDate(date) || name.length < 2 || name.length > 40) {
+    return NextResponse.json(
+      { error: "Ngày hoặc tên đăng ký không hợp lệ." },
+      { status: 400 },
+    );
+  }
+
+  const normalizedName = name.normalize("NFC").toLocaleLowerCase("vi");
+  const deleted = await getRedis().hdel(
+    `braveactive:badminton:${date}`,
+    normalizedName,
+  );
+  if (!deleted) {
+    return NextResponse.json(
+      { error: "Không tìm thấy lượt đăng ký cần xóa." },
+      { status: 404 },
+    );
+  }
+
+  return NextResponse.json({ date, name, deleted: true });
+}

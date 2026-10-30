@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import {
   initialAnnouncements,
   initialPosts,
+  activityAnnouncementsKey,
   type ClubAnnouncement,
   type ClubPost,
 } from "@/lib/content";
@@ -29,14 +30,22 @@ export async function GET() {
     redis.set(postsKey, initialPosts, { nx: true }),
   ]);
 
-  const [announcements, posts] = await Promise.all([
+  const [storedAnnouncements, activityAnnouncements, posts] = await Promise.all([
     redis.get<ClubAnnouncement[]>(announcementsKey),
+    redis.hgetall<Record<string, ClubAnnouncement>>(activityAnnouncementsKey),
     redis.get<ClubPost[]>(postsKey),
   ]);
 
-  if (!announcements || !posts) {
+  if (!storedAnnouncements || !posts) {
     throw new Error("Không thể đọc nội dung câu lạc bộ từ Redis.");
   }
+
+  const announcements = [
+    ...storedAnnouncements.filter((announcement) => announcement.id === "welcome"),
+    ...Object.values(activityAnnouncements ?? {}).sort((first, second) =>
+      second.date.localeCompare(first.date),
+    ),
+  ];
 
   return NextResponse.json({ announcements, posts });
 }
