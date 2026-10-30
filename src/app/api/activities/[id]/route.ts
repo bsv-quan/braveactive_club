@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
-import { activitiesKey, activityParticipantsKey } from "@/lib/activities";
+import {
+  activityDay,
+  activityCommentsKey,
+  activitiesKey,
+  activityNameDayKey,
+  activityParticipantsKey,
+  activityVotesKey,
+} from "@/lib/activities";
 import { getRedis, getRedisCredentials } from "@/lib/redis";
 
 export const runtime = "nodejs";
@@ -16,11 +23,25 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const redis = getRedis();
+  const activity = await redis.hget<{ date: string | null; day?: string | null; title: string }>(
+    activitiesKey,
+    id,
+  );
+  if (!activity) {
+    return NextResponse.json({ error: "Không tìm thấy hoạt động." }, { status: 404 });
+  }
   const deleted = await redis.hdel(activitiesKey, id);
   if (!deleted) {
     return NextResponse.json({ error: "Không tìm thấy hoạt động." }, { status: 404 });
   }
 
-  await redis.del(activityParticipantsKey(id));
+  const day = activityDay(activity);
+  const keysToDelete = [
+    activityParticipantsKey(id),
+    activityVotesKey(id),
+    activityCommentsKey(id),
+    ...(day ? [activityNameDayKey(day, activity.title)] : []),
+  ];
+  await redis.del(...keysToDelete);
   return NextResponse.json({ deleted: true });
 }

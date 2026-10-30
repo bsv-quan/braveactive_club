@@ -1,5 +1,5 @@
-import ClubApp from "../club-app";
+import { redirect } from "next/navigation";
 
 export default function BadmintonPage() {
-  return <ClubApp initialView="badminton" />;
+  redirect("/activities");
 }
