@@ -26,7 +26,40 @@ available to the project in its environment variables.
 ## API
 
 - `GET /api/content` — initializes sample content on first access and reads the
-  announcements and posts from Redis.
+  welcome announcement, member-created announcements, and posts from Redis.
 - `GET /api/badminton?from=YYYY-MM-DD&to=YYYY-MM-DD` — reads registrations for
   up to 42 days.
 - `POST /api/badminton` — registers a name for one date.
+- `DELETE /api/badminton` — removes a name from a date's registrations.
+- `GET /api/activities` — lists activities and participants.
+- `POST /api/activities` — creates an activity.
+- `POST /api/activities/:id/join` — joins an activity by name.
+- `DELETE /api/activities/:id/join` — removes a participant from an activity.
+- `DELETE /api/activities/:id` — deletes an activity (public in this MVP).
+- `POST /api/announcements` — creates a club activity announcement.
+- `PATCH /api/announcements/:id` — updates an activity announcement.
+- `DELETE /api/announcements/:id` — deletes an activity announcement.
+
+## Pages
+
+- `/` — club overview and latest updates.
+- `/activities` — activity news feed with category filters.
+- `/activities/announcements/new` — create an activity announcement.
+- `/badminton` — monthly badminton calendar and daily sign-ups.
+
+On `/activities`, members can create an activity with its category, description,
+schedule, and creator name; join with their name; and delete activities. These
+actions are stored in Redis. Activity deletion is currently public and does not
+require authentication.
+
+The activity page keeps the welcome announcement first, hides the old sample
+announcements, and lists new activities newest-first. Members can create
+announcements at `/activities/announcements/new`; creating announcements is
+currently public and does not require authentication.
+Announcements can also be edited or deleted from the activity feed. Editing
+and deleting announcements are currently public and do not require
+authentication. The built-in welcome announcement cannot be deleted.
+
+Removing badminton registrations and activity participants is also public in
+this MVP and requires no authentication. Add user authentication and
+authorization before using these deletion actions with a wider audience.

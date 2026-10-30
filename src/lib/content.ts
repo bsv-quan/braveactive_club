@@ -16,6 +16,8 @@ export type ClubPost = {
   readTime: string;
 };
 
+export const activityAnnouncementsKey = "braveactive:activity-announcements";
+
 export const initialAnnouncements: ClubAnnouncement[] = [
   {
     id: "welcome",
@@ -25,24 +27,6 @@ export const initialAnnouncements: ClubAnnouncement[] = [
       "Nơi kết nối những thành viên yêu vận động, sẻ chia và cùng nhau tạo nên những hoạt động ý nghĩa.",
     date: "2026-10-28",
     color: "mint",
-  },
-  {
-    id: "badminton-weekly",
-    category: "CẦU LÔNG",
-    title: "Lịch cầu lông tuần này đã mở",
-    description:
-      "Chọn ngày phù hợp trên lịch và đăng ký tham gia. Hẹn gặp bạn trên sân!",
-    date: "2026-10-27",
-    color: "peach",
-  },
-  {
-    id: "charity",
-    category: "TỪ THIỆN",
-    title: "Cùng nhau lan tỏa điều tử tế",
-    description:
-      "Theo dõi bảng tin để không bỏ lỡ những hoạt động thiện nguyện sắp tới.",
-    date: "2026-10-25",
-    color: "lavender",
   },
 ];
 
