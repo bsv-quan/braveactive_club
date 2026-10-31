@@ -5,7 +5,11 @@ import {
   activityDay,
   activityCommentsKey,
   activityNameDayKey,
+  activityRecurrencesKey,
+  nextActivityDay,
   type ActivityComment,
+  type ActivityRepeatConfig,
+  type ActivityRecurrence,
   activityParticipantsKey,
   activityVotesKey,
   isActivityCategory,
@@ -15,6 +19,8 @@ import {
 import { getRedis, getRedisCredentials } from "@/lib/redis";
 
 export const runtime = "nodejs";
+const recurringActivityHorizonDays = 90;
+const maxRecurringOccurrencesPerRequest = 100;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -79,6 +85,39 @@ export async function GET() {
 
   const redis = getRedis();
   const stored = await redis.hgetall<Record<string, ClubActivity>>(activitiesKey);
+  const storedRecurrences = await redis.hgetall<
+    Record<string, ActivityRecurrence | string>
+  >(activityRecurrencesKey);
+  const repeatBySeries = new Map<string, ActivityRepeatConfig>();
+  for (const [seriesId, storedValue] of Object.entries(storedRecurrences ?? {})) {
+    let recurrence: ActivityRecurrence | null = null;
+    if (typeof storedValue === "string") {
+      try {
+        recurrence = JSON.parse(storedValue) as ActivityRecurrence;
+      } catch {
+        console.warn(`Bỏ qua cấu hình lặp không hợp lệ "${seriesId}".`);
+      }
+    } else {
+      recurrence = storedValue;
+    }
+
+    if (
+      recurrence &&
+      (recurrence.interval === "daily" ||
+        recurrence.interval === "weekly" ||
+        recurrence.interval === "monthly") &&
+      (recurrence.endType === "never" ||
+        recurrence.endType === "count" ||
+        recurrence.endType === "until")
+    ) {
+      repeatBySeries.set(seriesId, {
+        interval: recurrence.interval,
+        endType: recurrence.endType,
+        ...(recurrence.count !== undefined ? { count: recurrence.count } : {}),
+        ...(recurrence.until ? { until: recurrence.until } : {}),
+      });
+    }
+  }
   const activities = await Promise.all(
     Object.values(stored ?? {}).map(async (activity) => {
       const [participants, storedVotes, storedComments] = await Promise.all([
@@ -102,6 +141,16 @@ export async function GET() {
       }
       return {
         ...activity,
+        ...((activity.recurrenceSeriesId &&
+        repeatBySeries.get(activity.recurrenceSeriesId)) ||
+        activity.repeat
+          ? {
+              repeat:
+                (activity.recurrenceSeriesId &&
+                  repeatBySeries.get(activity.recurrenceSeriesId)) ||
+                activity.repeat,
+            }
+          : {}),
         scheduleType: activity.scheduleType ?? "scheduled",
         createdAt: activity.createdAt ?? "1970-01-01T00:00:00.000Z",
         participants: Object.values(participants ?? {}),
@@ -206,10 +255,60 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  let repeatConfig: Omit<
+    ActivityRecurrence,
+    "id" | "nextDay" | "occurrenceCount" | "anchorDay" | "template"
+  > | null = null;
+  if (body.repeat !== undefined) {
+    const repeat = body.repeat;
+    if (
+      isQuickSignup ||
+      scheduleType !== "scheduled" ||
+      !isRecord(repeat) ||
+      (repeat.interval !== "daily" &&
+        repeat.interval !== "weekly" &&
+        repeat.interval !== "monthly") ||
+      (repeat.endType !== "never" &&
+        repeat.endType !== "count" &&
+        repeat.endType !== "until")
+    ) {
+      return NextResponse.json(
+        { error: "Cấu hình lặp lại không hợp lệ." },
+        { status: 400 },
+      );
+    }
+
+    if (
+      (repeat.endType === "count" &&
+        (typeof repeat.count !== "number" ||
+          !Number.isInteger(repeat.count) ||
+          repeat.count < 2 ||
+          repeat.count > 100)) ||
+      (repeat.endType === "until" &&
+        (typeof repeat.until !== "string" ||
+          !validDay(repeat.until) ||
+          repeat.until <= (day ?? "")))
+    ) {
+      return NextResponse.json(
+        { error: "Ngày kết thúc hoặc số lần lặp không hợp lệ." },
+        { status: 400 },
+      );
+    }
+
+    repeatConfig = {
+      interval: repeat.interval,
+      endType: repeat.endType,
+      ...(repeat.endType === "count" ? { count: Number(repeat.count) } : {}),
+      ...(repeat.endType === "until" ? { until: String(repeat.until) } : {}),
+    };
+  }
+
   const redis = getRedis();
+  let storedActivities: Record<string, ClubActivity> = {};
   if (scheduleType === "scheduled" && day) {
-    const stored = await redis.hgetall<Record<string, ClubActivity>>(activitiesKey);
-    const duplicate = Object.values(stored ?? {}).some(
+    storedActivities =
+      (await redis.hgetall<Record<string, ClubActivity>>(activitiesKey)) ?? {};
+    const duplicate = Object.values(storedActivities).some(
       (existing) =>
         existing.scheduleType !== "poll" &&
         activityDay(existing) === day &&
@@ -223,9 +322,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const recurrenceSeriesId = repeatConfig ? randomUUID() : undefined;
   const activity: ClubActivity = {
     id: randomUUID(),
     kind: isQuickSignup ? "quick-signup" : "activity",
+    ...(recurrenceSeriesId ? { recurrenceSeriesId } : {}),
+    ...(repeatConfig ? { repeat: repeatConfig } : {}),
     title,
     description,
     category,
@@ -238,12 +340,37 @@ export async function POST(request: NextRequest) {
     votes: {},
   };
 
+  let recurrence: ActivityRecurrence | null =
+    repeatConfig && recurrenceSeriesId && day
+      ? {
+          ...repeatConfig,
+          id: recurrenceSeriesId,
+          nextDay: nextActivityDay(
+            day,
+            repeatConfig.interval,
+            Number(day.slice(-2)),
+          ),
+          occurrenceCount: 1,
+          anchorDay: Number(day.slice(-2)),
+          template: {
+            kind: activity.kind,
+            title: activity.title,
+            description: activity.description,
+            category: activity.category,
+            scheduleType: activity.scheduleType,
+            creator: activity.creator,
+            date: activity.date,
+            ...(repeatConfig ? { repeat: repeatConfig } : {}),
+          },
+        }
+      : null;
+
+  const activitiesToCreate = [activity];
+  const reservationKeys = day ? [activityNameDayKey(day, title)] : [];
   if (day) {
-    const reserved = await redis.set(
-      activityNameDayKey(day, title),
-      activity.id,
-      { nx: true },
-    );
+    const reserved = await redis.set(reservationKeys[0], activity.id, {
+      nx: true,
+    });
     if (reserved !== "OK") {
       return NextResponse.json(
         { error: "Đã có hoạt động cùng tên trong ngày này." },
@@ -251,11 +378,108 @@ export async function POST(request: NextRequest) {
       );
     }
   }
+
+  if (recurrence) {
+    const horizon = new Date(`${day}T00:00:00.000Z`);
+    horizon.setUTCDate(horizon.getUTCDate() + recurringActivityHorizonDays);
+    const horizonDay = horizon.toISOString().slice(0, 10);
+    let processed = 1;
+
+    while (
+      recurrence.nextDay <= horizonDay &&
+      processed < maxRecurringOccurrencesPerRequest
+    ) {
+      const occurrenceDay: string = recurrence.nextDay;
+      const duplicate =
+        Object.values(storedActivities).some(
+          (existing) =>
+            existing.scheduleType !== "poll" &&
+            activityDay(existing) === occurrenceDay &&
+            normalizeActivityTitle(existing.title) ===
+              normalizeActivityTitle(title),
+        ) ||
+        activitiesToCreate.some((existing) => existing.day === occurrenceDay);
+
+      if (duplicate) {
+        console.warn(
+          `Bỏ qua lần lặp "${title}" ngày ${occurrenceDay}: đã có hoạt động cùng tên.`,
+        );
+      } else {
+        const occurrenceId = randomUUID();
+        const reservationKey = activityNameDayKey(occurrenceDay, title);
+        const reserved = await redis.set(reservationKey, occurrenceId, {
+          nx: true,
+        });
+
+        if (reserved === "OK") {
+          const time = activity.date?.slice(11, 19) ?? "12:00:00";
+          activitiesToCreate.push({
+            ...activity,
+            id: occurrenceId,
+            date: new Date(`${occurrenceDay}T${time}.000Z`).toISOString(),
+            day: occurrenceDay,
+          });
+          reservationKeys.push(reservationKey);
+        } else {
+          console.warn(
+            `Bỏ qua lần lặp "${title}" ngày ${occurrenceDay}: đã có hoạt động cùng tên.`,
+          );
+        }
+      }
+
+      processed += 1;
+      recurrence = {
+        ...recurrence,
+        occurrenceCount: recurrence.occurrenceCount + 1,
+        nextDay: nextActivityDay(
+          occurrenceDay,
+          recurrence.interval,
+          recurrence.anchorDay,
+        ),
+      };
+
+      const reachedEnd =
+        (recurrence.endType === "count" &&
+          recurrence.occurrenceCount >= (recurrence.count ?? 0)) ||
+        (recurrence.endType === "until" &&
+          recurrence.nextDay > (recurrence.until ?? ""));
+      if (reachedEnd) {
+        recurrence = null;
+        break;
+      }
+    }
+  }
+
   try {
-    await redis.hset(activitiesKey, { [activity.id]: activity });
+    await redis.hset(
+      activitiesKey,
+      Object.fromEntries(activitiesToCreate.map((item) => [item.id, item])),
+    );
+    if (recurrence) {
+      await redis.hset(activityRecurrencesKey, {
+        [recurrence.id]: recurrence,
+      });
+    } else if (recurrenceSeriesId) {
+      await redis.hdel(activityRecurrencesKey, recurrenceSeriesId);
+    }
   } catch (error) {
-    if (day) await redis.del(activityNameDayKey(day, title));
+    await redis.hdel(
+      activitiesKey,
+      ...activitiesToCreate.map((item) => item.id),
+    );
+    if (recurrence) await redis.hdel(activityRecurrencesKey, recurrence.id);
+    if (recurrenceSeriesId) {
+      await redis.hdel(activityRecurrencesKey, recurrenceSeriesId);
+    }
+    if (reservationKeys.length) await redis.del(...reservationKeys);
     throw error;
   }
-  return NextResponse.json({ activity }, { status: 201 });
+  return NextResponse.json(
+    {
+      activity,
+      recurrence,
+      generatedOccurrences: activitiesToCreate.length - 1,
+    },
+    { status: 201 },
+  );
 }

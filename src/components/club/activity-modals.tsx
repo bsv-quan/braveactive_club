@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { ReactNode } from "react";
 import type { ActivityComment, ClubActivity } from "@/lib/activities";
 import type { ClubAnnouncement } from "@/lib/content";
@@ -119,6 +120,12 @@ export function CreateActivityModal({
   onSubmit,
   onClose,
 }: CreateActivityModalProps) {
+  const [repeatEnabled, setRepeatEnabled] = useState(false);
+  const [repeatEndType, setRepeatEndType] =
+    useState<"never" | "count" | "until">("never");
+  const earliestRepeatEndDate = new Date(`${defaultDateTime.slice(0, 10)}T00:00:00`);
+  earliestRepeatEndDate.setDate(earliestRepeatEndDate.getDate() + 1);
+
   return (
     <ModalFrame labelledBy="create-activity-title" onClose={onClose}>
       <span className="section-kicker">THÊM VÀO LỊCH CÂU LẠC BỘ</span>
@@ -157,6 +164,66 @@ export function CreateActivityModal({
               defaultValue={defaultDateTime}
               required
             />
+            <label className="activity-repeat-toggle">
+              <input
+                type="checkbox"
+                name="repeatEnabled"
+                checked={repeatEnabled}
+                onChange={(event) => setRepeatEnabled(event.target.checked)}
+              />
+              <span>Lặp lại hoạt động tự động</span>
+            </label>
+            {repeatEnabled && (
+              <>
+                <label htmlFor="activity-repeat-interval">Chu kỳ lặp</label>
+                <select id="activity-repeat-interval" name="repeatInterval" defaultValue="weekly">
+                  <option value="daily">Hằng ngày</option>
+                  <option value="weekly">Hằng tuần</option>
+                  <option value="monthly">Hằng tháng</option>
+                </select>
+                <label htmlFor="activity-repeat-end">Kết thúc lặp</label>
+                <select
+                  id="activity-repeat-end"
+                  name="repeatEndType"
+                  value={repeatEndType}
+                  onChange={(event) =>
+                    setRepeatEndType(event.target.value as "never" | "count" | "until")
+                  }
+                >
+                  <option value="never">Không giới hạn</option>
+                  <option value="count">Sau số lần diễn ra</option>
+                  <option value="until">Đến ngày cụ thể</option>
+                </select>
+                {repeatEndType === "count" && (
+                  <>
+                    <label htmlFor="activity-repeat-count">
+                      Tổng số lần diễn ra (bao gồm lần đầu)
+                    </label>
+                    <input
+                      id="activity-repeat-count"
+                      name="repeatCount"
+                      type="number"
+                      min={2}
+                      max={100}
+                      defaultValue={4}
+                      required
+                    />
+                  </>
+                )}
+                {repeatEndType === "until" && (
+                  <>
+                    <label htmlFor="activity-repeat-until">Ngày kết thúc</label>
+                    <input
+                      id="activity-repeat-until"
+                      name="repeatUntil"
+                      type="date"
+                      min={dateKey(earliestRepeatEndDate)}
+                      required
+                    />
+                  </>
+                )}
+              </>
+            )}
           </>
         ) : (
           <p className="schedule-poll-help">

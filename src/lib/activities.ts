@@ -12,9 +12,39 @@ export type ActivityComment = {
   createdAt: string;
 };
 
+export type ActivityRepeatInterval = "daily" | "weekly" | "monthly";
+export type ActivityRepeatEndType = "never" | "count" | "until";
+
+export type ActivityRepeatConfig = {
+  interval: ActivityRepeatInterval;
+  endType: ActivityRepeatEndType;
+  count?: number;
+  until?: string;
+};
+
+export type ActivityRecurrence = ActivityRepeatConfig & {
+  id: string;
+  nextDay: string;
+  occurrenceCount: number;
+  anchorDay: number;
+  template: Pick<
+    ClubActivity,
+    | "kind"
+    | "title"
+    | "description"
+    | "category"
+    | "scheduleType"
+    | "creator"
+    | "date"
+    | "repeat"
+  >;
+};
+
 export type ClubActivity = {
   id: string;
   kind?: "activity" | "quick-signup";
+  recurrenceSeriesId?: string;
+  repeat?: ActivityRepeatConfig;
   title: string;
   description: string;
   category: ActivityCategory;
@@ -29,6 +59,8 @@ export type ClubActivity = {
 };
 
 export const activitiesKey = "braveactive:activities";
+export const activityRecurrencesKey = "braveactive:activity-recurrences";
+export const activityRecurrenceLockKey = "braveactive:activity-recurrences:lock";
 
 export function activityParticipantsKey(id: string) {
   return `braveactive:activity:${id}:participants`;
@@ -40,6 +72,26 @@ export function activityVotesKey(id: string) {
 
 export function activityCommentsKey(id: string) {
   return `braveactive:activity:${id}:comments`;
+}
+
+export function nextActivityDay(
+  day: string,
+  interval: ActivityRepeatInterval,
+  anchorDay: number,
+) {
+  const [year, month, dayOfMonth] = day.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, dayOfMonth));
+  if (interval === "daily") date.setUTCDate(date.getUTCDate() + 1);
+  if (interval === "weekly") date.setUTCDate(date.getUTCDate() + 7);
+  if (interval === "monthly") {
+    const nextMonth = new Date(Date.UTC(year, month, 1));
+    const lastDay = new Date(
+      Date.UTC(nextMonth.getUTCFullYear(), nextMonth.getUTCMonth() + 1, 0),
+    ).getUTCDate();
+    nextMonth.setUTCDate(Math.min(anchorDay, lastDay));
+    return nextMonth.toISOString().slice(0, 10);
+  }
+  return date.toISOString().slice(0, 10);
 }
 
 export function activityNameDayKey(day: string, title: string) {

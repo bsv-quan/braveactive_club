@@ -3,10 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ActivityComment, ClubActivity } from "@/lib/activities";
+import type { ClubActivity } from "@/lib/activities";
 import { ActivityCalendarSection } from "@/components/club/activity-calendar";
 import {
-  ActivityDetailsModal,
   CreateActivityModal,
   EditAnnouncementModal,
   QuickSignupModal,
@@ -32,12 +31,6 @@ type ContentData = {
   posts: ClubPost[];
 };
 
-function activityCalendarDate(activity: ClubActivity) {
-  if (activity.day) return activity.day;
-  if (activity.date) return dateKey(new Date(activity.date));
-  return Object.values(activity.votes ?? {}).flat().sort()[0] ?? null;
-}
-
 export default function ClubApp({ initialView }: { initialView: View }) {
   const router = useRouter();
   const [anchorDate, setAnchorDate] = useState(() => new Date());
@@ -50,23 +43,12 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isQuickSignupModalOpen, setIsQuickSignupModalOpen] = useState(false);
-  const [selectedActivityId, setSelectedActivityId] = useState<string | null>(null);
   const [activityFormError, setActivityFormError] = useState("");
   const [activityFormLoading, setActivityFormLoading] = useState(false);
   const [quickSignupError, setQuickSignupError] = useState("");
   const [quickSignupLoading, setQuickSignupLoading] = useState(false);
   const [activityScheduleType, setActivityScheduleType] =
     useState<"scheduled" | "poll">("scheduled");
-  const [participantName, setParticipantName] = useState("");
-  const [pollName, setPollName] = useState("");
-  const [selectedPollDates, setSelectedPollDates] = useState<string[]>([]);
-  const [activityActionError, setActivityActionError] = useState("");
-  const [activityActionNotice, setActivityActionNotice] = useState("");
-  const [activityActionLoading, setActivityActionLoading] = useState(false);
-  const [commentMessage, setCommentMessage] = useState("");
-  const [commentError, setCommentError] = useState("");
-  const [commentLoading, setCommentLoading] = useState(false);
-  const [deletingParticipantName, setDeletingParticipantName] = useState("");
   const [announcementFormError, setAnnouncementFormError] = useState("");
   const [announcementFormLoading, setAnnouncementFormLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] =
@@ -157,12 +139,19 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const latestAnnouncements = [...(content?.announcements ?? [])]
     .sort((first, second) => second.date.localeCompare(first.date))
     .slice(0, 5);
-  const latestHomeActivities = [...activities]
+  const groupedHomeActivities = new Map<string, ClubActivity>();
+  for (const activity of activities) {
+    const seriesKey = activity.recurrenceSeriesId ?? activity.id;
+    const existing = groupedHomeActivities.get(seriesKey);
+    const activityDate = activity.day ?? activity.date?.slice(0, 10) ?? "";
+    const existingDate = existing?.day ?? existing?.date?.slice(0, 10) ?? "";
+    if (!existing || activityDate < existingDate) {
+      groupedHomeActivities.set(seriesKey, activity);
+    }
+  }
+  const latestHomeActivities = [...groupedHomeActivities.values()]
     .sort((first, second) => second.createdAt.localeCompare(first.createdAt))
     .slice(0, 3);
-  const selectedActivity = activities.find(
-    (activity) => activity.id === selectedActivityId,
-  );
   const activitiesForVoting = activities.filter(
     (activity) =>
       activity.scheduleType === "poll" &&
@@ -193,6 +182,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
     const formData = new FormData(event.currentTarget);
     const scheduleType = String(formData.get("scheduleType"));
     const localDate = String(formData.get("date") ?? "");
+    const repeatEnabled = formData.get("repeatEnabled") === "on";
 
     try {
       const response = await fetch("/api/activities", {
@@ -212,6 +202,20 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               ? new Date(localDate).toISOString()
               : null,
           creator: formData.get("creator"),
+          ...(repeatEnabled && scheduleType === "scheduled"
+            ? {
+                repeat: {
+                  interval: formData.get("repeatInterval"),
+                  endType: formData.get("repeatEndType"),
+                  ...(formData.get("repeatEndType") === "count"
+                    ? { count: Number(formData.get("repeatCount")) }
+                    : {}),
+                  ...(formData.get("repeatEndType") === "until"
+                    ? { until: formData.get("repeatUntil") }
+                    : {}),
+                },
+              }
+            : {}),
         }),
       });
       const data = (await response.json()) as {
@@ -223,15 +227,10 @@ export default function ClubApp({ initialView }: { initialView: View }) {
         throw new Error("Máy chủ không trả về thông tin hoạt động mới.");
       }
       const createdActivity = data.activity;
-      setActivities((current) =>
-        [...current, { ...createdActivity, participants: [], votes: {}, comments: [] }].sort((a, b) =>
-          b.createdAt.localeCompare(a.createdAt),
-        ),
-      );
       setIsCreateModalOpen(false);
       setActivityScheduleType("scheduled");
-      setSelectedActivityId(createdActivity.id);
-      if (initialView !== "activities") router.push("/activities");
+      await loadActivities();
+      router.push(`/activities/${encodeURIComponent(createdActivity.id)}`);
     } catch (error) {
       setActivityFormError(
         error instanceof Error ? error.message : "Không thể tạo hoạt động.",
@@ -274,96 +273,13 @@ export default function ClubApp({ initialView }: { initialView: View }) {
         ),
       );
       setIsQuickSignupModalOpen(false);
-      setActivityActionError("");
-      setActivityActionNotice("");
-      setSelectedActivityId(createdActivity.id);
+      router.push(`/activities/${encodeURIComponent(createdActivity.id)}`);
     } catch (error) {
       setQuickSignupError(
         error instanceof Error ? error.message : "Không thể tạo đăng ký nhanh.",
       );
     } finally {
       setQuickSignupLoading(false);
-    }
-  }
-
-  async function voteForActivity(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedActivity || selectedPollDates.length === 0) return;
-
-    setActivityActionError("");
-    setActivityActionNotice("");
-    setActivityActionLoading(true);
-    try {
-      const response = await fetch(
-        `/api/activities/${selectedActivity.id}/votes`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: pollName,
-            dates: selectedPollDates,
-          }),
-        },
-      );
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Không thể gửi bình chọn.");
-      setPollName("");
-      setActivityActionNotice(
-        "Đã ghi nhận bình chọn. Bạn có thể gửi lại để thay đổi các ngày phù hợp.",
-      );
-      await loadActivities();
-    } catch (error) {
-      setActivityActionError(
-        error instanceof Error ? error.message : "Không thể gửi bình chọn.",
-      );
-    } finally {
-      setActivityActionLoading(false);
-    }
-  }
-
-  async function addActivityComment(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedActivity) return;
-
-    setCommentError("");
-    setCommentLoading(true);
-    try {
-      const response = await fetch(
-        `/api/activities/${selectedActivity.id}/comments`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: commentMessage }),
-        },
-      );
-      const data = (await response.json()) as {
-        comment?: ActivityComment;
-        error?: string;
-      };
-      if (!response.ok) {
-        throw new Error(data.error ?? "Không thể gửi bình luận.");
-      }
-      if (!data.comment) {
-        throw new Error("Máy chủ không trả về bình luận vừa gửi.");
-      }
-      const createdComment = data.comment;
-      setActivities((current) =>
-        current.map((activity) =>
-          activity.id === selectedActivity.id
-            ? {
-                ...activity,
-                comments: [...(activity.comments ?? []), createdComment],
-              }
-            : activity,
-        ),
-      );
-      setCommentMessage("");
-    } catch (error) {
-      setCommentError(
-        error instanceof Error ? error.message : "Không thể gửi bình luận.",
-      );
-    } finally {
-      setCommentLoading(false);
     }
   }
 
@@ -510,93 +426,6 @@ export default function ClubApp({ initialView }: { initialView: View }) {
     }
   }
 
-  async function joinActivity(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!selectedActivity) return;
-    setActivityActionError("");
-    setActivityActionNotice("");
-    setActivityActionLoading(true);
-    try {
-      const response = await fetch(
-        `/api/activities/${selectedActivity.id}/join`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: participantName }),
-        },
-      );
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Không thể tham gia.");
-      setParticipantName("");
-      setActivityActionNotice("Bạn đã đăng ký tham gia hoạt động.");
-      await loadActivities();
-    } catch (error) {
-      setActivityActionError(
-        error instanceof Error ? error.message : "Không thể tham gia.",
-      );
-    } finally {
-      setActivityActionLoading(false);
-    }
-  }
-
-  async function deleteActivityParticipant(member: string) {
-    if (!selectedActivity) return;
-    if (!window.confirm(`Xóa "${member}" khỏi hoạt động "${selectedActivity.title}"?`)) {
-      return;
-    }
-
-    setDeletingParticipantName(member);
-    setActivityActionError("");
-    setActivityActionNotice("");
-    try {
-      const response = await fetch(
-        `/api/activities/${selectedActivity.id}/join`,
-        {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ name: member }),
-        },
-      );
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Không thể xóa người tham gia.");
-      setActivityActionNotice(`Đã xóa ${member} khỏi hoạt động.`);
-      await loadActivities();
-    } catch (error) {
-      setActivityActionError(
-        error instanceof Error
-          ? error.message
-          : "Không thể xóa người tham gia.",
-      );
-    } finally {
-      setDeletingParticipantName("");
-    }
-  }
-
-  async function deleteActivity() {
-    if (!selectedActivity) return;
-    if (!window.confirm(`Xóa hoạt động "${selectedActivity.title}"?`)) return;
-    setActivityActionError("");
-    setActivityActionNotice("");
-    setActivityActionLoading(true);
-    try {
-      const response = await fetch(`/api/activities/${selectedActivity.id}`, {
-        method: "DELETE",
-      });
-      const data = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(data.error ?? "Không thể xóa hoạt động.");
-      setActivities((current) =>
-        current.filter((activity) => activity.id !== selectedActivity.id),
-      );
-      setSelectedActivityId(null);
-    } catch (error) {
-      setActivityActionError(
-        error instanceof Error ? error.message : "Không thể xóa hoạt động.",
-      );
-    } finally {
-      setActivityActionLoading(false);
-    }
-  }
-
   return (
     <main>
       <div className="page-shell">
@@ -654,15 +483,10 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               ) : latestHomeActivities.length ? (
                 <div className="activity-cards">
                   {latestHomeActivities.map((activity, index) => {
-                    const activityDate = activityCalendarDate(activity);
                     return (
                       <Link
                         className={`activity-card ${["badminton-card", "charity-card", "sport-card"][index % 3]}`}
-                        href={
-                          activityDate
-                            ? `/activities?date=${encodeURIComponent(activityDate)}`
-                            : "/activities"
-                        }
+                        href={`/activities/${encodeURIComponent(activity.id)}`}
                         key={activity.id}
                       >
                         <span className="card-number">
@@ -675,6 +499,16 @@ export default function ClubApp({ initialView }: { initialView: View }) {
                         <span className="card-description">
                           {activity.participants.length} người đăng ký
                         </span>
+                        {activity.repeat && (
+                          <span className="card-repeat-label">
+                            Lặp{" "}
+                            {activity.repeat.interval === "daily"
+                              ? "hằng ngày"
+                              : activity.repeat.interval === "weekly"
+                                ? "hằng tuần"
+                                : "hằng tháng"}
+                          </span>
+                        )}
                         <span className="card-arrow">↗</span>
                       </Link>
                     );
@@ -733,22 +567,33 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               onRetryActivities={() => void loadActivities()}
               onCreateActivity={openCreateActivity}
               onCreateQuickSignup={openQuickSignup}
-              onOpenActivity={(activity) => {
-                setActivityActionError("");
-                setActivityActionNotice("");
-                setSelectedPollDates([]);
-                setSelectedActivityId(activity.id);
-              }}
+              onOpenActivity={(activity) =>
+                router.push(`/activities/${encodeURIComponent(activity.id)}`)
+              }
+              onActivityJoined={(activityId, name) =>
+                setActivities((current) =>
+                  current.map((activity) =>
+                    activity.id === activityId &&
+                    !activity.participants.some(
+                      (participant) =>
+                        participant.normalize("NFC").toLocaleLowerCase("vi") ===
+                        name.normalize("NFC").toLocaleLowerCase("vi"),
+                    )
+                      ? {
+                          ...activity,
+                          participants: [...activity.participants, name],
+                        }
+                      : activity,
+                  ),
+                )
+              }
             />
             <PollActivitiesSection
               activities={activitiesForVoting}
               loading={activitiesLoading}
-              onSelect={(activity) => {
-                setActivityActionError("");
-                setActivityActionNotice("");
-                setSelectedPollDates([]);
-                setSelectedActivityId(activity.id);
-              }}
+              onSelect={(activity) =>
+                router.push(`/activities/${encodeURIComponent(activity.id)}`)
+              }
             />
             <AnnouncementFeedSection
               welcomeAnnouncement={welcomeAnnouncement}
@@ -824,43 +669,6 @@ export default function ClubApp({ initialView }: { initialView: View }) {
             loading={announcementActionLoading}
             onSubmit={editAnnouncement}
             onClose={() => setEditingAnnouncement(null)}
-          />
-        )}
-
-        {selectedActivity && (
-          <ActivityDetailsModal
-            activity={selectedActivity}
-            anchorDate={anchorDate}
-            period={period}
-            pollName={pollName}
-            selectedPollDates={selectedPollDates}
-            participantName={participantName}
-            actionError={activityActionError}
-            actionNotice={activityActionNotice}
-            actionLoading={activityActionLoading}
-            deletingParticipantName={deletingParticipantName}
-            commentMessage={commentMessage}
-            commentError={commentError}
-            commentLoading={commentLoading}
-            onMoveMonth={movePeriod}
-            onPollNameChange={setPollName}
-            onTogglePollDate={(date) =>
-              setSelectedPollDates((current) =>
-                current.includes(date)
-                  ? current.filter((item) => item !== date)
-                  : current.length < 14
-                    ? [...current, date]
-                    : current,
-              )
-            }
-            onParticipantNameChange={setParticipantName}
-            onVoteSubmit={voteForActivity}
-            onJoinSubmit={joinActivity}
-            onDeleteParticipant={(member) => void deleteActivityParticipant(member)}
-            onCommentMessageChange={setCommentMessage}
-            onCommentSubmit={addActivityComment}
-            onDeleteActivity={() => void deleteActivity()}
-            onClose={() => setSelectedActivityId(null)}
           />
         )}
 
