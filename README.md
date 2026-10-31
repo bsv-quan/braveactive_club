@@ -40,6 +40,8 @@ available to the project in its environment variables.
   calendar UI now uses activity sign-ups instead.
 - `GET /api/activities` — lists activities and participants.
 - `POST /api/activities` — creates a fixed-date activity or a date poll.
+- `GET /api/cron/activity-recurrences` — creates scheduled recurring activity
+  occurrences; called daily by Vercel Cron and requires `CRON_SECRET`.
 - `POST /api/activities/:id/join` — joins an activity by name.
 - `POST /api/activities/:id/comments` — adds a comment to an activity.
 - `POST /api/activities/:id/votes` — replaces a member's multi-date availability vote.
@@ -54,15 +56,30 @@ available to the project in its environment variables.
 - `/` — club overview and latest updates.
 - `/activities` — shared monthly activity calendar, activity sign-ups, date
   polls, and the activity news feed.
+- `/activities/:id` — activity detail, participant registration, date voting,
+  and an activity chat that refreshes new messages every five seconds.
 - `/activities/announcements/new` — create an activity announcement.
 - `/badminton` — redirects to `/activities`.
 
 On `/activities`, members can create full activities with a category,
 description, schedule, and creator name; create quick sign-ups by entering only
-an activity name for the selected date; join with their name; and delete
-activities. Each quick sign-up has its own participant list. These actions are
-stored in Redis. Activity deletion is currently public and does not require
-authentication.
+an activity name for the selected date; and open each item on its detail page.
+On the detail page, members can register, vote on dates, and exchange messages.
+Each quick sign-up has its own participant list. These actions are stored in
+Redis. Activity deletion is currently public and does not require authentication.
+Recurring dates appear separately on the calendar for per-date registration,
+while the Home activity list groups them as one recurring activity. Deleting a
+recurring activity removes the entire series.
+Scheduled activities can optionally repeat daily, weekly, or monthly, with no
+end date, a total occurrence count, or an end date. Vercel Cron checks due
+recurrences daily; configure `CRON_SECRET` in the deployment environment for
+the scheduled endpoint (for example, in Vercel Project Settings → Environment
+Variables). The next 90 days are created immediately and the daily cron
+maintains that rolling calendar window. Deleting any occurrence in a series
+stops future occurrences. On the calendar, members can use **+** on an activity
+to register for that specific date. The recurring activity detail page lets
+members choose an upcoming date and shows upcoming dates that already have
+participants, with each date's participant list kept separate.
 Activities can have a fixed date or be created without a confirmed date. On a
 selected calendar day, members can use **Tạo đăng ký nhanh** to enter an
 activity name and open a separate sign-up with its own participant list.
