@@ -1,105 +1,53 @@
 # Brave Active Club
 
-MVP website for club announcements, posts, and member-created activity sign-ups.
-Built with Next.js App Router and Redis REST storage, ready to deploy on Vercel.
+Brave Active Club is split into a Next.js frontend and a Python/FastAPI backend. PostgreSQL stores club activities, users, announcements, posts, comments, likes and sessions. Redis is not used.
 
-## Run locally
+## Start the entire app with Docker
 
-1. Install dependencies with `npm install`.
-2. Create a Redis database through the Vercel Marketplace (Upstash Redis is supported).
-3. Copy `.env.example` to `.env.local` and add the Redis REST URL and token.
-   The app accepts `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`, and
-   legacy `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
-4. Run `npm run dev`.
+Requirements: Docker Desktop with Docker Compose.
 
-The first request to `/api/content` stores the sample announcements and posts in
-Redis. Activity sign-ups and member lists are stored in Redis. If Redis is not
-configured, the app displays a setup error and does not pretend that data was
-saved.
+```sh
+cp .env.example .env
+docker compose up --build
+```
 
-## UI structure
+Open the frontend at [http://localhost:3000](http://localhost:3000). The API and WebSocket are available at [http://localhost:8000](http://localhost:8000) and `ws://localhost:8000/ws/feed`. Compose starts PostgreSQL, applies Alembic migrations in the backend container, then starts the frontend. Uploaded images, backend daily logs, and database data are kept in named Docker volumes.
 
-- `src/app/club-app.tsx` owns page state, data loading, and action handlers.
-- `src/components/club/` contains reusable page sections, calendar and modal UI.
-- `src/components/club/month-grid.tsx` shares the month grid between the club
-  calendar and date-poll voting.
-- `src/lib/club-ui.ts` contains shared date and category presentation helpers.
+Stop the services with `docker compose down`; database, uploads, and backend logs remain. To also remove local database/uploads/logs, use `docker compose down -v`.
 
-## Deploy on Vercel
+The compose defaults are for local development only. Set a random `SECRET_KEY` and the real admin email list in `.env`. For email delivery, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and optionally `MAIL_FROM`. Gmail requires an app password, not the account password.
 
-Import the repository into Vercel, add a Redis integration from the Vercel
-Marketplace, and deploy. Make sure the integration's REST URL and token are
-available to the project in its environment variables.
+## Run without Docker
 
-## API
+1. Start PostgreSQL 17 and create a database/user matching `backend/.env.example`.
+2. Copy `backend/.env.example` to `backend/.env`, set a random secret and configure `DATABASE_URL`.
+3. From `backend/`, create a virtual environment, install `requirements.txt`, run `alembic upgrade head`, then run `uvicorn app.main:app --reload`.
+4. From `frontend/`, run `npm ci` and `npm run dev`. Set `BACKEND_URL=http://localhost:8000` and `NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/feed` if they differ from the defaults.
 
-- `GET /api/content` — initializes sample content on first access and reads the
-  welcome announcement, member-created announcements, and posts from Redis.
-- `GET /api/badminton?from=YYYY-MM-DD&to=YYYY-MM-DD`, `POST /api/badminton`,
-  `DELETE /api/badminton` — legacy endpoints retained for compatibility; the
-  calendar UI now uses activity sign-ups instead.
-- `GET /api/activities` — lists activities and participants.
-- `POST /api/activities` — creates a fixed-date activity or a date poll.
-- `GET /api/cron/activity-recurrences` — creates scheduled recurring activity
-  occurrences; called daily by Vercel Cron and requires `CRON_SECRET`.
-- `POST /api/activities/:id/join` — joins an activity by name.
-- `POST /api/activities/:id/comments` — adds a comment to an activity.
-- `POST /api/activities/:id/votes` — replaces a member's multi-date availability vote.
-- `DELETE /api/activities/:id/join` — removes a participant from an activity.
-- `DELETE /api/activities/:id` — deletes an activity (public in this MVP).
-- `POST /api/announcements` — creates a club activity announcement.
-- `PATCH /api/announcements/:id` — updates an activity announcement.
-- `DELETE /api/announcements/:id` — deletes an activity announcement.
+## Authentication and mail
 
-## Pages
+- Only `@bravesoft.com.vn` addresses can register, log in or request a temporary password. The backend enforces this domain; the frontend email step is not the security boundary.
+- Registration sends an eight-character temporary password by email. Users must change it immediately after their first login; the backend blocks authenticated actions until they do.
+- Forgot password replaces the password with a new temporary password, revokes active sessions and requires the user to change it after signing in.
+- Signed-in users can update their display name and upload a square-cropped profile photo from `/profile`; image files are re-encoded by the backend.
+- The notification inbox is stored in PostgreSQL for offline delivery; authenticated WebSockets push live unread-count updates. Opening the inbox does not mark items read until it is closed, and only the displayed items are marked read.
+- Community author avatars show online/offline presence. Presence is derived from authenticated WebSocket connections and is shared in real time; one backend worker is required for this in-memory live state.
+- To grant administrator access, add the user's full company email to `ADMIN_EMAILS` before registration. Admins can manage community posts at `/admin/posts`.
+- If SMTP is not configured in development, email delivery is skipped and message bodies are not logged because they can contain credentials or reset links. Configure SMTP to test account emails.
+- Backend diagnostics are written to `backend/logs/backend-YYYY-MM-DD.log` (or the Docker `backend_logs` volume). Passwords, reset links, cookies and request bodies are excluded from logs.
 
-- `/` — club overview and latest updates.
-- `/activities` — shared monthly activity calendar, activity sign-ups, date
-  polls, and the activity news feed.
-- `/activities/:id` — activity detail, participant registration, date voting,
-  and an activity chat that refreshes new messages every five seconds.
-- `/activities/announcements/new` — create an activity announcement.
-- `/badminton` — redirects to `/activities`.
+## Security and operations
 
-On `/activities`, members can create full activities with a category,
-description, schedule, and creator name; create quick sign-ups by entering only
-an activity name for the selected date; and open each item on its detail page.
-On the detail page, members can register, vote on dates, and exchange messages.
-Each quick sign-up has its own participant list. These actions are stored in
-Redis. Activity deletion is currently public and does not require authentication.
-Recurring dates appear separately on the calendar for per-date registration,
-while the Home activity list groups them as one recurring activity. Deleting a
-recurring activity removes the entire series.
-Scheduled activities can optionally repeat daily, weekly, or monthly, with no
-end date, a total occurrence count, or an end date. Vercel Cron checks due
-recurrences daily; configure `CRON_SECRET` in the deployment environment for
-the scheduled endpoint (for example, in Vercel Project Settings → Environment
-Variables). The next 90 days are created immediately and the daily cron
-maintains that rolling calendar window. Deleting any occurrence in a series
-stops future occurrences. On the calendar, members can use **+** on an activity
-to register for that specific date. The recurring activity detail page lets
-members choose an upcoming date and shows upcoming dates that already have
-participants, with each date's participant list kept separate.
-Activities can have a fixed date or be created without a confirmed date. On a
-selected calendar day, members can use **Tạo đăng ký nhanh** to enter an
-activity name and open a separate sign-up with its own participant list.
-An activity with the same normalized name cannot be created twice on the same day. For
-undecided activities, members can select multiple available dates on the
-calendar; submitting another vote with the same name replaces their previous
-choices.
-The old `/api/badminton` endpoints remain available for compatibility, but
-badminton registrations are no longer shown in the activity calendar UI.
-Legacy vote entries that cannot be parsed are skipped and logged instead of
-causing the activities endpoint to fail.
+- The frontend proxies API/media requests to the backend so the HttpOnly, SameSite session cookie remains first-party.
+- Authenticated writes require a session-bound CSRF token. The backend also checks request Origin, rate limits sensitive operations and applies security headers/body-size limits.
+- Link previews restrict protocols, redirects, response size and public IP resolution to reduce SSRF risk. Uploads are verified and re-encoded server-side.
+- Community post and comment edits/deletes are enforced by the backend for their authors and administrators; post edits preserve an existing photo attachment.
+- Run one backend worker: the WebSocket hub and rate limiter are in-process.
+- For production, terminate TLS in a trusted reverse proxy, set `ENVIRONMENT=production`, `COOKIE_SECURE=true`, a strong `SECRET_KEY`, correct `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`, and only enable `TRUST_PROXY_HEADERS` behind a trusted proxy.
+- There is no migration of the old Redis data. Existing Redis-hosted content must be exported/imported separately if it needs to be retained.
 
-The activity page keeps the welcome announcement first, hides the old sample
-announcements, and lists new activities newest-first. Members can create
-announcements at `/activities/announcements/new`; creating announcements is
-currently public and does not require authentication.
-Announcements can also be edited or deleted from the activity feed. Editing
-and deleting announcements are currently public and do not require
-authentication. The built-in welcome announcement cannot be deleted.
+## Project layout
 
-Removing activity participants is also public in this MVP and requires no
-authentication. Add user authentication and authorization before using these
-deletion actions with a wider audience.
+- `frontend/`: Next.js App Router UI, reusable components, locale dictionaries (`src/i18n/messages/vi.ts`, `en.ts`, `ja.ts`) and same-origin API client.
+- `backend/`: FastAPI routes, SQLAlchemy models/services, PostgreSQL migrations, auth, mail, media upload and WebSocket feed.
+- `docker-compose.yml`: local PostgreSQL, backend and frontend services.
