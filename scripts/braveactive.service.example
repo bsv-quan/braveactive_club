@@ -1,0 +1,16 @@
+[Unit]
+Description=Brave Active frontend and backend
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=CHANGE_ME
+WorkingDirectory=/absolute/path/to/braveactive_club
+ExecStart=/bin/bash /absolute/path/to/braveactive_club/scripts/run.sh
+Restart=on-failure
+RestartSec=5
+KillMode=control-group
+
+[Install]
+WantedBy=multi-user.target

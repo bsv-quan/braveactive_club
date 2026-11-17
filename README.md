@@ -1,105 +1,129 @@
 # Brave Active Club
 
-MVP website for club announcements, posts, and member-created activity sign-ups.
-Built with Next.js App Router and Redis REST storage, ready to deploy on Vercel.
+Next.js frontend, Python/FastAPI backend, and PostgreSQL. Redis is not required.
+
+## Quick start with Docker
+
+Install and start Docker Desktop (or Docker Engine with Compose), then run from the project root:
+
+```sh
+docker compose up --build -d
+```
+
+Open http://localhost:3003. The backend is available at http://localhost:8008/health. Compose waits for PostgreSQL, applies migrations and starts one backend worker. Frontend API and media requests are proxied to the backend; browser WebSockets connect to port 8008. The stack is bound to localhost and uses development-only credentials; it is **not** a production deployment. It does not use the local/VPS `.env` file.
+
+The community page includes a horizontally scrollable WIRED headline strip below the post composer and above the feed. The backend fetches up to five headlines from the Latest section of WIRED's Security, Politics and Big Story pages at startup and once per hour, then caches titles and available card metadata in PostgreSQL. Article cards open the original WIRED page in a new tab; “See more” opens WIRED's homepage. Publication times are not displayed.
+
+Create the initial admin after the backend is healthy:
+
+```sh
+docker compose exec backend python bootstrap_admin.py
+```
+
+Enter and confirm a password at the prompt. The account is `admin@bravesoft.com.vn` and must change its password on first login. The script does not overwrite existing administrators.
+
+To run backend tests against a separate, temporary PostgreSQL instance:
+
+```sh
+docker compose --profile test run --rm backend-tests
+```
+
+Tests drop and recreate tables in the dedicated test database, never the application database. The test database exists only inside the test container's temporary filesystem. Stop the stack with `docker compose --profile test down`; application database, uploads and logs remain in named volumes. Do not add `-v` unless you intend to delete that data. Use `docker compose logs -f` to inspect startup.
+
+Docker uses its own Compose project and ports 3003/8008 to avoid disturbing existing stacks. For network access or different ports, update both the port mappings and the frontend URL, WebSocket build argument, and backend origin together, then rebuild. Use the VPS instructions below for production.
 
 ## Run locally
 
-1. Install dependencies with `npm install`.
-2. Create a Redis database through the Vercel Marketplace (Upstash Redis is supported).
-3. Copy `.env.example` to `.env.local` and add the Redis REST URL and token.
-   The app accepts `UPSTASH_REDIS_REST_URL` / `UPSTASH_REDIS_REST_TOKEN`, and
-   legacy `KV_REST_API_URL` / `KV_REST_API_TOKEN`.
-4. Run `npm run dev`.
+Requirements: Node.js 22+, Python 3.12+, PostgreSQL 17, and npm. PostgreSQL must be running before starting the application.
 
-The first request to `/api/content` stores the sample announcements and posts in
-Redis. Activity sign-ups and member lists are stored in Redis. If Redis is not
-configured, the app displays a setup error and does not pretend that data was
-saved.
+1. Install and start PostgreSQL. On macOS with Homebrew, for example:
 
-## UI structure
+   ```sh
+   brew install postgresql@17
+   brew services start postgresql@17
+   /opt/homebrew/opt/postgresql@17/bin/createdb braveactive
+   ```
 
-- `src/app/club-app.tsx` owns page state, data loading, and action handlers.
-- `src/components/club/` contains reusable page sections, calendar and modal UI.
-- `src/components/club/month-grid.tsx` shares the month grid between the club
-  calendar and date-poll voting.
-- `src/lib/club-ui.ts` contains shared date and category presentation helpers.
+   On Intel macOS the Homebrew prefix is typically `/usr/local` rather than `/opt/homebrew`. If PostgreSQL is already running, use its existing `createdb` command and connection credentials instead.
+2. From the project root, copy `.env.example` to `.env`. Set `DATABASE_URL` to the PostgreSQL database and set a random `SECRET_KEY`. The example database URL uses the current operating-system PostgreSQL user. Values containing shell-special characters must be single-quoted: the run script sources this trusted configuration file.
+3. Install application dependencies:
 
-## Deploy on Vercel
+   ```sh
+   python3 -m venv backend/.venv
+   backend/.venv/bin/pip install -r backend/requirements.txt
+   npm --prefix frontend ci
+   ```
 
-Import the repository into Vercel, add a Redis integration from the Vercel
-Marketplace, and deploy. Make sure the integration's REST URL and token are
-available to the project in its environment variables.
+4. Run both services with one command:
 
-## API
+   ```sh
+   bash scripts/run.sh
+   ```
 
-- `GET /api/content` — initializes sample content on first access and reads the
-  welcome announcement, member-created announcements, and posts from Redis.
-- `GET /api/badminton?from=YYYY-MM-DD&to=YYYY-MM-DD`, `POST /api/badminton`,
-  `DELETE /api/badminton` — legacy endpoints retained for compatibility; the
-  calendar UI now uses activity sign-ups instead.
-- `GET /api/activities` — lists activities and participants.
-- `POST /api/activities` — creates a fixed-date activity or a date poll.
-- `GET /api/cron/activity-recurrences` — creates scheduled recurring activity
-  occurrences; called daily by Vercel Cron and requires `CRON_SECRET`.
-- `POST /api/activities/:id/join` — joins an activity by name.
-- `POST /api/activities/:id/comments` — adds a comment to an activity.
-- `POST /api/activities/:id/votes` — replaces a member's multi-date availability vote.
-- `DELETE /api/activities/:id/join` — removes a participant from an activity.
-- `DELETE /api/activities/:id` — deletes an activity (public in this MVP).
-- `POST /api/announcements` — creates a club activity announcement.
-- `PATCH /api/announcements/:id` — updates an activity announcement.
-- `DELETE /api/announcements/:id` — deletes an activity announcement.
+   The script applies database migrations and runs the API on `127.0.0.1:8000` and Next.js on `127.0.0.1:3000`. Open http://localhost:3000; Ctrl+C stops both. PostgreSQL remains running.
 
-## Pages
+5. After migrations, bootstrap the first admin once from another terminal:
 
-- `/` — club overview and latest updates.
-- `/activities` — shared monthly activity calendar, activity sign-ups, date
-  polls, and the activity news feed.
-- `/activities/:id` — activity detail, participant registration, date voting,
-  and an activity chat that refreshes new messages every five seconds.
-- `/activities/announcements/new` — create an activity announcement.
-- `/badminton` — redirects to `/activities`.
+   ```sh
+   set -a; source .env; set +a
+   cd backend && .venv/bin/python bootstrap_admin.py
+   ```
 
-On `/activities`, members can create full activities with a category,
-description, schedule, and creator name; create quick sign-ups by entering only
-an activity name for the selected date; and open each item on its detail page.
-On the detail page, members can register, vote on dates, and exchange messages.
-Each quick sign-up has its own participant list. These actions are stored in
-Redis. Activity deletion is currently public and does not require authentication.
-Recurring dates appear separately on the calendar for per-date registration,
-while the Home activity list groups them as one recurring activity. Deleting a
-recurring activity removes the entire series.
-Scheduled activities can optionally repeat daily, weekly, or monthly, with no
-end date, a total occurrence count, or an end date. Vercel Cron checks due
-recurrences daily; configure `CRON_SECRET` in the deployment environment for
-the scheduled endpoint (for example, in Vercel Project Settings → Environment
-Variables). The next 90 days are created immediately and the daily cron
-maintains that rolling calendar window. Deleting any occurrence in a series
-stops future occurrences. On the calendar, members can use **+** on an activity
-to register for that specific date. The recurring activity detail page lets
-members choose an upcoming date and shows upcoming dates that already have
-participants, with each date's participant list kept separate.
-Activities can have a fixed date or be created without a confirmed date. On a
-selected calendar day, members can use **Tạo đăng ký nhanh** to enter an
-activity name and open a separate sign-up with its own participant list.
-An activity with the same normalized name cannot be created twice on the same day. For
-undecided activities, members can select multiple available dates on the
-calendar; submitting another vote with the same name replaces their previous
-choices.
-The old `/api/badminton` endpoints remain available for compatibility, but
-badminton registrations are no longer shown in the activity calendar UI.
-Legacy vote entries that cannot be parsed are skipped and logged instead of
-causing the activities endpoint to fail.
+   Enter the initial password securely at the prompt. The script creates `admin@bravesoft.com.vn` only when no active admin exists, never overwrites an existing account, and requires a password change on first login. Do not put credentials in the repository or shell history.
 
-The activity page keeps the welcome announcement first, hides the old sample
-announcements, and lists new activities newest-first. Members can create
-announcements at `/activities/announcements/new`; creating announcements is
-currently public and does not require authentication.
-Announcements can also be edited or deleted from the activity feed. Editing
-and deleting announcements are currently public and do not require
-authentication. The built-in welcome announcement cannot be deleted.
+### Run backend tests
 
-Removing activity participants is also public in this MVP and requires no
-authentication. Add user authentication and authorization before using these
-deletion actions with a wider audience.
+The test suite **drops and recreates tables** in its database. Create a separate empty test database and never point `TEST_DATABASE_URL` at application or production data:
+
+```sh
+createdb braveactive_test
+cd backend
+TEST_DATABASE_URL='postgresql+asyncpg://localhost:5432/braveactive_test' .venv/bin/pytest
+```
+
+Use the appropriate PostgreSQL credentials in `TEST_DATABASE_URL` if your local server requires them. Account requests do not send email.
+
+## VPS / cPanel deployment
+
+This deployment assumes a VPS with SSH, Node.js, Python, PostgreSQL, HTTPS, and a reverse proxy that supports WebSocket upgrades. Shared cPanel hosting without long-running processes or WebSockets is not supported by this script.
+
+1. Provision PostgreSQL and a dedicated database/user. Install dependencies as above. Make the project, `backend/uploads`, and `backend/logs` writable by the service account. Keep `.env` outside public web directories and restrict its permissions (`chmod 600 .env`).
+2. Set `RUN_MODE=production`, `ENVIRONMENT=production`, a random `SECRET_KEY` of at least 32 characters, `COOKIE_SECURE=true`, and your public HTTPS origin in `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`. Set `DATABASE_URL`. Use `BACKEND_URL=http://127.0.0.1:8000` and set `NEXT_PUBLIC_WS_URL=wss://your-domain/ws/feed`. Next.js embeds the WebSocket URL and backend proxy destination at build time; rebuild after changing either.
+3. Point the HTTPS reverse proxy's `/ws/feed` route to `http://127.0.0.1:8000/ws/feed` with HTTP/1.1 WebSocket upgrade headers. Proxy all other paths to `http://127.0.0.1:3000`. The Next.js server forwards `/api` and `/media` to the backend. Ensure the proxy forwards the original `Origin` header.
+4. Run `bash scripts/run.sh` under a process supervisor such as systemd or Supervisor, configured to restart on failure and stop the process group. The script builds Next.js, applies Alembic migrations and starts one backend worker and one frontend process in the foreground. Configure the supervisor and TLS reverse proxy according to your cPanel server setup.
+5. Only set `TRUST_PROXY_HEADERS=true` behind a trusted proxy that overwrites forwarded headers. Back up PostgreSQL and `backend/uploads`; retain `backend/logs` according to your operational policy.
+
+### Automatic deployment with GitHub Actions
+
+The workflow in `.github/workflows/deploy.yml` deploys pushes to `main` (including merged pull requests). Direct pushes to `main` also deploy; protect the branch if deployments must only come from reviewed pull requests. A manual run is available from the Actions tab. Deployments use the Git commit that triggered the workflow and are serialized.
+
+One-time VPS setup:
+
+1. As a dedicated deployment/service user, clone this repository on the VPS and check out `main`. Configure SSH authentication for `git fetch origin main` from the VPS without interactive prompts, including GitHub's verified host key. Create the backend virtual environment and configure the VPS `.env` as described above; `RUN_MODE` and `ENVIRONMENT` must both be `production`. The deployment path must be an absolute path using only letters, digits, `/`, `.`, `_` and `-`.
+2. Copy `scripts/braveactive.service.example` to `/etc/systemd/system/braveactive.service`, replace `User` and both paths with the actual deployment user and repository path, then run `sudo systemctl daemon-reload` and `sudo systemctl enable --now braveactive.service`. Check `systemctl status braveactive.service` and verify both services respond. The service runs the existing start script, which builds the frontend and applies migrations on startup.
+3. Allow the deployment user to run **only** `systemctl restart braveactive.service` without a password using a narrowly scoped sudoers entry installed with `visudo` (verify the `systemctl` path on the VPS):
+
+   ```text
+   DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart braveactive.service
+   ```
+
+4. Create a GitHub **Environment** named `production`. Configure its secrets `DEPLOY_SSH_PRIVATE_KEY` (dedicated SSH key for the VPS deployment user) and `DEPLOY_SSH_KNOWN_HOSTS` (the VPS host-key line, independently verified against the server's fingerprint). Set environment variables `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, and optionally `DEPLOY_PORT` (defaults to `22`). For a non-default port, use the `[host]:port` format in the known-hosts entry. Do not disable SSH host-key checking.
+
+`DATABASE_URL`, `SECRET_KEY` and other runtime settings remain in the protected VPS `.env`, not in workflow output. They are **not** automatically synchronized from GitHub Secrets. `NEXT_PUBLIC_WS_URL` is read from the VPS `.env` during each build. If you change GitHub or VPS settings, rerun the workflow manually to apply them; the bootstrap admin script is never run automatically.
+
+Deployment refuses to overwrite locally modified tracked files and requires a fast-forward from the server's `main` checkout. It installs dependencies, restarts the service, and checks backend `/health` and the frontend. Startup may interrupt service while the build and migrations run. A failed deployment does **not** roll back the source or database; inspect `journalctl -u braveactive.service`, repair the issue and rerun the workflow. Back up the database before applying migrations.
+
+## Authentication and administration
+
+- Only `@bravesoft.com.vn` addresses can register, log in or request a reset. Registration and reset create pending requests for an administrator; no email is sent.
+- Admins **must verify the requester's identity through an internal channel before approval**, manually set a temporary password, and send it separately. The user must change it after signing in. A reset does not affect the account until approval; approval revokes existing sessions and authenticated WebSockets.
+- `/admin` supports user management, account-request approval/rejection, post moderation and an activity-approval queue. Member-created activities remain private until approved; activities created by admins are published immediately. Deleting a user permanently removes their posts, comments and likes; activity registrations are name-based and are not linked to user accounts.
+- The notification inbox is stored in PostgreSQL for offline delivery; authenticated WebSockets push live updates. Presence uses the in-memory WebSocket hub, so run exactly one backend worker.
+
+## Security and operations
+
+- The frontend proxies API/media requests to the backend so the HttpOnly, SameSite session cookie remains first-party.
+- Authenticated writes require a session-bound CSRF token; the backend also checks Origin and limits request rates.
+- Link previews restrict protocols, redirects, response size and public IP resolution. Uploaded images are verified and re-encoded.
+- Backend diagnostics are written to `backend/logs/backend-YYYY-MM-DD.log`. Do not log passwords, codes, cookies or request bodies.
+- There is no migration of old Redis data; export/import separately if needed.
