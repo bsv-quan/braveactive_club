@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Alert } from "@/components/ui/form-controls";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { EmojiTextField } from "@/components/ui/emoji-text-field";
 import { errorMessage } from "@/lib/api/client";
 import { communityApi, type CommunityPost, type LinkPreview } from "@/lib/api/community";
 import { findFirstUrl } from "@/lib/format";
@@ -12,8 +13,10 @@ import { useI18n } from "@/i18n/i18n-provider";
 import { LinkPreviewCard } from "./link-preview-card";
 
 const MAX_IMAGE_MB = 5;
+const MAX_IMAGES = 4;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const PREVIEW_DEBOUNCE_MS = 700;
+type ComposerImage = { file: File; url: string };
 
 type Props = {
   displayName: string;
@@ -25,8 +28,8 @@ type Props = {
 export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
   const { t } = useI18n();
   const [content, setContent] = useState("");
-  const [image, setImage] = useState<File | null>(null);
-  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [images, setImages] = useState<ComposerImage[]>([]);
+  const [imageOrientation, setImageOrientation] = useState<"landscape" | "portrait">("landscape");
   const [preview, setPreview] = useState<LinkPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   // URLs whose preview the user removed; they are not fetched again.
@@ -34,14 +37,15 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const objectUrls = useRef(new Set<string>());
   // The detected URL the current preview (or failed lookup) belongs to.
   const previewForRef = useRef<string | null>(null);
 
   const detectedUrl = findFirstUrl(content);
 
-  // Debounced preview lookup. An attached image disables the feature entirely.
+  // Debounced preview lookup. Attached images disable the feature entirely.
   useEffect(() => {
-    if (image || !detectedUrl || detectedUrl === dismissedUrl) {
+    if (images.length || !detectedUrl || detectedUrl === dismissedUrl) {
       previewForRef.current = null;
       setPreview(null);
       setPreviewLoading(false);
@@ -71,46 +75,69 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [detectedUrl, image, dismissedUrl]);
+  }, [detectedUrl, images.length, dismissedUrl]);
 
-  // Release the object URL used for the local image thumbnail.
   useEffect(() => () => {
-    if (imageUrl) URL.revokeObjectURL(imageUrl);
-  }, [imageUrl]);
+    objectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    objectUrls.current.clear();
+  }, []);
 
   function pickImage(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const files = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!file) return;
-    if (!ALLOWED_TYPES.includes(file.type)) return setError(t("community.composer.imageType"));
-    if (file.size > MAX_IMAGE_MB * 1024 * 1024) {
-      return setError(t("community.composer.imageSize", { size: MAX_IMAGE_MB }));
+    if (!files.length) return;
+    if (images.length + files.length > MAX_IMAGES) {
+      return setError(t("community.composer.imageLimit", { max: MAX_IMAGES }));
     }
+    const invalidType = files.find((file) => !ALLOWED_TYPES.includes(file.type));
+    if (invalidType) return setError(t("community.composer.imageType"));
+    const oversized = files.find((file) => file.size > MAX_IMAGE_MB * 1024 * 1024);
+    if (oversized) return setError(t("community.composer.imageSize", { size: MAX_IMAGE_MB }));
     setError("");
-    setImage(file);
-    setImageUrl(URL.createObjectURL(file));
+    setImages((current) => [
+      ...current,
+      ...files.map((file) => {
+        const url = URL.createObjectURL(file);
+        objectUrls.current.add(url);
+        return { file, url };
+      }),
+    ]);
   }
 
-  function removeImage() {
-    setImage(null);
-    setImageUrl(null);
+  function removeImage(index: number) {
+    setImages((current) => {
+      const removed = current[index];
+      if (removed) {
+        URL.revokeObjectURL(removed.url);
+        objectUrls.current.delete(removed.url);
+      }
+      return current.filter((_, currentIndex) => currentIndex !== index);
+    });
+  }
+
+  function clearImages() {
+    images.forEach(({ url }) => {
+      URL.revokeObjectURL(url);
+      objectUrls.current.delete(url);
+    });
+    setImages([]);
   }
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    if (!content.trim() && !image) return setError(t("community.composer.empty"));
+    if (!content.trim() && !images.length) return setError(t("community.composer.empty"));
     setSubmitting(true);
     setError("");
     try {
       const post = await communityApi.createPost({
         content: content.trim(),
-        image,
-        linkUrl: !image && detectedUrl && detectedUrl !== dismissedUrl ? detectedUrl : null,
-        skipPreview: Boolean(image) || (detectedUrl !== null && detectedUrl === dismissedUrl),
+        images: images.map(({ file }) => file),
+        linkUrl: !images.length && detectedUrl && detectedUrl !== dismissedUrl ? detectedUrl : null,
+        skipPreview: Boolean(images.length) || (detectedUrl !== null && detectedUrl === dismissedUrl),
       });
       onPosted(post);
       setContent("");
-      removeImage();
+      clearImages();
       setPreview(null);
       previewForRef.current = null;
       setDismissedUrl(null);
@@ -125,23 +152,47 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
     <form className="composer card" onSubmit={handleSubmit}>
       <div className="composer-row">
         <UserAvatar name={displayName} avatarUrl={avatarUrl} />
-        <textarea
+        <EmojiTextField
           value={content}
-          onChange={(e) => setContent(e.target.value)}
+          onChange={setContent}
           placeholder={t("community.composer.placeholder", { name: displayName })}
           maxLength={2000}
+          multiline
           rows={3}
           aria-label={t("community.composer.placeholder", { name: displayName })}
         />
       </div>
 
-      {imageUrl ? (
-        <div className="composer-image">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={imageUrl} alt="" />
-          <button type="button" onClick={removeImage} aria-label={t("community.composer.removeImage")} title={t("community.composer.removeImage")}>
-            <X size={16} aria-hidden />
-          </button>
+      {images.length ? (
+        <div
+          className={`composer-image-grid composer-image-count-${images.length}`}
+          data-orientation={imageOrientation}
+        >
+          {images.map((image, index) => (
+            <div className="composer-image" key={image.url}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={image.url}
+                alt=""
+                onLoad={(event) => {
+                  if (index === 0) {
+                    const selectedImage = event.currentTarget;
+                    setImageOrientation(
+                      selectedImage.naturalHeight > selectedImage.naturalWidth ? "portrait" : "landscape",
+                    );
+                  }
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => removeImage(index)}
+                aria-label={`${t("community.composer.removeImage")} ${index + 1}`}
+                title={t("community.composer.removeImage")}
+              >
+                <X size={16} aria-hidden />
+              </button>
+            </div>
+          ))}
         </div>
       ) : previewLoading ? (
         <p className="muted">{t("community.preview.loading")}</p>
@@ -159,8 +210,8 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
       {error ? <Alert tone="error">{error}</Alert> : null}
 
       <div className="composer-actions">
-        <input ref={fileInput} type="file" accept={ALLOWED_TYPES.join(",")} hidden onChange={pickImage} />
-        <Button variant="ghost" icon={ImagePlus} onClick={() => fileInput.current?.click()}>
+        <input ref={fileInput} type="file" accept={ALLOWED_TYPES.join(",")} multiple hidden onChange={pickImage} />
+        <Button variant="ghost" icon={ImagePlus} disabled={images.length >= MAX_IMAGES} onClick={() => fileInput.current?.click()}>
           {t("community.composer.addImage")}
         </Button>
         <Button type="submit" loading={submitting}>

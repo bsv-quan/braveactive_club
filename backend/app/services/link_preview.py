@@ -5,16 +5,17 @@ User supplied URLs are fetched server side, so every hop is validated:
 * the hostname is resolved by *our* network backend and the connection is pinned to a
   public IP (blocks private/loopback/link-local ranges and DNS rebinding);
 * redirects are followed manually (max 3) and re-validated;
-* response size and time are capped, and only HTML is parsed.
+* response size and time are capped, and only expected HTML/oEmbed metadata is parsed.
 """
 
 import asyncio
 import ipaddress
+import json
 import re
 import socket
 import time
 from dataclasses import dataclass
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qs, urljoin, urlparse
 
 import httpcore
 import httpx
@@ -28,6 +29,8 @@ TIMEOUT_SECONDS = 5
 CACHE_TTL_SECONDS = 600
 ALLOWED_PORTS = {80, 443, None}
 URL_PATTERN = re.compile(r"https?://[^\s<>\"']+", re.IGNORECASE)
+YOUTUBE_VIDEO_ID_PATTERN = re.compile(r"^[A-Za-z0-9_-]{11}$")
+YOUTUBE_HOSTS = {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be", "www.youtu.be"}
 
 
 @dataclass
@@ -162,6 +165,58 @@ def parse_preview(final_url: str, html: str) -> LinkPreview:
     )
 
 
+def _youtube_video_id(raw_url: str) -> str | None:
+    """Extract a video ID only from supported YouTube URL forms."""
+    parsed = urlparse(raw_url)
+    if parsed.hostname not in YOUTUBE_HOSTS:
+        return None
+    if parsed.hostname in {"youtu.be", "www.youtu.be"}:
+        candidate = parsed.path.strip("/").split("/", 1)[0]
+    elif parsed.path == "/watch":
+        candidate = parse_qs(parsed.query).get("v", [""])[0]
+    else:
+        parts = parsed.path.strip("/").split("/")
+        candidate = parts[1] if len(parts) == 2 and parts[0] in {"embed", "shorts", "live"} else ""
+    return candidate if YOUTUBE_VIDEO_ID_PATTERN.fullmatch(candidate) else None
+
+
+async def _fetch_youtube_oembed(url: str) -> tuple[str | None, str | None] | None:
+    """Fetch YouTube's public oEmbed metadata through the pinned public-IP transport."""
+    try:
+        async with httpx.AsyncClient(
+            transport=_build_transport(),
+            timeout=TIMEOUT_SECONDS,
+            follow_redirects=False,
+            headers={"Accept": "application/json"},
+        ) as client:
+            async with client.stream(
+                "GET",
+                "https://www.youtube.com/oembed",
+                params={"url": url, "format": "json"},
+            ) as response:
+                if response.status_code >= 400:
+                    return None
+                chunks: list[bytes] = []
+                total = 0
+                async for chunk in response.aiter_bytes():
+                    total += len(chunk)
+                    if total > 64 * 1024:
+                        return None
+                    chunks.append(chunk)
+                data = json.loads(b"".join(chunks))
+    except (httpx.HTTPError, json.JSONDecodeError, UnicodeDecodeError, AppError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+    title = data.get("title")
+    author = data.get("author_name")
+    return (
+        title[:300] if isinstance(title, str) and title.strip() else None,
+        author[:600] if isinstance(author, str) and author.strip() else None,
+    )
+
+
 _cache: dict[str, tuple[float, LinkPreview]] = {}
 
 
@@ -172,6 +227,22 @@ async def get_link_preview(url: str) -> LinkPreview:
     cached = _cache.get(key)
     if cached and now - cached[0] < CACHE_TTL_SECONDS:
         return cached[1]
+
+    if video_id := _youtube_video_id(key):
+        metadata = await _fetch_youtube_oembed(key)
+        if metadata and metadata[0]:
+            title, author = metadata
+            preview = LinkPreview(
+                url=key,
+                title=title,
+                description=author,
+                image=f"https://i.ytimg.com/vi/{video_id}/hqdefault.jpg",
+                site="YouTube",
+            )
+            if len(_cache) > 500:
+                _cache.clear()
+            _cache[key] = (now, preview)
+            return preview
 
     try:
         final_url, html = await _fetch_html(key)

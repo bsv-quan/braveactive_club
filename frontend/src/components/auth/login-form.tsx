@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
-import { Alert, TextField } from "@/components/ui/form-controls";
+import { Alert, PasswordField, TextField } from "@/components/ui/form-controls";
 import { errorMessage } from "@/lib/api/client";
 import { authApi } from "@/lib/api/auth";
 import { useI18n } from "@/i18n/i18n-provider";
@@ -88,10 +88,9 @@ export function LoginForm({ nextPath }: { nextPath: string }) {
         />
         {emailChecked ? (
           <>
-            <TextField
+            <PasswordField
               label={t("auth.login.password")}
               name="password"
-              type="password"
               icon={Lock}
               autoComplete="current-password"
               required

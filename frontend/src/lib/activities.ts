@@ -2,12 +2,14 @@ export const activityCategories = [
   "CẦU LÔNG",
   "TỪ THIỆN",
   "THỂ THAO",
+  "GIẢI TRÍ",
 ] as const;
 
 export type ActivityCategory = (typeof activityCategories)[number];
 
 export type ActivityComment = {
   id: string;
+  authorName: string | null;
   message: string;
   createdAt: string;
 };
@@ -54,7 +56,6 @@ export type ClubActivity = {
   createdAt: string;
   creator: string;
   participants: string[];
-  votes: Record<string, string[]>;
   comments?: ActivityComment[];
 };
 
@@ -63,6 +64,16 @@ export function activityDay(
 ) {
   if (activity.day) return activity.day;
   return activity.date ? activity.date.slice(0, 10) : null;
+}
+
+export function activityDetailId(activity: ClubActivity, activities: ClubActivity[]) {
+  if (!activity.recurrenceSeriesId) return activity.id;
+  const seriesRoot = activities
+    .filter((item) => item.recurrenceSeriesId === activity.recurrenceSeriesId)
+    .sort((first, second) =>
+      (activityDay(first) ?? "").localeCompare(activityDay(second) ?? ""),
+    )[0];
+  return seriesRoot?.id ?? activity.id;
 }
 
 export function isActivityCategory(value: unknown): value is ActivityCategory {

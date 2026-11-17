@@ -7,10 +7,12 @@ from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 from app.schemas.base import CamelModel
+from app.schemas.community import PostOut
 
 
 class ActivityCommentOut(CamelModel):
     id: uuid.UUID
+    author_name: str | None = None
     message: str
     created_at: datetime
 
@@ -29,7 +31,6 @@ class ActivityOut(CamelModel):
     created_at: datetime
     creator: str
     participants: list[str]
-    votes: dict[str, list[str]]
     comments: list[ActivityCommentOut]
 
 
@@ -37,10 +38,16 @@ class ActivityList(CamelModel):
     activities: list[ActivityOut]
 
 
+class ActivityDetail(CamelModel):
+    activity: ActivityOut
+    occurrences: list[ActivityOut]
+
+
 class ActivityCreated(CamelModel):
     activity: ActivityOut
     recurrence: dict[str, Any] | None = None
     generated_occurrences: int
+    community_post: PostOut | None = None
 
 
 class ActivityCreate(CamelModel):
@@ -55,17 +62,8 @@ class ActivityCreate(CamelModel):
     schedule_type: str | None = None
     date: str | None = None
     day: str | None = None
-    creator: str | None = None
     repeat: dict[str, Any] | None = None
-
-
-class NameBody(CamelModel):
-    name: str
-
-
-class VoteBody(CamelModel):
-    name: str
-    dates: list[str]
+    share_to_community: bool = False
 
 
 class MessageBody(CamelModel):

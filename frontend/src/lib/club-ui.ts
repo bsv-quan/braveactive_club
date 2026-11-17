@@ -54,6 +54,7 @@ const categoryLabelKeys: Record<string, MessageKey> = {
   "CẦU LÔNG": "club.categories.badminton",
   "TỪ THIỆN": "club.categories.charity",
   "THỂ THAO": "club.categories.sport",
+  "GIẢI TRÍ": "club.categories.entertainment",
   "CÂU LẠC BỘ": "club.categories.club",
 };
 

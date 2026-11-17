@@ -76,8 +76,13 @@ export function AdminPostsPage() {
       </div>
       {posts.length === 0 && !loading && !error ? <p className="feed-note">{t("community.admin.empty")}</p> : null}
       {posts.map((post) => (
+        <div key={post.id}>
+        <button className="button-secondary" type="button" onClick={() => {
+          void communityApi.setPostHidden(post.id, !post.hidden)
+            .then(({ hidden }) => patchPost(post.id, { hidden }))
+            .catch((reason) => setError(errorMessage(reason, t("admin.error"))));
+        }}>{post.hidden ? t("admin.unhide") : t("admin.hide")}</button>
         <PostCard
-          key={post.id}
           post={post}
           viewerId={user.id}
           isAdmin
@@ -85,6 +90,7 @@ export function AdminPostsPage() {
           onPatch={patchPost}
           onRemove={removePost}
         />
+        </div>
       ))}
       {error ? <p className="form-error">{error}</p> : null}
       {loading ? (

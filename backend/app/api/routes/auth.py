@@ -17,7 +17,6 @@ from app.schemas.auth import (
     MessageOut,
     ProfileUpdate,
     RegisterRequest,
-    ResetPasswordRequest,
     SessionOut,
     UserOut,
 )
@@ -57,7 +56,7 @@ async def check_email(body: EmailCheckRequest):
 @router.post("/register", response_model=MessageOut, status_code=202, dependencies=[Depends(rate_limit("register", 10, 3600))])
 async def register(body: RegisterRequest, db: DbSession):
     await auth_service.register_user(db, body.email, body.display_name)
-    return MessageOut(message="Nếu tài khoản có thể được tạo, mật khẩu tạm thời sẽ được gửi qua email công ty.")
+    return MessageOut(message="Yêu cầu đã được gửi để quản trị viên xem xét.")
 
 
 @router.post("/login", response_model=SessionOut, dependencies=[Depends(rate_limit("login", 10, 60))])
@@ -140,10 +139,4 @@ async def change_password(body: ChangePasswordRequest, auth: RequiredAuth, db: D
 async def forgot_password(body: ForgotPasswordRequest, db: DbSession):
     await auth_service.request_password_reset(db, body.email)
     # Same answer whether or not the email exists.
-    return MessageOut(message="Nếu email tồn tại, chúng tôi đã gửi hướng dẫn đặt lại mật khẩu.")
-
-
-@router.post("/reset-password", response_model=MessageOut, dependencies=[Depends(rate_limit("reset", 10, 900))])
-async def reset_password(body: ResetPasswordRequest, db: DbSession):
-    await auth_service.reset_password(db, body.token, body.password)
-    return MessageOut(message="Đặt lại mật khẩu thành công. Hãy đăng nhập lại.")
+    return MessageOut(message="Nếu tài khoản tồn tại, yêu cầu đã được gửi để quản trị viên xem xét.")

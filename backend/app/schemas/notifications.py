@@ -19,6 +19,7 @@ class NotificationOut(CamelModel):
 class NotificationPage(CamelModel):
     notifications: list[NotificationOut]
     unread_count: int
+    has_more: bool
 
 
 class MarkNotificationsRead(CamelModel):

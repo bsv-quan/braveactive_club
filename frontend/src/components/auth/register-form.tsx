@@ -48,6 +48,7 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
       setSent(true);
     } catch (err) {
       setError(errorMessage(err, t("common.genericError")));
+    } finally {
       setSubmitting(false);
     }
   }
@@ -66,7 +67,7 @@ export function RegisterForm({ nextPath }: { nextPath: string }) {
     >
       {sent ? (
         <div className="auth-form">
-          <Alert tone="success">{t("auth.register.temporaryPasswordSent")}</Alert>
+          <Alert tone="success">{t("auth.register.done")}</Alert>
           <Link className="ui-button ui-button-primary" href={`/login${query}`}>
             {t("auth.register.goLogin")}
           </Link>

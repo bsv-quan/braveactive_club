@@ -15,11 +15,13 @@ export type CommunityPost = {
   author: PostAuthor;
   content: string;
   imageUrl: string | null;
+  imageUrls: string[];
   linkPreview: LinkPreview | null;
   likeCount: number;
   commentCount: number;
   likedByMe: boolean;
   createdAt: string;
+  hidden: boolean;
 };
 
 export type PostComment = {
@@ -45,7 +47,11 @@ export type UserNotification = {
   createdAt: string;
   readAt: string | null;
 };
-export type NotificationPage = { notifications: UserNotification[]; unreadCount: number };
+export type NotificationPage = {
+  notifications: UserNotification[];
+  unreadCount: number;
+  hasMore: boolean;
+};
 
 /** Events pushed by the backend over WebSocket. */
 export type FeedEvent =
@@ -61,7 +67,7 @@ export type FeedEvent =
 
 export type NewPostInput = {
   content: string;
-  image?: File | null;
+  images?: File[];
   linkUrl?: string | null;
   skipPreview?: boolean;
 };
@@ -72,14 +78,16 @@ export const communityApi = {
     userIds.slice(0, 100).forEach((id) => query.append("userIds", id));
     return apiJson<{ onlineUserIds: string[] }>(`/api/presence?${query}`, { cache: "no-store" });
   },
-  listNotifications: () =>
-    apiJson<NotificationPage>("/api/notifications?limit=30", { cache: "no-store" }),
+  listNotifications: (offset = 0, limit = 10) =>
+    apiJson<NotificationPage>(`/api/notifications?limit=${limit}&offset=${offset}`, { cache: "no-store" }),
   markNotificationsRead: (ids: string[]) =>
     apiJson<{ unreadCount: number }>("/api/notifications/read", { method: "POST", json: { ids } }),
   listPosts: (cursor?: string | null, limit = 10) =>
     apiJson<PostPage>(`/api/posts?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
       cache: "no-store",
     }),
+  getPost: (postId: string) =>
+    apiJson<CommunityPost>(`/api/posts/${encodeURIComponent(postId)}`, { cache: "no-store" }),
 
   listAdminPosts: (cursor?: string | null) =>
     apiJson<PostPage>(`/api/admin/posts?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
@@ -90,7 +98,7 @@ export const communityApi = {
   async createPost(input: NewPostInput): Promise<CommunityPost> {
     const form = new FormData();
     form.set("content", input.content);
-    if (input.image) form.set("image", input.image);
+    input.images?.forEach((image) => form.append("images", image));
     if (input.linkUrl) form.set("link_url", input.linkUrl);
     if (input.skipPreview) form.set("skip_preview", "true");
     const response = await apiFetch("/api/posts", { method: "POST", body: form });
@@ -104,6 +112,8 @@ export const communityApi = {
     apiJson<CommunityPost>(`/api/posts/${postId}`, { method: "PUT", json: { content } }),
   deleteAdminPost: (postId: string) =>
     apiJson<{ message: string }>(`/api/admin/posts/${postId}`, { method: "DELETE" }),
+  setPostHidden: (postId: string, hidden: boolean) =>
+    apiJson<{ hidden: boolean }>(`/api/admin/posts/${postId}/visibility`, { method: "PATCH", json: { hidden } }),
 
   setLike: (postId: string, liked: boolean) =>
     apiJson<{ postId: string; likeCount: number; likedByMe: boolean }>(`/api/posts/${postId}/like`, {

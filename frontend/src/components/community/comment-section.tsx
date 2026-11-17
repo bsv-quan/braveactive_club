@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button, IconButton } from "@/components/ui/button";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { EmojiTextField } from "@/components/ui/emoji-text-field";
 import { communityApi, type PostComment } from "@/lib/api/community";
 import { errorMessage } from "@/lib/api/client";
 import { formatRelativeTime } from "@/lib/format";
@@ -15,13 +16,14 @@ import { usePresence } from "@/lib/use-presence";
 
 type Props = {
   postId: string;
+  loginNext?: string;
   /** Server-side comment count; a mismatch with the loaded list triggers a refresh (live updates). */
   commentCount: number;
   onCountChange: (count: number) => void;
 };
 
 /** Comment list and input for a single post; loaded lazily when first opened. */
-export function CommentSection({ postId, commentCount, onCountChange }: Props) {
+export function CommentSection({ postId, commentCount, loginNext = "/community", onCountChange }: Props) {
   const { t, intlLocale } = useI18n();
   const { user } = useAuth();
   const [comments, setComments] = useState<PostComment[] | null>(null);
@@ -125,12 +127,14 @@ export function CommentSection({ postId, commentCount, onCountChange }: Props) {
                     void handleUpdate(comment.id);
                   }}
                 >
-                  <textarea
+                  <EmojiTextField
                     value={editDraft}
-                    onChange={(event) => setEditDraft(event.target.value)}
+                    onChange={setEditDraft}
                     maxLength={1000}
                     aria-label={t("community.comments.edit")}
                     autoFocus
+                    multiline
+                    rows={3}
                   />
                   <div className="comment-edit-actions">
                     <button type="button" onClick={() => setEditingId(null)}>
@@ -167,12 +171,15 @@ export function CommentSection({ postId, commentCount, onCountChange }: Props) {
       {error ? <p className="form-error">{error}</p> : null}
       {user ? (
         <form className="comment-form" onSubmit={handleSubmit}>
-          <input
+          <EmojiTextField
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={setDraft}
             placeholder={t("community.comments.placeholder")}
             maxLength={1000}
             aria-label={t("community.comments.placeholder")}
+            multiline
+            rows={1}
+            autoResize
           />
           <Button type="submit" icon={Send} size="sm" loading={sending} disabled={!draft.trim()}>
             {t("community.comments.send")}
@@ -180,7 +187,7 @@ export function CommentSection({ postId, commentCount, onCountChange }: Props) {
         </form>
       ) : (
         <p className="muted">
-          <Link href="/login?next=/community">{t("community.comments.loginToComment")}</Link>
+          <Link href={`/login?next=${encodeURIComponent(loginNext)}`}>{t("community.comments.loginToComment")}</Link>
         </p>
       )}
     </div>

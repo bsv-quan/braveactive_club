@@ -2,8 +2,7 @@
 
 Configure ``SMTP_*`` and ``MAIL_FROM`` in ``backend/.env`` to enable delivery. For Gmail:
 ``SMTP_HOST=smtp.gmail.com``, ``SMTP_PORT=587``, ``SMTP_USER=<address>`` and
-``SMTP_PASSWORD=<16-char app password>``. While unconfigured, email bodies are never
-written to logs because they may contain credentials or password-reset links.
+``SMTP_PASSWORD=<16-char app password>``. Verification codes are never logged.
 """
 
 import logging
@@ -19,11 +18,8 @@ logger = logging.getLogger("app.mail")
 async def send_mail(to: str, subject: str, text: str, html: str | None = None) -> None:
     settings = get_settings()
     if not settings.mail_enabled:
-        if settings.environment.lower() == "development":
-            logger.warning("Mail not configured; development-only message omitted for %s | %s", to, subject)
-            return
         logger.error("Mail delivery requested while SMTP is not configured")
-        raise RuntimeError("SMTP must be configured before sending account credentials.")
+        raise RuntimeError("SMTP must be configured before sending verification codes.")
 
     message = EmailMessage()
     message["From"] = settings.mail_from or settings.smtp_user
@@ -44,42 +40,13 @@ async def send_mail(to: str, subject: str, text: str, html: str | None = None) -
     )
 
 
-async def send_password_reset_email(to: str, display_name: str, reset_url: str, ttl_minutes: int) -> None:
+async def send_verification_email(to: str, code: str, purpose: str, ttl_minutes: int) -> None:
+    """Send a one-time registration or password-recovery code, without a URL."""
+    action = "đăng ký tài khoản" if purpose == "register" else "đặt lại mật khẩu"
     text = (
-        f"Xin chào {display_name},\n\n"
-        "Bạn vừa yêu cầu đặt lại mật khẩu Brave Active.\n"
-        f"Nhấn vào liên kết sau (hiệu lực {ttl_minutes} phút, chỉ dùng được một lần):\n{reset_url}\n\n"
+        f"Bạn vừa yêu cầu {action} Brave Active.\n\n"
+        f"Mã xác minh: {code}\n"
+        f"Mã có hiệu lực {ttl_minutes} phút và chỉ dùng được một lần.\n\n"
         "Nếu bạn không yêu cầu, hãy bỏ qua email này."
     )
-    html = (
-        f"<p>Xin chào {_escape(display_name)},</p>"
-        "<p>Bạn vừa yêu cầu đặt lại mật khẩu Brave Active.</p>"
-        f'<p><a href="{_escape(reset_url)}">Đặt lại mật khẩu</a> '
-        f"(hiệu lực {ttl_minutes} phút, chỉ dùng được một lần)</p>"
-        "<p>Nếu bạn không yêu cầu, hãy bỏ qua email này.</p>"
-    )
-    await send_mail(to, "Đặt lại mật khẩu Brave Active", text, html)
-
-
-async def send_temporary_password_email(to: str, display_name: str, password: str) -> None:
-    text = (
-        f"Xin chào {display_name},\n\n"
-        "Mật khẩu tạm thời cho tài khoản Brave Active của bạn là:\n"
-        f"{password}\n\n"
-        "Vì lý do bảo mật, bạn sẽ được yêu cầu đổi mật khẩu ngay sau lần đăng nhập đầu tiên.\n"
-        "Nếu bạn không yêu cầu email này, hãy liên hệ quản trị viên."
-    )
-    html = (
-        f"<p>Xin chào {_escape(display_name)},</p>"
-        "<p>Mật khẩu tạm thời cho tài khoản Brave Active của bạn là:</p>"
-        f"<p><strong>{_escape(password)}</strong></p>"
-        "<p>Vì lý do bảo mật, bạn sẽ được yêu cầu đổi mật khẩu ngay sau lần đăng nhập đầu tiên.</p>"
-        "<p>Nếu bạn không yêu cầu email này, hãy liên hệ quản trị viên.</p>"
-    )
-    await send_mail(to, "Mật khẩu tạm thời Brave Active", text, html)
-
-
-def _escape(value: str) -> str:
-    from html import escape
-
-    return escape(value, quote=True)
+    await send_mail(to, "Mã xác minh Brave Active", text)

@@ -1,26 +1,62 @@
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, CheckCircle2 } from "lucide-react";
-import { useEffect, type InputHTMLAttributes } from "react";
+import { AlertCircle, CheckCircle2, Eye, EyeOff } from "lucide-react";
+import { useEffect, useState, type InputHTMLAttributes, type ReactNode } from "react";
+import { useI18n } from "@/i18n/i18n-provider";
 import { reportGlobalError } from "@/lib/api/client";
 
 type TextFieldProps = InputHTMLAttributes<HTMLInputElement> & {
   label: string;
   icon?: LucideIcon;
   hint?: string;
+  trailing?: ReactNode;
 };
 
 /** Labelled input with an optional leading icon. */
-export function TextField({ label, icon: Icon, hint, id, name, ...props }: TextFieldProps) {
+export function TextField({ label, icon: Icon, hint, trailing, id, name, className, ...props }: TextFieldProps) {
   const inputId = id ?? name;
+  const inputClassName = [Icon && "has-icon", trailing && "has-trailing", className]
+    .filter(Boolean)
+    .join(" ");
   return (
     <div className="ui-field">
       <label htmlFor={inputId}>{label}</label>
       <div className="ui-input-wrap">
         {Icon ? <Icon size={18} aria-hidden /> : null}
-        <input id={inputId} name={name} className={Icon ? "has-icon" : ""} {...props} />
+        <input id={inputId} name={name} className={inputClassName} {...props} />
+        {trailing}
       </div>
       {hint ? <small>{hint}</small> : null}
     </div>
+  );
+}
+
+type PasswordFieldProps = Omit<TextFieldProps, "type" | "trailing">;
+
+/** Password input with an accessible control to reveal or conceal its value. */
+export function PasswordField(props: PasswordFieldProps) {
+  const { t } = useI18n();
+  const [visible, setVisible] = useState(false);
+  const visibilityLabel = t(visible ? "common.hidePassword" : "common.showPassword");
+  const VisibilityIcon = visible ? EyeOff : Eye;
+
+  return (
+    <TextField
+      {...props}
+      type={visible ? "text" : "password"}
+      trailing={
+        <button
+          type="button"
+          className="ui-input-toggle"
+          aria-label={visibilityLabel}
+          aria-pressed={visible}
+          title={visibilityLabel}
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setVisible((current) => !current)}
+        >
+          <VisibilityIcon size={18} aria-hidden />
+        </button>
+      }
+    />
   );
 }
 

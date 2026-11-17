@@ -11,4 +11,5 @@ from app.models.club import (  # noqa: F401
 )
 from app.models.community import Post, PostComment, PostLike  # noqa: F401
 from app.models.notification import Notification  # noqa: F401
-from app.models.user import PasswordResetToken, User, UserSession  # noqa: F401
+from app.models.external_news import ExternalNews  # noqa: F401
+from app.models.user import AccountRequest, EmailVerification, PasswordResetToken, User, UserSession  # noqa: F401

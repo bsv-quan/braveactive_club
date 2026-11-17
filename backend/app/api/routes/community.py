@@ -23,13 +23,17 @@ from app.schemas.community import (
     CommentUpdate,
 )
 from app.schemas.notifications import MarkNotificationsRead, NotificationPage
+from app.schemas.external_news import ExternalNewsPage
 from app.schemas.auth import MessageOut
 from app.services import community, notifications, uploads
+from app.services import external_news
 from app.services.link_preview import get_link_preview, normalize_url
 from app.services.realtime import manager, publish, publish_to_user
 from app.db.session import SessionFactory
 from app.services.auth import get_user_by_session
 from app.core.security import hash_token
+from app.models import Post
+from pydantic import BaseModel
 
 logger = logging.getLogger("app.community")
 
@@ -49,13 +53,20 @@ async def list_posts(
     return await community.list_posts(db, viewer, cursor, limit)
 
 
+@router.get("/news/wired", response_model=ExternalNewsPage)
+async def list_wired_news(db: DbSession):
+    """Public cached headlines from the approved Wired sections."""
+    return await external_news.list_wired_news(db)
+
+
 @router.get("/notifications", response_model=NotificationPage)
 async def list_notifications(
     db: DbSession,
     user: CurrentUser,
-    limit: int = Query(default=30, ge=1, le=50),
+    limit: int = Query(default=10, ge=1, le=50),
+    offset: int = Query(default=0, ge=0),
 ):
-    return await notifications.list_for_user(db, user.id, limit)
+    return await notifications.list_for_user(db, user.id, limit, offset)
 
 
 @router.post("/notifications/read")
@@ -83,7 +94,28 @@ async def list_posts_for_admin(
 ):
     if user.role != "admin":
         raise AppError("Bạn không có quyền truy cập trang quản lý.", 403)
-    return await community.list_posts(db, user, cursor, limit)
+    return await community.list_posts(db, user, cursor, limit, include_hidden=True)
+
+
+class PostVisibility(BaseModel):
+    hidden: bool
+
+
+@router.patch("/admin/posts/{post_id}/visibility")
+async def admin_post_visibility(post_id: uuid.UUID, body: PostVisibility, db: DbSession, user: CurrentUser):
+    if user.role != "admin":
+        raise AppError("Bạn không có quyền truy cập trang quản lý.", 403)
+    post = await db.get(Post, post_id)
+    if not post:
+        raise AppError("Không tìm thấy bài đăng.", 404)
+    post.hidden = body.hidden
+    await db.commit()
+    if body.hidden:
+        await publish("post.deleted", postId=str(post_id))
+    else:
+        restored = await community.get_post_out(db, post_id, None)
+        await publish("post.created", post=restored.model_dump(mode="json", by_alias=True))
+    return {"hidden": body.hidden}
 
 
 @router.delete("/admin/posts/{post_id}", response_model=MessageOut)
@@ -103,9 +135,11 @@ async def create_post(
     link_url: Annotated[str | None, Form(max_length=2048)] = None,
     skip_preview: Annotated[bool, Form()] = False,
     image: Annotated[UploadFile | None, File()] = None,
+    images: Annotated[list[UploadFile] | None, File()] = None,
 ):
     enforce_limit(f"post:{user.id}", 20, 3600)
-    post = await community.create_post(db, user, content, link_url, skip_preview, image)
+    uploaded_images = [*(images or []), *([image] if image else [])]
+    post = await community.create_post(db, user, content, link_url, skip_preview, uploaded_images)
     notice_recipients = await notifications.notify_post_created(db, user, post.id)
     for recipient_id, unread_count in notice_recipients:
         await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)

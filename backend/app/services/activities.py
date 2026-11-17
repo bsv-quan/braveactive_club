@@ -1,4 +1,4 @@
-"""Activity business logic: validation, recurrence expansion, participation, polls, comments."""
+"""Activity business logic: validation, recurrence expansion, participation and comments."""
 
 import calendar
 import logging
@@ -10,7 +10,9 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
+from app.core.config import get_settings
 from app.core.errors import AppError
 from app.core.permissions import can_manage
 from app.models import (
@@ -18,14 +20,14 @@ from app.models import (
     ActivityComment,
     ActivityParticipant,
     ActivityRecurrence,
-    ActivityVote,
+    Post,
     User,
 )
 from app.schemas.club import ActivityCommentOut, ActivityCreate, ActivityOut
 
 logger = logging.getLogger("app.activities")
 
-CATEGORIES = ("CẦU LÔNG", "TỪ THIỆN", "THỂ THAO")
+CATEGORIES = ("CẦU LÔNG", "TỪ THIỆN", "THỂ THAO", "GIẢI TRÍ")
 INTERVALS = ("daily", "weekly", "monthly")
 END_TYPES = ("never", "count", "until")
 HORIZON_DAYS = 90
@@ -92,10 +94,6 @@ def repeat_config(rec: ActivityRecurrence) -> dict:
 
 
 def to_activity_out(activity: Activity, repeat_by_series: dict[uuid.UUID, dict]) -> ActivityOut:
-    votes: dict[str, list[str]] = {}
-    for vote in activity.votes:
-        for day in vote.dates:
-            votes.setdefault(day, []).append(vote.name)
     repeat = repeat_by_series.get(activity.recurrence_series_id) if activity.recurrence_series_id else None
     return ActivityOut(
         id=activity.id,
@@ -111,7 +109,6 @@ def to_activity_out(activity: Activity, repeat_by_series: dict[uuid.UUID, dict])
         created_at=activity.created_at,
         creator=activity.creator,
         participants=[p.name for p in activity.participants],
-        votes=votes,
         comments=[ActivityCommentOut.model_validate(c) for c in activity.comments],
     )
 
@@ -138,6 +135,68 @@ async def list_activities(db: AsyncSession) -> list[ActivityOut]:
     return [to_activity_out(activity, repeat_by_series) for activity in activities]
 
 
+async def list_activity_page(db: AsyncSession, offset: int, limit: int) -> tuple[list[ActivityOut], bool]:
+    occurrence = aliased(Activity)
+    series_root_id = (
+        select(occurrence.id)
+        .where(occurrence.recurrence_series_id == Activity.recurrence_series_id)
+        .order_by(occurrence.day.asc(), occurrence.id.asc())
+        .limit(1)
+        .correlate(Activity)
+        .scalar_subquery()
+    )
+    rows = (
+        await db.scalars(
+            select(Activity)
+            .where(
+                Activity.recurrence_series_id.is_(None)
+                | (Activity.id == series_root_id)
+            )
+            .order_by(Activity.created_at.desc(), Activity.id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+    ).all()
+    has_more = len(rows) > limit
+    activities = rows[:limit]
+    series_ids = {activity.recurrence_series_id for activity in activities if activity.recurrence_series_id}
+    repeat_by_series = {}
+    if series_ids:
+        recurrences = (
+            await db.scalars(select(ActivityRecurrence).where(ActivityRecurrence.id.in_(series_ids)))
+        ).all()
+        repeat_by_series = {rec.id: repeat_config(rec) for rec in recurrences}
+    return [to_activity_out(activity, repeat_by_series) for activity in activities], has_more
+
+
+async def get_activity_detail(db: AsyncSession, activity_id: uuid.UUID) -> tuple[ActivityOut, list[ActivityOut]]:
+    requested = await get_activity_or_404(db, activity_id)
+    if not requested.recurrence_series_id:
+        return to_activity_out(requested, {}), [to_activity_out(requested, {})]
+
+    occurrences = (
+        await db.scalars(
+            select(Activity)
+            .where(Activity.recurrence_series_id == requested.recurrence_series_id)
+            .order_by(Activity.day.asc(), Activity.id.asc())
+        )
+    ).all()
+    if not occurrences:
+        raise AppError("Không tìm thấy hoạt động.", 404)
+
+    root = occurrences[0]
+    recurrence = await db.get(ActivityRecurrence, requested.recurrence_series_id)
+    repeat_by_series = (
+        {requested.recurrence_series_id: repeat_config(recurrence)}
+        if recurrence
+        else {}
+    )
+    return (
+        to_activity_out(root, repeat_by_series),
+        [to_activity_out(item, repeat_by_series) for item in occurrences],
+    )
+
+
 # ------------------------------------------------------------------ create
 def _validate_repeat(raw: dict | None, day: date | None) -> dict | None:
     if raw is None:
@@ -158,53 +217,44 @@ def _validate_repeat(raw: dict | None, day: date | None) -> dict | None:
     return config
 
 
-async def create_activity(db: AsyncSession, body: ActivityCreate, user: User | None) -> tuple[Activity, dict | None, int]:
-    """Validate and create an activity (plus generated repeats). Returns (activity, recurrence, extra)."""
-    quick = body.kind == "quick-signup"
-    if body.kind not in (None, "activity", "quick-signup"):
+async def create_activity(
+    db: AsyncSession, body: ActivityCreate, user: User
+) -> tuple[Activity, dict | None, int, uuid.UUID | None]:
+    """Create an activity and optional community post in one transaction."""
+    if body.kind not in (None, "activity"):
         raise AppError("Loại đăng ký không hợp lệ.", 400)
-    if not quick and (
+    if (
         body.description is None
         or body.category is None
-        or body.schedule_type not in ("scheduled", "poll")
-        or body.creator is None
+        or body.schedule_type != "scheduled"
     ):
-        raise AppError("Vui lòng nhập nội dung, loại, lịch và tên người tạo.", 400)
+        raise AppError("Vui lòng nhập nội dung, loại và lịch hoạt động.", 400)
 
     title = body.title.strip()
-    description = "Đăng ký nhanh theo ngày." if quick else (body.description or "").strip()
-    creator = "Cộng đồng" if quick else normalize_text(body.creator or "")
-    category = "THỂ THAO" if quick else body.category
-    schedule_type = "scheduled" if quick else body.schedule_type
-
-    when: datetime | None = None
-    day: date | None = None
-    if quick:
-        day = parse_day(body.day)
-        when = datetime(day.year, day.month, day.day, 12, tzinfo=timezone.utc) if day else None
-    elif schedule_type == "scheduled":
-        when = parse_datetime(body.date)
-        day = parse_day(body.day) or (when.date() if when else None)
+    description = body.description.strip()
+    creator = normalize_text(user.display_name)
+    category = body.category
+    schedule_type = "scheduled"
+    when = parse_datetime(body.date)
+    day = parse_day(body.day) or (when.date() if when else None)
 
     invalid = (
-        len(title) < (2 if quick else 3)
+        len(title) < 3
         or len(title) > 120
         or not 5 <= len(description) <= 1000
         or not 2 <= len(creator) <= 40
         or category not in CATEGORIES
-        or (schedule_type == "scheduled" and (when is None or day is None))
-        or (schedule_type == "poll" and body.date is not None)
+        or when is None
+        or day is None
     )
     if invalid:
         raise AppError("Thông tin hoạt động chưa hợp lệ. Vui lòng kiểm tra lại các trường.", 400)
 
     repeat = _validate_repeat(body.repeat, day) if body.repeat is not None else None
-    if repeat and (quick or schedule_type != "scheduled"):
-        raise AppError("Cấu hình lặp lại không hợp lệ.", 400)
 
     series_id = uuid.uuid4() if repeat else None
     activity = Activity(
-        kind="quick-signup" if quick else "activity",
+        kind="activity",
         recurrence_series_id=series_id,
         repeat=repeat,
         title=title,
@@ -254,9 +304,34 @@ async def create_activity(db: AsyncSession, body: ActivityCreate, user: User | N
             db.add(rec)
             recurrence_out = {"id": str(rec.id), **repeat_config(rec)}
 
+    community_post_id = None
+    if body.share_to_community:
+        local_when = when.astimezone(timezone(timedelta(hours=7)))
+        activity_url = (
+            f"{get_settings().frontend_base_url.rstrip('/')}/activities/{activity.id}"
+        )
+        post = Post(
+            author_id=user.id,
+            content=(
+                f"Hoạt động mới: {title}\n"
+                "Nội dung:\n"
+                f"{description}\n\n"
+                f"Loại hoạt động: {category}\n"
+                f"Thời gian: {local_when:%d/%m/%Y %H:%M}\n"
+                f"Chi tiết và đăng ký:\n{activity_url}"
+            ),
+            link_url=activity_url,
+            link_title=title,
+            link_description=description,
+            link_site="Brave Active",
+        )
+        db.add(post)
+        await db.flush()
+        community_post_id = post.id
+
     await db.commit()
     await db.refresh(activity)
-    return activity, recurrence_out, generated
+    return activity, recurrence_out, generated, community_post_id
 
 
 async def expand_series(db: AsyncSession, rec: ActivityRecurrence, horizon: date, max_new: int) -> tuple[int, int]:
@@ -342,8 +417,8 @@ async def delete_activity(db: AsyncSession, user: User, activity_id: uuid.UUID) 
 
 
 # ------------------------------------------------- participation and polls
-async def join_activity(db: AsyncSession, activity_id: uuid.UUID, raw_name: str) -> str:
-    name = validate_person_name(raw_name)
+async def join_activity(db: AsyncSession, activity_id: uuid.UUID, user: User) -> str:
+    name = validate_person_name(user.display_name)
     await get_activity_or_404(db, activity_id)
     statement = (
         pg_insert(ActivityParticipant)
@@ -357,8 +432,8 @@ async def join_activity(db: AsyncSession, activity_id: uuid.UUID, raw_name: str)
     return name
 
 
-async def leave_activity(db: AsyncSession, activity_id: uuid.UUID, raw_name: str) -> str:
-    name = validate_person_name(raw_name, "Tên người tham gia không hợp lệ.")
+async def leave_activity(db: AsyncSession, activity_id: uuid.UUID, user: User) -> str:
+    name = validate_person_name(user.display_name, "Tên người tham gia không hợp lệ.")
     await get_activity_or_404(db, activity_id)
     participant = await db.get(ActivityParticipant, (activity_id, name_key(name)))
     if not participant:
@@ -368,35 +443,18 @@ async def leave_activity(db: AsyncSession, activity_id: uuid.UUID, raw_name: str
     return name
 
 
-async def submit_vote(db: AsyncSession, activity_id: uuid.UUID, raw_name: str, raw_dates: list[str]) -> tuple[str, list[str]]:
-    name = normalize_text(raw_name)
-    dates = sorted(set(raw_dates))
-    if (
-        not 2 <= len(name) <= 40
-        or not 1 <= len(dates) <= 14
-        or any(parse_day(day) is None for day in dates)
-    ):
-        raise AppError("Tên hoặc ngày bình chọn không hợp lệ (chọn từ 1 đến 14 ngày).", 400)
-    activity = await get_activity_or_404(db, activity_id)
-    if activity.schedule_type != "poll":
-        raise AppError("Hoạt động này đã có lịch cố định, không nhận bình chọn.", 409)
-
-    key = name_key(name)
-    vote = await db.get(ActivityVote, (activity_id, key))
-    if vote:
-        vote.name, vote.dates = name, dates
-    else:
-        db.add(ActivityVote(activity_id=activity_id, name_key=key, name=name, dates=dates))
-    await db.commit()
-    return name, dates
-
-
-async def add_activity_comment(db: AsyncSession, activity_id: uuid.UUID, raw_message: str) -> ActivityCommentOut:
+async def add_activity_comment(
+    db: AsyncSession, activity_id: uuid.UUID, raw_message: str, user: User
+) -> ActivityCommentOut:
     message = raw_message.strip()
     if not 2 <= len(message) <= 1000:
         raise AppError("Nội dung bình luận cần từ 2 đến 1000 ký tự.", 400)
     await get_activity_or_404(db, activity_id)
-    comment = ActivityComment(activity_id=activity_id, message=message)
+    comment = ActivityComment(
+        activity_id=activity_id,
+        author_name=validate_person_name(user.display_name),
+        message=message,
+    )
     db.add(comment)
     await db.commit()
     await db.refresh(comment)

@@ -41,7 +41,7 @@ class Activity(Base):
     title_key: Mapped[str] = mapped_column(String(400))
     description: Mapped[str] = mapped_column(Text)
     category: Mapped[str] = mapped_column(String(32))
-    schedule_type: Mapped[str] = mapped_column(String(16))  # "scheduled" | "poll"
+    schedule_type: Mapped[str] = mapped_column(String(16))  # Legacy poll values are retained as read-only data.
     date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     day: Mapped[dt.date | None] = mapped_column(Date)
     creator: Mapped[str] = mapped_column(String(40))
@@ -51,7 +51,6 @@ class Activity(Base):
     participants: Mapped[list["ActivityParticipant"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin", order_by="ActivityParticipant.created_at"
     )
-    votes: Mapped[list["ActivityVote"]] = relationship(cascade="all, delete-orphan", lazy="selectin")
     comments: Mapped[list["ActivityComment"]] = relationship(
         cascade="all, delete-orphan", lazy="selectin", order_by="ActivityComment.created_at"
     )
@@ -67,6 +66,8 @@ class ActivityParticipant(Base):
 
 
 class ActivityVote(Base):
+    """Legacy vote records retained in the database; new voting is no longer supported."""
+
     __tablename__ = "activity_votes"
 
     activity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("activities.id", ondelete="CASCADE"), primary_key=True)
@@ -80,6 +81,7 @@ class ActivityComment(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     activity_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("activities.id", ondelete="CASCADE"), index=True)
+    author_name: Mapped[str | None] = mapped_column(String(40))
     message: Mapped[str] = mapped_column(Text)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 

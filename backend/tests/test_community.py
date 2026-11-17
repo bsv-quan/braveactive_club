@@ -1,10 +1,13 @@
 import io
+from unittest.mock import AsyncMock
 
 from PIL import Image
 from sqlalchemy import select
 
 from app.db.session import SessionFactory
 from app.models import User
+from app.services import community
+from app.services.link_preview import LinkPreview
 from tests.conftest import register
 
 
@@ -17,6 +20,25 @@ def png_bytes(size=(40, 30)) -> bytes:
 async def test_guest_can_read_but_not_write(client):
     assert (await client.get("/api/posts")).json() == {"posts": [], "nextCursor": None}
     assert (await client.post("/api/posts", data={"content": "hi"})).status_code == 401
+
+
+async def test_guest_can_open_shared_post_and_comments(client):
+    csrf = await register(client)
+    post = await client.post("/api/posts", data={"content": "Shared post"}, headers=csrf)
+    post_id = post.json()["id"]
+    await client.post(
+        f"/api/posts/{post_id}/comments",
+        json={"content": "Visible shared comment"},
+        headers=csrf,
+    )
+    await client.post("/api/auth/logout", headers=csrf)
+
+    shared_post = await client.get(f"/api/posts/{post_id}")
+    comments = await client.get(f"/api/posts/{post_id}/comments")
+    assert shared_post.status_code == 200
+    assert shared_post.json()["content"] == "Shared post"
+    assert comments.status_code == 200
+    assert [comment["content"] for comment in comments.json()] == ["Visible shared comment"]
 
 
 async def test_post_like_comment_flow(client):
@@ -37,6 +59,39 @@ async def test_post_like_comment_flow(client):
 
     unliked = await client.delete(f"/api/posts/{post_id}/like", headers=csrf)
     assert unliked.json()["likeCount"] == 0
+
+
+async def test_created_post_returns_youtube_preview(client, monkeypatch):
+    csrf = await register(client)
+    url = "https://www.youtube.com/watch?v=dNuI6ViswoE"
+    monkeypatch.setattr(
+        community,
+        "get_link_preview",
+        AsyncMock(
+            return_value=LinkPreview(
+                url=url,
+                title="Video title",
+                description="Brave Active",
+                image="https://i.ytimg.com/vi/dNuI6ViswoE/hqdefault.jpg",
+                site="YouTube",
+            )
+        ),
+    )
+
+    response = await client.post(
+        "/api/posts",
+        data={"content": f"Watch this: {url}"},
+        headers=csrf,
+    )
+
+    assert response.status_code == 201
+    assert response.json()["linkPreview"] == {
+        "url": url,
+        "title": "Video title",
+        "description": "Brave Active",
+        "image": "https://i.ytimg.com/vi/dNuI6ViswoE/hqdefault.jpg",
+        "site": "YouTube",
+    }
 
 
 async def test_only_owner_can_delete(client):
@@ -153,6 +208,11 @@ async def test_notifications_are_persisted_for_post_audience_and_mark_read(clien
         json={"email": "owner@bravesoft.com.vn", "password": "TestPass123"},
     )
     owner_csrf = {"X-CSRF-Token": login.json()["csrfToken"]}
+    first_page = (await client.get("/api/notifications", params={"limit": 1, "offset": 0})).json()
+    second_page = (await client.get("/api/notifications", params={"limit": 1, "offset": 1})).json()
+    assert len(first_page["notifications"]) == 1 and first_page["hasMore"] is True
+    assert len(second_page["notifications"]) == 1 and second_page["hasMore"] is False
+    assert first_page["notifications"][0]["id"] != second_page["notifications"][0]["id"]
     page = (await client.get("/api/notifications")).json()
     assert page["unreadCount"] == 2
     assert {item["kind"] for item in page["notifications"]} == {
@@ -233,6 +293,32 @@ async def test_image_upload_and_served_via_media(client):
     assert response.json()["linkPreview"] is None
     media = await client.get(url)
     assert media.status_code == 200 and media.headers["x-content-type-options"] == "nosniff"
+
+
+async def test_multiple_post_images_are_limited_to_four(client):
+    csrf = await register(client)
+    files = [
+        ("images", (f"pic-{index}.png", png_bytes(), "image/png"))
+        for index in range(4)
+    ]
+    response = await client.post("/api/posts", data={"content": "gallery"}, files=files, headers=csrf)
+
+    assert response.status_code == 201, response.text
+    data = response.json()
+    assert len(data["imageUrls"]) == 4
+    assert data["imageUrl"] == data["imageUrls"][0]
+    for image_url in data["imageUrls"]:
+        media = await client.get(image_url)
+        assert media.status_code == 200
+
+    too_many = files + [("images", ("pic-5.png", png_bytes(), "image/png"))]
+    rejected = await client.post(
+        "/api/posts",
+        data={"content": "too many"},
+        files=too_many,
+        headers=csrf,
+    )
+    assert rejected.status_code == 400
 
 
 async def test_non_image_upload_rejected(client):

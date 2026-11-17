@@ -1,76 +1,86 @@
+name: braveactive-local
+
 services:
   db:
     image: postgres:17-alpine
-    restart: unless-stopped
     environment:
-      POSTGRES_USER: braveactive
-      POSTGRES_PASSWORD: braveactive
       POSTGRES_DB: braveactive
-    ports:
-      - "127.0.0.1:5432:5432"
+      POSTGRES_USER: braveactive
+      POSTGRES_PASSWORD: local-only-password
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - db-data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U braveactive -d braveactive"]
-      interval: 5s
+      interval: 3s
       timeout: 3s
-      retries: 10
+      retries: 20
 
   backend:
-    build:
-      context: ./backend
-    restart: unless-stopped
+    build: ./backend
     environment:
-      ENVIRONMENT: ${ENVIRONMENT:-development}
-      DATABASE_URL: postgresql+asyncpg://braveactive:braveactive@db:5432/braveactive
-      SECRET_KEY: ${SECRET_KEY:-local-dev-secret-change-this-before-production-123456}
-      FRONTEND_ORIGINS: ${FRONTEND_ORIGINS:-http://localhost:3000}
-      FRONTEND_BASE_URL: ${FRONTEND_BASE_URL:-http://localhost:3000}
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
-      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
-      CRON_SECRET: ${CRON_SECRET:-}
-      SMTP_HOST: ${SMTP_HOST:-}
-      SMTP_PORT: ${SMTP_PORT:-587}
-      SMTP_USER: ${SMTP_USER:-}
-      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
-      SMTP_USE_STARTTLS: ${SMTP_USE_STARTTLS:-true}
-      MAIL_FROM: ${MAIL_FROM:-}
+      ENVIRONMENT: development
+      DATABASE_URL: postgresql+asyncpg://braveactive:local-only-password@db:5432/braveactive
+      FRONTEND_ORIGINS: http://localhost:3003,http://127.0.0.1:3003
+      FRONTEND_BASE_URL: http://localhost:3003
+      COOKIE_SECURE: "false"
       UPLOAD_DIR: /app/uploads
-      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-5}
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8008:8000"
     volumes:
       - uploads:/app/uploads
-      - backend_logs:/app/logs
+      - logs:/app/logs
     depends_on:
       db:
         condition: service_healthy
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1"]
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
+      interval: 5s
+      timeout: 4s
+      retries: 20
       start_period: 20s
 
   frontend:
     build:
       context: ./frontend
       args:
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000/ws/feed}
         BACKEND_URL: http://backend:8000
-    restart: unless-stopped
+        NEXT_PUBLIC_WS_URL: ws://localhost:8008/ws/feed
     environment:
-      NODE_ENV: production
-      BACKEND_URL: http://backend:8000
-      NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL:-ws://localhost:8000/ws/feed}
+      HOSTNAME: 0.0.0.0
+      PORT: "3000"
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3003:3000"
     depends_on:
       backend:
         condition: service_healthy
 
+  test-db:
+    profiles: ["test"]
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: braveactive_test
+      POSTGRES_USER: braveactive_test
+      POSTGRES_PASSWORD: test-only-password
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U braveactive_test -d braveactive_test"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  backend-tests:
+    profiles: ["test"]
+    build: ./backend
+    environment:
+      TEST_DATABASE_URL: postgresql+asyncpg://braveactive_test:test-only-password@test-db:5432/braveactive_test
+    depends_on:
+      test-db:
+        condition: service_healthy
+    command: ["pytest", "-q"]
+
 volumes:
-  pgdata:
+  db-data:
   uploads:
-  backend_logs:
+  logs:

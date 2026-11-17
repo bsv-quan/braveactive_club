@@ -31,7 +31,6 @@ type ActivityCalendarProps = {
   onSelectDate: (date: string, outsideMonth: boolean, day: Date) => void;
   onRetryActivities: () => void;
   onCreateActivity: () => void;
-  onCreateQuickSignup: () => void;
   onOpenActivity: (activity: ClubActivity) => void;
   onActivityJoined: (activityId: string, name: string) => void;
 };
@@ -50,13 +49,11 @@ function ActivityCalendarSectionBase({
   onSelectDate,
   onRetryActivities,
   onCreateActivity,
-  onCreateQuickSignup,
   onOpenActivity,
   onActivityJoined,
 }: ActivityCalendarProps) {
   const { t, intlLocale } = useI18n();
   const [joiningActivityId, setJoiningActivityId] = useState<string | null>(null);
-  const [joiningName, setJoiningName] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
   const selectedDay = new Date(`${selectedDate}T00:00:00`);
@@ -75,11 +72,10 @@ function ActivityCalendarSectionBase({
     try {
       const data = await apiJson<{ name?: string }>(
         `/api/activities/${activity.id}/join`,
-        { method: "POST", json: { name: joiningName } },
+        { method: "POST" },
       );
       if (!data.name) throw new Error(t("club.calendar.joinNotConfirmed"));
       onActivityJoined(activity.id, data.name);
-      setJoiningName("");
       setJoiningActivityId(null);
     } catch (error) {
       setJoinError(errorMessage(error, t("club.calendar.joinFailed")));
@@ -153,19 +149,11 @@ function ActivityCalendarSectionBase({
                   activity.date !== null &&
                   (activity.day ?? dateKey(new Date(activity.date))) === key,
               );
-              const hasPollVotes = activities.some(
-                (activity) => (activity.votes?.[key]?.length ?? 0) > 0,
-              );
-              const dayStatus = [
-                hasActivities
-                  ? hasRepeatingActivity
-                    ? t("club.calendar.dayStatus.hasRepeat")
-                    : t("club.calendar.dayStatus.hasActivity")
-                  : "",
-                hasPollVotes ? t("club.calendar.dayStatus.hasPoll") : "",
-              ]
-                .filter(Boolean)
-                .join(", ");
+              const dayStatus = hasActivities
+                ? hasRepeatingActivity
+                  ? t("club.calendar.dayStatus.hasRepeat")
+                  : t("club.calendar.dayStatus.hasActivity")
+                : t("club.calendar.dayStatus.none");
               const outsideMonth = day.getMonth() !== anchorDate.getMonth();
               return (
                 <button
@@ -173,7 +161,7 @@ function ActivityCalendarSectionBase({
                   className={`day-cell ${selectedDate === key ? "day-selected" : ""} ${outsideMonth ? "day-outside" : ""} ${key === dateKey(new Date()) ? "day-today" : ""}`}
                   onClick={() => onSelectDate(key, outsideMonth, day)}
                   aria-pressed={selectedDate === key}
-                  aria-label={`${t(weekdayLongKeys[mondayIndex(day)])}, ${formatDate(day, intlLocale, { day: "numeric", month: "long" })}, ${dayStatus || t("club.calendar.dayStatus.none")}`}
+                  aria-label={`${t(weekdayLongKeys[mondayIndex(day)])}, ${formatDate(day, intlLocale, { day: "numeric", month: "long" })}, ${dayStatus}`}
                 >
                   <span>{day.getDate()}</span>
                   {hasActivities && (
@@ -181,9 +169,6 @@ function ActivityCalendarSectionBase({
                       className={`day-indicator ${hasRepeatingActivity ? "repeat-indicator" : ""}`}
                       aria-hidden="true"
                     />
-                  )}
-                  {hasPollVotes && (
-                    <i className="day-indicator poll-indicator" aria-hidden="true" />
                   )}
                 </button>
               );
@@ -193,7 +178,6 @@ function ActivityCalendarSectionBase({
             <span><i className="legend-dot active-dot" /> {t("club.calendar.legend.selected")}</span>
             <span><i className="legend-dot registered-dot" /> {t("club.calendar.legend.hasActivity")}</span>
             <span><i className="legend-dot repeat-legend-dot" /> {t("club.calendar.legend.hasRepeat")}</span>
-            <span><i className="legend-dot poll-legend-dot" /> {t("club.calendar.legend.hasPoll")}</span>
           </div>
         </section>
 
@@ -206,19 +190,6 @@ function ActivityCalendarSectionBase({
               <span>{formatDate(selectedDay, intlLocale, { month: "long", year: "numeric" })}</span>
             </div>
           </div>
-          {canInteract ? (
-            <button
-              className="button-primary selected-day-create-button"
-              type="button"
-              onClick={onCreateQuickSignup}
-            >
-              {t("club.calendar.quickCreate")}
-            </button>
-          ) : (
-            <Link className="button-primary selected-day-create-button" href={loginHref}>
-              {t("club.calendar.quickCreate")}
-            </Link>
-          )}
           {activitiesLoading ? (
             <div className="loading-panel">{t("club.calendar.loading")}</div>
           ) : activitiesForSelectedDate.length ? (
@@ -290,19 +261,10 @@ function ActivityCalendarSectionBase({
                       className="selected-day-join-form"
                       onSubmit={(event) => void joinSelectedDay(event, activity)}
                     >
-                      <label htmlFor={`quick-join-${activity.id}`}>
+                      <p>
                         {t("club.calendar.joinOnDay", { date: selectedDayLabel })}
-                      </label>
+                      </p>
                       <div>
-                        <input
-                          id={`quick-join-${activity.id}`}
-                          value={joiningName}
-                          onChange={(event) => setJoiningName(event.target.value)}
-                          placeholder={t("club.calendar.namePlaceholder")}
-                          minLength={2}
-                          maxLength={40}
-                          required
-                        />
                         <button className="button-primary" disabled={joinLoading}>
                           {joinLoading ? "..." : t("club.calendar.register")}
                         </button>

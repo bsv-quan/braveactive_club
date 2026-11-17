@@ -37,9 +37,7 @@ export function ForgotPasswordForm() {
       subtitle={t("auth.forgot.subtitle")}
       footer={<Link href="/login">{t("auth.forgot.back")}</Link>}
     >
-      {sent ? (
-        <Alert tone="success">{t("auth.forgot.sent")}</Alert>
-      ) : (
+      {sent ? <Alert tone="success">{t("auth.forgot.sent")}</Alert> : (
         <form className="auth-form" onSubmit={handleSubmit}>
           {error ? <Alert tone="error">{error}</Alert> : null}
           <TextField

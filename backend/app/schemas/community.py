@@ -27,11 +27,13 @@ class PostOut(CamelModel):
     author: AuthorOut
     content: str
     image_url: str | None = None
+    image_urls: list[str] = Field(default_factory=list)
     link_preview: LinkPreviewOut | None = None
     like_count: int = 0
     comment_count: int = 0
     liked_by_me: bool = False
     created_at: datetime
+    hidden: bool = False
 
 
 class PostPage(CamelModel):

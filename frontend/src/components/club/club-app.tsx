@@ -5,11 +5,9 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import type { ClubActivity } from "@/lib/activities";
+import { activityDetailId } from "@/lib/activities";
 import { ActivityCalendarSection } from "@/components/club/activity-calendar";
-import {
-  AnnouncementFeedSection,
-  PollActivitiesSection,
-} from "@/components/club/activity-feed-sections";
+import { AnnouncementFeedSection } from "@/components/club/activity-feed-sections";
 import { HomeNewsSection } from "@/components/club/home-news";
 import { LatestCommunityPosts } from "@/components/community/latest-community-posts";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -32,9 +30,6 @@ import {
 const CreateActivityModal = dynamic(() =>
   import("@/components/club/activity-modals").then((m) => m.CreateActivityModal),
 );
-const QuickSignupModal = dynamic(() =>
-  import("@/components/club/activity-modals").then((m) => m.QuickSignupModal),
-);
 const EditAnnouncementModal = dynamic(() =>
   import("@/components/club/activity-modals").then((m) => m.EditAnnouncementModal),
 );
@@ -44,9 +39,6 @@ type ContentData = {
   announcements: ClubAnnouncement[];
   posts: ClubPost[];
 };
-
-const ALL_CATEGORIES = "ALL";
-const filterCategories = [ALL_CATEGORIES, "CẦU LÔNG", "TỪ THIỆN", "THỂ THAO", "CÂU LẠC BỘ"];
 
 export default function ClubApp({ initialView }: { initialView: View }) {
   const router = useRouter();
@@ -62,18 +54,12 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
   const [content, setContent] = useState<ContentData | null>(null);
   const [contentError, setContentError] = useState("");
-  const [activityCategory, setActivityCategory] = useState(ALL_CATEGORIES);
   const [activities, setActivities] = useState<ClubActivity[]>([]);
   const [activitiesError, setActivitiesError] = useState("");
   const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isQuickSignupModalOpen, setIsQuickSignupModalOpen] = useState(false);
   const [activityFormError, setActivityFormError] = useState("");
   const [activityFormLoading, setActivityFormLoading] = useState(false);
-  const [quickSignupError, setQuickSignupError] = useState("");
-  const [quickSignupLoading, setQuickSignupLoading] = useState(false);
-  const [activityScheduleType, setActivityScheduleType] =
-    useState<"scheduled" | "poll">("scheduled");
   const [announcementFormError, setAnnouncementFormError] = useState("");
   const [announcementFormLoading, setAnnouncementFormLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] =
@@ -177,16 +163,6 @@ export default function ClubApp({ initialView }: { initialView: View }) {
       .sort((first, second) => second.createdAt.localeCompare(first.createdAt))
       .slice(0, 3);
   }, [activities]);
-  const activitiesForVoting = useMemo(
-    () =>
-      activities.filter(
-        (activity) =>
-          activity.scheduleType === "poll" &&
-          (activityCategory === ALL_CATEGORIES ||
-            activity.category === activityCategory),
-      ),
-    [activities, activityCategory],
-  );
   const allAnnouncements = useMemo(() => content?.announcements ?? [], [content]);
   const announcementLoginHref = `/login?next=${encodeURIComponent("/activities/announcements/new")}`;
   const movePeriod = useCallback((direction: number) => {
@@ -198,8 +174,8 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   }, []);
   const openActivity = useCallback(
     (activity: ClubActivity) =>
-      router.push(`/activities/${encodeURIComponent(activity.id)}`),
-    [router],
+      router.push(`/activities/${encodeURIComponent(activityDetailId(activity, activities))}`),
+    [activities, router],
   );
   const retryContent = useCallback(() => void loadContent(), [loadContent]);
   const retryActivities = useCallback(() => void loadActivities(), [loadActivities]);
@@ -232,18 +208,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
       return;
     }
     setActivityFormError("");
-    setActivityScheduleType("scheduled");
     setIsCreateModalOpen(true);
-  }, [authLoading, user, loginHref, router]);
-
-  const openQuickSignup = useCallback(() => {
-    if (authLoading) return;
-    if (!user) {
-      router.push(loginHref);
-      return;
-    }
-    setQuickSignupError("");
-    setIsQuickSignupModalOpen(true);
   }, [authLoading, user, loginHref, router]);
 
   async function createActivity(event: React.FormEvent<HTMLFormElement>) {
@@ -251,9 +216,9 @@ export default function ClubApp({ initialView }: { initialView: View }) {
     setActivityFormError("");
     setActivityFormLoading(true);
     const formData = new FormData(event.currentTarget);
-    const scheduleType = String(formData.get("scheduleType"));
     const localDate = String(formData.get("date") ?? "");
     const repeatEnabled = formData.get("repeatEnabled") === "on";
+    const shareToCommunity = formData.get("shareToCommunity") === "on";
 
     try {
       const data = await apiJson<{ activity?: ClubActivity }>("/api/activities", {
@@ -262,17 +227,11 @@ export default function ClubApp({ initialView }: { initialView: View }) {
           title: formData.get("title"),
           description: formData.get("description"),
           category: formData.get("category"),
-          scheduleType,
-          day:
-            scheduleType === "scheduled" && localDate
-              ? localDate.slice(0, 10)
-              : null,
-          date:
-            scheduleType === "scheduled" && localDate
-              ? new Date(localDate).toISOString()
-              : null,
-          creator: formData.get("creator"),
-          ...(repeatEnabled && scheduleType === "scheduled"
+          scheduleType: "scheduled",
+          day: localDate.slice(0, 10),
+          date: new Date(localDate).toISOString(),
+          shareToCommunity,
+          ...(repeatEnabled
             ? {
                 repeat: {
                   interval: formData.get("repeatInterval"),
@@ -293,46 +252,12 @@ export default function ClubApp({ initialView }: { initialView: View }) {
       }
       const createdActivity = data.activity;
       setIsCreateModalOpen(false);
-      setActivityScheduleType("scheduled");
       await loadActivities();
       router.push(`/activities/${encodeURIComponent(createdActivity.id)}`);
     } catch (error) {
       setActivityFormError(errorMessage(error, t("club.errors.createActivity")));
     } finally {
       setActivityFormLoading(false);
-    }
-  }
-
-  async function createQuickSignup(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setQuickSignupError("");
-    setQuickSignupLoading(true);
-    const formData = new FormData(event.currentTarget);
-
-    try {
-      const data = await apiJson<{ activity?: ClubActivity }>("/api/activities", {
-        method: "POST",
-        json: {
-          kind: "quick-signup",
-          title: formData.get("title"),
-          day: selectedDate,
-        },
-      });
-      if (!data.activity) {
-        throw new Error(t("club.errors.createQuickSignupNoData"));
-      }
-      const createdActivity = data.activity;
-      setActivities((current) =>
-        [...current, createdActivity].sort((first, second) =>
-          second.createdAt.localeCompare(first.createdAt),
-        ),
-      );
-      setIsQuickSignupModalOpen(false);
-      router.push(`/activities/${encodeURIComponent(createdActivity.id)}`);
-    } catch (error) {
-      setQuickSignupError(errorMessage(error, t("club.errors.createQuickSignup")));
-    } finally {
-      setQuickSignupLoading(false);
     }
   }
 
@@ -514,7 +439,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
                     return (
                       <Link
                         className={`activity-card ${["badminton-card", "charity-card", "sport-card"][index % 3]}`}
-                        href={`/activities/${encodeURIComponent(activity.id)}`}
+                        href={`/activities/${encodeURIComponent(activityDetailId(activity, activities))}`}
                         key={activity.id}
                       >
                         <span className="card-number">
@@ -565,18 +490,6 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               </div>
               <div className="activities-heading-mark" aria-hidden="true">✳</div>
             </div>
-            <div className="activity-filters" aria-label={t("club.activities.filterAria")}>
-              {filterCategories.map((category) => (
-                <button
-                  className={activityCategory === category ? "activity-filter active" : "activity-filter"}
-                  key={category}
-                  onClick={() => setActivityCategory(category)}
-                  aria-pressed={activityCategory === category}
-                >
-                  {category === ALL_CATEGORIES ? t("club.categories.all") : categoryLabel(t, category)}
-                </button>
-              ))}
-            </div>
             <ActivityCalendarSection
               anchorDate={anchorDate}
               period={period}
@@ -591,14 +504,8 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               onSelectDate={selectDate}
               onRetryActivities={retryActivities}
               onCreateActivity={openCreateActivity}
-              onCreateQuickSignup={openQuickSignup}
               onOpenActivity={openActivity}
               onActivityJoined={handleActivityJoined}
-            />
-            <PollActivitiesSection
-              activities={activitiesForVoting}
-              loading={activitiesLoading}
-              onSelect={openActivity}
             />
             <AnnouncementFeedSection
               welcomeAnnouncement={welcomeAnnouncement}
@@ -628,7 +535,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               ) : (
               <form className="activity-form" onSubmit={createAnnouncement}>
                 <label htmlFor="announcement-category">{t("club.announcements.form.categoryLabel")}</label>
-                <select id="announcement-category" name="category" defaultValue="CÂU LẠC BỘ">
+                <select className="ui-select" id="announcement-category" name="category" defaultValue="CÂU LẠC BỘ">
                   <option value="CÂU LẠC BỘ">{t("club.categoryOptions.club")}</option>
                   <option value="CẦU LÔNG">{t("club.categoryOptions.badminton")}</option>
                   <option value="TỪ THIỆN">{t("club.categoryOptions.charity")}</option>
@@ -653,24 +560,11 @@ export default function ClubApp({ initialView }: { initialView: View }) {
 
         {isCreateModalOpen && (
           <CreateActivityModal
-            scheduleType={activityScheduleType}
             defaultDateTime={`${selectedDate}T18:00`}
-            defaultCreator={user?.displayName ?? ""}
             error={activityFormError}
             loading={activityFormLoading}
-            onScheduleTypeChange={setActivityScheduleType}
             onSubmit={createActivity}
             onClose={() => setIsCreateModalOpen(false)}
-          />
-        )}
-
-        {isQuickSignupModalOpen && (
-          <QuickSignupModal
-            defaultTitle=""
-            error={quickSignupError}
-            loading={quickSignupLoading}
-            onSubmit={createQuickSignup}
-            onClose={() => setIsQuickSignupModalOpen(false)}
           />
         )}
 

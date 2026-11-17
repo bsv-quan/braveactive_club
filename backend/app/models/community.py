@@ -3,7 +3,8 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, String, Text, func
+from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.session import Base
@@ -17,7 +18,11 @@ class Post(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     content: Mapped[str] = mapped_column(Text)
+    hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     image_name: Mapped[str | None] = mapped_column(String(80))  # file name inside UPLOAD_DIR
+    image_names: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb"), nullable=False
+    )
     link_url: Mapped[str | None] = mapped_column(String(2048))
     link_title: Mapped[str | None] = mapped_column(String(300))
     link_description: Mapped[str | None] = mapped_column(String(600))

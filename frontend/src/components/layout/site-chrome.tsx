@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Home, LogIn, LogOut, ShieldCheck, UserPlus, Users, UserRound } from "lucide-react";
+import { CalendarDays, LogIn, LogOut, Settings, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -11,20 +11,27 @@ import { useI18n } from "@/i18n/i18n-provider";
 import { useFeedEvents } from "@/lib/use-feed-events";
 
 export type NavPage = "overview" | "activities" | "community" | "admin";
+const COMMUNITY_RELOAD_TO_TOP_KEY = "ba:community-reload-to-top";
 
-const NAV_ITEMS = [
-  { page: "overview", href: "/", label: "nav.overview", icon: Home },
-  { page: "activities", href: "/activities", label: "nav.activities", icon: CalendarDays },
-  { page: "community", href: "/community", label: "nav.community", icon: Users },
-] as const;
-
-/** Top bar: logo, main navigation, language switcher and the login / user menu. */
+/** Top bar: logo, compact community links, language switcher and the account menu. */
 export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
   const { user, loading, logout } = useAuth();
   const { t } = useI18n();
   const [unreadPosts, setUnreadPosts] = useState(0);
   const unreadRef = useRef(0);
   const storageKey = user ? `ba_unread_posts:${user.id}` : null;
+
+  useEffect(() => {
+    if (currentPage !== "community") return;
+    try {
+      if (sessionStorage.getItem(COMMUNITY_RELOAD_TO_TOP_KEY) !== "1") return;
+      sessionStorage.removeItem(COMMUNITY_RELOAD_TO_TOP_KEY);
+      window.scrollTo({ top: 0, behavior: "auto" });
+      window.history.scrollRestoration = "auto";
+    } catch {
+      window.scrollTo({ top: 0, behavior: "auto" });
+    }
+  }, [currentPage]);
 
   useEffect(() => {
     if (!storageKey) {
@@ -84,29 +91,41 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="brand-logo" src="/logos/braveactive.png" alt="Brave Active" />
       </Link>
-      <nav className="main-nav" aria-label={t("nav.ariaLabel")}>
-        {NAV_ITEMS.map(({ page, href, label, icon: Icon }) => (
-          <Link
-            key={page}
-            className={currentPage === page ? "nav-link active" : "nav-link"}
-            href={href}
-            onClick={page === "community" ? clearUnreadPosts : undefined}
-          >
-            <Icon size={18} aria-hidden />
-            <span>{t(label)}</span>
-            {page === "community" && user && unreadPosts > 0 ? (
-              <span className="nav-badge" aria-label={t("community.badge", { count: unreadPosts })}>
-                {unreadPosts > 99 ? "99+" : unreadPosts}
-              </span>
-            ) : null}
-          </Link>
-        ))}
-        {user?.role === "admin" ? (
-          <Link className={currentPage === "admin" ? "nav-link active" : "nav-link"} href="/admin/posts">
-            <ShieldCheck size={18} aria-hidden />
-            <span>{t("nav.adminPosts")}</span>
-          </Link>
-        ) : null}
+      <nav className="community-hub-switcher" aria-label={t("nav.ariaLabel")}>
+        <Link
+          className={currentPage === "community" ? "community-hub-link active" : "community-hub-link"}
+          href="/community"
+          aria-current={currentPage === "community" ? "page" : undefined}
+          onClick={(event) => {
+            clearUnreadPosts();
+            if (currentPage === "community") {
+              event.preventDefault();
+              window.history.scrollRestoration = "manual";
+              try {
+                sessionStorage.setItem(COMMUNITY_RELOAD_TO_TOP_KEY, "1");
+              } catch {
+                window.scrollTo({ top: 0, behavior: "auto" });
+              }
+              window.location.reload();
+            }
+          }}
+        >
+          <Users size={16} aria-hidden />
+          <span>{t("nav.community")}</span>
+          {user && unreadPosts > 0 ? (
+            <span className="nav-badge" aria-label={t("community.badge", { count: unreadPosts })}>
+              {unreadPosts > 99 ? "99+" : unreadPosts}
+            </span>
+          ) : null}
+        </Link>
+        <Link
+          className={currentPage === "activities" ? "community-hub-link active" : "community-hub-link"}
+          href="/activities"
+          aria-current={currentPage === "activities" ? "page" : undefined}
+        >
+          <CalendarDays size={16} aria-hidden />
+          <span>{t("nav.activities")}</span>
+        </Link>
       </nav>
       <div className="auth-menu">
         <LanguageSwitcher />
@@ -117,16 +136,25 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
               <UserAvatar name={user.displayName} avatarUrl={user.avatarUrl} size={32} />
               <Link className="auth-name" href="/profile">{user.displayName}</Link>
             </span>
-            <Link
-              className="profile-icon-link"
-              href="/profile"
-              aria-label={t("auth.profile.title")}
-              title={t("auth.profile.title")}
+            {user.role === "admin" ? (
+              <Link
+                className="admin-header-link"
+                href="/admin"
+                aria-label={t("nav.adminPosts")}
+                title={t("nav.adminPosts")}
+                aria-current={currentPage === "admin" ? "page" : undefined}
+              >
+                <Settings size={19} aria-hidden />
+              </Link>
+            ) : null}
+            <button
+              type="button"
+              className="ui-icon-button"
+              aria-label={t("auth.logout")}
+              title={t("auth.logout")}
+              onClick={() => void logout()}
             >
-              <UserRound size={17} aria-hidden />
-            </Link>
-            <button type="button" className="ui-button ui-button-ghost ui-button-sm" onClick={() => void logout()}>
-              <LogOut size={16} aria-hidden /> {t("auth.logout")}
+              <LogOut size={18} aria-hidden />
             </button>
           </>
         ) : (

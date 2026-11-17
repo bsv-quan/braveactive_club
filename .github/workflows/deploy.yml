@@ -1,0 +1,62 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 20
+    steps:
+      - name: Check out deployment script
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          test -n "$SSH_PRIVATE_KEY"
+          test -n "$SSH_KNOWN_HOSTS"
+          umask 077
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Update and restart application
+        env:
+          DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+          DEPLOY_PORT: ${{ vars.DEPLOY_PORT }}
+          DEPLOY_PATH: ${{ vars.DEPLOY_PATH }}
+          DEPLOY_SHA: ${{ github.sha }}
+        run: |
+          set -eu
+          : "${DEPLOY_HOST:?Set production variable DEPLOY_HOST}"
+          : "${DEPLOY_USER:?Set production variable DEPLOY_USER}"
+          : "${DEPLOY_PATH:?Set production variable DEPLOY_PATH}"
+          DEPLOY_PORT="${DEPLOY_PORT:-22}"
+          case "$DEPLOY_HOST" in *[!a-zA-Z0-9._:-]*|'') echo "Invalid host" >&2; exit 1 ;; esac
+          case "$DEPLOY_USER" in *[!a-zA-Z0-9._-]*|'') echo "Invalid SSH user" >&2; exit 1 ;; esac
+          case "$DEPLOY_PORT" in *[!0-9]*|'') echo "Invalid SSH port" >&2; exit 1 ;; esac
+          case "$DEPLOY_PATH" in /*) ;; *) echo "DEPLOY_PATH must be absolute" >&2; exit 1 ;; esac
+          case "$DEPLOY_PATH" in *[!a-zA-Z0-9._/-]*) echo "DEPLOY_PATH contains unsupported characters" >&2; exit 1 ;; esac
+          ssh -i "$HOME/.ssh/deploy_key" -p "$DEPLOY_PORT" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes -o IdentitiesOnly=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "bash -s -- $DEPLOY_PATH $DEPLOY_SHA" < scripts/deploy.sh

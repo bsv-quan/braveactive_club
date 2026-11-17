@@ -53,11 +53,6 @@ class ForgotPasswordRequest(CamelModel):
     email: CorporateEmail
 
 
-class ResetPasswordRequest(CamelModel):
-    token: str = Field(min_length=20, max_length=200)
-    password: Password
-
-
 class ChangePasswordRequest(CamelModel):
     password: Password
 

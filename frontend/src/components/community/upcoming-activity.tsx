@@ -4,7 +4,7 @@ import { CalendarClock, ChevronRight } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { ClubActivity } from "@/lib/activities";
-import { activityDay } from "@/lib/activities";
+import { activityDay, activityDetailId } from "@/lib/activities";
 import { apiJson, errorMessage } from "@/lib/api/client";
 import { useI18n } from "@/i18n/i18n-provider";
 import { dateKey } from "@/lib/club-ui";
@@ -12,6 +12,7 @@ import { dateKey } from "@/lib/club-ui";
 export function UpcomingActivity() {
   const { t, intlLocale } = useI18n();
   const [activity, setActivity] = useState<ClubActivity | null>(null);
+  const [detailActivityId, setDetailActivityId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -26,7 +27,8 @@ export function UpcomingActivity() {
         const lastDay = new Date(now);
         lastDay.setDate(lastDay.getDate() + 7);
         const endDay = dateKey(lastDay);
-        const nextActivity = (result.activities ?? [])
+        const activities = result.activities ?? [];
+        const nextActivity = activities
           .filter((item) => {
             const day = activityDay(item);
             if (!day || item.scheduleType !== "scheduled" || day < startDay || day > endDay) return false;
@@ -36,7 +38,10 @@ export function UpcomingActivity() {
           .sort((first, second) =>
             (activityDay(first) ?? "").localeCompare(activityDay(second) ?? ""),
           )[0] ?? null;
-        if (active) setActivity(nextActivity);
+        if (active) {
+          setActivity(nextActivity);
+          setDetailActivityId(nextActivity ? activityDetailId(nextActivity, activities) : null);
+        }
       } catch (reason) {
         if (active) setError(errorMessage(reason, t("community.upcoming.loadError")));
       }
@@ -63,7 +68,7 @@ export function UpcomingActivity() {
     <aside className="community-upcoming-sticky" aria-label={t("community.upcoming.title")}>
       <Link
         className="community-upcoming-card"
-        href={`/activities/${encodeURIComponent(activity.id)}`}
+        href={`/activities/${encodeURIComponent(detailActivityId ?? activity.id)}`}
       >
         <span className="community-upcoming-icon" aria-hidden>
           <CalendarClock size={19} />

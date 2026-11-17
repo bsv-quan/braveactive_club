@@ -1,17 +1,19 @@
 /**
- * Locale-aware relative time ("5 minutes ago"); falls back to a date after a week.
+ * Locale-aware relative time through one month; older timestamps show a calendar date.
  * Returns null for "just now" so the caller can show its own translated label.
  */
 export function formatRelativeTime(iso: string, intlLocale: string, now: number = Date.now()): string | null {
   const seconds = Math.max(0, Math.floor((now - new Date(iso).getTime()) / 1000));
   if (seconds < 45) return null;
-  const rtf = new Intl.RelativeTimeFormat(intlLocale, { numeric: "auto" });
+  const rtf = new Intl.RelativeTimeFormat(intlLocale, { numeric: "always" });
   const minutes = Math.floor(seconds / 60);
   if (minutes < 60) return rtf.format(-Math.max(1, minutes), "minute");
   const hours = Math.floor(minutes / 60);
   if (hours < 24) return rtf.format(-hours, "hour");
   const days = Math.floor(hours / 24);
-  if (days < 7) return rtf.format(-days, "day");
+  if (days < 30) return rtf.format(-days, "day");
+  const months = Math.floor(days / 30);
+  if (months < 2) return rtf.format(-months, "month");
   return new Intl.DateTimeFormat(intlLocale, { day: "2-digit", month: "2-digit", year: "numeric" }).format(
     new Date(iso),
   );

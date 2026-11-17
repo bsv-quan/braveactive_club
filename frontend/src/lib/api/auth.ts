@@ -40,9 +40,4 @@ export const authApi = {
   logout: () => apiJson<{ message: string }>("/api/auth/logout", { method: "POST" }),
   forgotPassword: (email: string) =>
     apiJson<{ message: string }>("/api/auth/forgot-password", { method: "POST", json: { email } }),
-  resetPassword: (token: string, password: string) =>
-    apiJson<{ message: string }>("/api/auth/reset-password", {
-      method: "POST",
-      json: { token, password },
-    }),
 };

@@ -42,7 +42,12 @@ class OriginCheckMiddleware(BaseHTTPMiddleware):
         if request.method not in SAFE_METHODS:
             origin = request.headers.get("origin")
             if origin is not None and origin not in get_settings().frontend_origins:
-                logger.warning("Rejected untrusted request origin path=%s", request.url.path)
+                logger.warning(
+                    "Rejected untrusted request origin path=%s origin=%r allowed_origins=%r",
+                    request.url.path,
+                    origin,
+                    get_settings().frontend_origins,
+                )
                 return JSONResponse({"error": "Nguồn yêu cầu không được phép."}, status_code=403)
         return await call_next(request)
 

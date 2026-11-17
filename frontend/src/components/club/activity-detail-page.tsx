@@ -2,11 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import type { ActivityComment, ClubActivity } from "@/lib/activities";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ClubFooter, ClubHeader } from "@/components/layout/site-chrome";
-import { MonthGrid } from "@/components/club/month-grid";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
 import {
@@ -14,13 +13,19 @@ import {
   categoryLabel,
   dateKey,
   formatDate,
-  formatMonth,
   repeatIntervalKeys,
 } from "@/lib/club-ui";
 
 type ActivityResponse = {
-  activities?: ClubActivity[];
+  activity: ClubActivity;
+  occurrences: ClubActivity[];
 };
+
+function isOwnParticipant(accountName: string, participantName: string) {
+  const normalize = (value: string) =>
+    value.normalize("NFC").trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  return normalize(accountName) === normalize(participantName);
+}
 
 export default function ActivityDetailPage({
   activityId,
@@ -30,6 +35,7 @@ export default function ActivityDetailPage({
   const { t, intlLocale } = useI18n();
   const { user } = useAuth();
   const pathname = usePathname();
+  const router = useRouter();
   const loginHref = `/login?next=${encodeURIComponent(pathname)}`;
   const tRef = useRef(t);
   useEffect(() => {
@@ -40,7 +46,6 @@ export default function ActivityDetailPage({
   const [loading, setLoading] = useState(true);
   const [pageError, setPageError] = useState("");
   const [refreshError, setRefreshError] = useState("");
-  const [participantName, setParticipantName] = useState("");
   const [joinError, setJoinError] = useState("");
   const [joinLoading, setJoinLoading] = useState(false);
   const [showRepeatDatePicker, setShowRepeatDatePicker] = useState(false);
@@ -48,30 +53,23 @@ export default function ActivityDetailPage({
   const [message, setMessage] = useState("");
   const [chatError, setChatError] = useState("");
   const [chatLoading, setChatLoading] = useState(false);
-  const [anchorDate, setAnchorDate] = useState(() => new Date());
-  const [selectedDates, setSelectedDates] = useState<string[]>([]);
-  const [voterName, setVoterName] = useState("");
-  const [voteError, setVoteError] = useState("");
-  const [voteLoading, setVoteLoading] = useState(false);
   const [actionError, setActionError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
   const loadActivity = useCallback(async () => {
-    const data = await apiJson<ActivityResponse>("/api/activities", {
+    const data = await apiJson<ActivityResponse>(`/api/activities/${encodeURIComponent(activityId)}`, {
       cache: "no-store",
     });
-
-    const allActivities = data.activities ?? [];
-    const foundActivity = allActivities.find(
-      (item) => item.id === activityId,
-    );
-    if (!foundActivity) throw new Error(tRef.current("club.detail.errors.notFound"));
-    setActivities(allActivities);
-    setActivity(foundActivity);
+    if (!data.activity) throw new Error(tRef.current("club.detail.errors.notFound"));
+    setActivities(data.occurrences);
+    setActivity(data.activity);
+    if (data.activity.id !== activityId) {
+      router.replace(`/activities/${encodeURIComponent(data.activity.id)}`, { scroll: false });
+    }
     setPageError("");
     setRefreshError("");
-  }, [activityId]);
+  }, [activityId, router]);
 
   useEffect(() => {
     let active = true;
@@ -120,10 +118,9 @@ export default function ActivityDetailPage({
     try {
       const data = await apiJson<{ name?: string }>(
         `/api/activities/${targetActivity.id}/join`,
-        { method: "POST", json: { name: participantName } },
+        { method: "POST" },
       );
       if (!data.name) throw new Error(t("club.detail.errors.joinNotConfirmed"));
-      setParticipantName("");
       setJoiningOccurrenceId(null);
       await loadActivity();
     } catch (error) {
@@ -161,26 +158,6 @@ export default function ActivityDetailPage({
     }
   }
 
-  async function voteForActivity(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!activity || selectedDates.length === 0) return;
-    setVoteError("");
-    setVoteLoading(true);
-    try {
-      await apiJson(`/api/activities/${activity.id}/votes`, {
-        method: "POST",
-        json: { name: voterName, dates: selectedDates },
-      });
-      setVoterName("");
-      setSelectedDates([]);
-      await loadActivity();
-    } catch (error) {
-      setVoteError(errorMessage(error, t("club.detail.errors.voteFailed")));
-    } finally {
-      setVoteLoading(false);
-    }
-  }
-
   async function removeParticipant(
     name: string,
     occurrenceId = activity?.id,
@@ -197,7 +174,6 @@ export default function ActivityDetailPage({
     try {
       await apiJson(`/api/activities/${occurrenceId}/join`, {
         method: "DELETE",
-        json: { name },
       });
       await loadActivity();
     } catch (error) {
@@ -225,22 +201,6 @@ export default function ActivityDetailPage({
     }
   }
 
-  function moveMonth(direction: number) {
-    setAnchorDate((current) => new Date(current.getFullYear(), current.getMonth() + direction, 1));
-  }
-
-  const period = useMemo(
-    () =>
-      Array.from({ length: 42 }, (_, index) => {
-        const first = new Date(anchorDate.getFullYear(), anchorDate.getMonth(), 1);
-        const start = new Date(first);
-        start.setDate(first.getDate() - ((first.getDay() + 6) % 7));
-        const day = new Date(start);
-        day.setDate(start.getDate() + index);
-        return day;
-      }),
-    [anchorDate],
-  );
   const todayKey = dateKey(new Date());
   const recurringOccurrences = useMemo(
     () =>
@@ -319,14 +279,7 @@ export default function ActivityDetailPage({
                       ? t("club.detail.deleteSeries")
                       : t("club.detail.deleteActivity")}
                   </button>
-                ) : (
-                  <Link
-                    className="button-secondary activity-delete-button"
-                    href={loginHref}
-                  >
-                    {t("club.auth.loginToParticipate")}
-                  </Link>
-                )}
+                ) : null}
               </header>
 
               <div className="activity-social-layout">
@@ -339,77 +292,9 @@ export default function ActivityDetailPage({
                   {!user ? (
                     <section className="social-card activity-login-card">
                       <span className="section-kicker">{t("club.auth.loginRequired")}</span>
-                      <Link className="button-primary" href={loginHref}>
-                        {t("club.auth.loginToParticipate")}
+                      <Link className="button-primary activity-login-action" href={loginHref}>
+                        {t("club.auth.login")}
                       </Link>
-                    </section>
-                  ) : activity.scheduleType === "poll" ? (
-                    <section className="social-card activity-vote-card">
-                      <div className="social-card-heading">
-                        <div>
-                          <span className="section-kicker">{t("club.detail.poll.kicker")}</span>
-                          <h2>{t("club.detail.poll.title")}</h2>
-                        </div>
-                      </div>
-                      <form className="activity-form" onSubmit={voteForActivity}>
-                        <div className="poll-month-navigation">
-                          <button className="button-secondary" type="button" onClick={() => moveMonth(-1)}>{t("club.detail.poll.prevMonth")}</button>
-                          <strong>{formatMonth(anchorDate, intlLocale)}</strong>
-                          <button className="button-secondary" type="button" onClick={() => moveMonth(1)}>{t("club.detail.poll.nextMonth")}</button>
-                        </div>
-                        <MonthGrid
-                          days={period}
-                          className="poll-calendar"
-                          renderDay={(day) => {
-                            const key = dateKey(day);
-                            const selected = selectedDates.includes(key);
-                            const count = activity.votes?.[key]?.length ?? 0;
-                            return (
-                              <button
-                                className={`poll-date-option ${selected ? "selected" : ""} ${day.getMonth() !== anchorDate.getMonth() ? "day-outside" : ""}`}
-                                key={key}
-                                type="button"
-                                aria-pressed={selected}
-                                onClick={() =>
-                                  setSelectedDates((current) =>
-                                    current.includes(key)
-                                      ? current.filter((date) => date !== key)
-                                      : current.length < 14
-                                        ? [...current, key]
-                                        : current,
-                                  )
-                                }
-                              >
-                                <span>{day.getDate()}</span>
-                                {count > 0 && <small>{count}</small>}
-                              </button>
-                            );
-                          }}
-                        />
-                        <label htmlFor="detail-voter-name">{t("club.detail.poll.nameLabel")}</label>
-                        <input
-                          id="detail-voter-name"
-                          value={voterName}
-                          onChange={(event) => setVoterName(event.target.value)}
-                          placeholder={t("club.detail.poll.namePlaceholder")}
-                          minLength={2}
-                          maxLength={40}
-                          required
-                        />
-                        {voteError && <p className="modal-error" role="alert">{voteError}</p>}
-                        <button className="button-primary" disabled={voteLoading || !selectedDates.length}>
-                          {voteLoading ? t("club.detail.poll.sending") : t("club.detail.poll.submit", { count: selectedDates.length })}
-                        </button>
-                      </form>
-                      <div className="activity-vote-results">
-                        {Object.entries(activity.votes ?? {}).sort(([a], [b]) => a.localeCompare(b)).map(([date, voters]) => (
-                          <p key={date}>
-                            <strong>{formatDate(new Date(`${date}T00:00:00`), intlLocale, { weekday: "short", day: "numeric", month: "short" })}</strong>
-                            <span>{t("club.detail.poll.people", { count: voters.length })}</span>
-                          </p>
-                        ))}
-                        {!Object.keys(activity.votes ?? {}).length && <p>{t("club.detail.poll.none")}</p>}
-                      </div>
                     </section>
                   ) : activity.recurrenceSeriesId ? (
                     <section className="social-card social-join-card">
@@ -491,21 +376,10 @@ export default function ActivityDetailPage({
                       )}
                       {joiningOccurrenceId && (
                         <form className="activity-form repeat-join-form" onSubmit={joinActivity}>
-                          <label htmlFor="repeat-participant-name">
-                            {t("club.detail.join.nameForDay")}
-                          </label>
                           <div className="social-join-row">
-                            <input
-                              id="repeat-participant-name"
-                              value={participantName}
-                              onChange={(event) =>
-                                setParticipantName(event.target.value)
-                              }
-                              placeholder={t("club.detail.join.namePlaceholder")}
-                              minLength={2}
-                              maxLength={40}
-                              required
-                            />
+                            <span className="activity-join-account">
+                              {t("club.detail.join.asAccount", { name: user.displayName })}
+                            </span>
                             <button
                               className="button-primary"
                               type="submit"
@@ -527,15 +401,9 @@ export default function ActivityDetailPage({
                         <h2>{t("club.detail.join.register")}</h2>
                       </div>
                       <div className="social-join-row">
-                        <input
-                          aria-label={t("club.detail.join.nameLabel")}
-                          value={participantName}
-                          onChange={(event) => setParticipantName(event.target.value)}
-                          placeholder={t("club.detail.join.namePlaceholder")}
-                          minLength={2}
-                          maxLength={40}
-                          required
-                        />
+                        <span className="activity-join-account">
+                          {t("club.detail.join.asAccount", { name: user?.displayName ?? "" })}
+                        </span>
                         <button className="button-primary" type="submit" disabled={joinLoading}>
                           {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.join")}
                         </button>
@@ -558,6 +426,9 @@ export default function ActivityDetailPage({
                           .sort((first, second) => first.createdAt.localeCompare(second.createdAt))
                           .map((comment) => (
                             <article className="activity-chat-message" key={comment.id}>
+                              <strong className="activity-chat-author">
+                                {comment.authorName ?? t("club.detail.chat.unknownAuthor")}
+                              </strong>
                               <p>{comment.message}</p>
                               <time dateTime={comment.createdAt}>
                                 {formatDate(new Date(comment.createdAt), intlLocale, {
@@ -593,11 +464,7 @@ export default function ActivityDetailPage({
                           </button>
                         </form>
                       </>
-                    ) : (
-                      <Link className="button-secondary activity-login-link" href={loginHref}>
-                        {t("club.auth.loginToParticipate")}
-                      </Link>
-                    )}
+                    ) : null}
                   </section>
                 </section>
 
@@ -605,7 +472,6 @@ export default function ActivityDetailPage({
                   <section className="social-card">
                     <div className="social-card-heading">
                       <div>
-                        <span className="section-kicker">{t("club.detail.sidebar.kicker")}</span>
                         <h2>
                           {activity.recurrenceSeriesId
                             ? t("club.detail.sidebar.daysWithRegistrations")
@@ -645,7 +511,7 @@ export default function ActivityDetailPage({
                                   {occurrence.participants.map((participant) => (
                                     <span key={participant}>
                                       {participant}
-                                      {user && <button
+                                      {user && isOwnParticipant(user.displayName, participant) && <button
                                         className="remove-member-button"
                                         type="button"
                                         aria-label={t("club.detail.sidebar.removeFromDay", { name: participant, day: occurrenceDay })}
@@ -679,7 +545,7 @@ export default function ActivityDetailPage({
                               {participant.charAt(0).toLocaleUpperCase(intlLocale)}
                             </span>
                             <span>{participant}</span>
-                            {user && <button
+                            {user && isOwnParticipant(user.displayName, participant) && <button
                               className="remove-member-button"
                               type="button"
                               aria-label={t("club.detail.sidebar.removeFromActivity", { name: participant })}

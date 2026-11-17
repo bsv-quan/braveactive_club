@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
-import { Alert, TextField } from "@/components/ui/form-controls";
+import { Alert, PasswordField } from "@/components/ui/form-controls";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api/client";
 import { safeNextPath } from "@/lib/safe-redirect";
@@ -38,10 +38,9 @@ export function ChangePasswordForm({ nextPath }: { nextPath: string }) {
       <p className="auth-subtitle">{t("auth.change.subtitle")}</p>
       <form className="auth-form" onSubmit={handleSubmit}>
         {error ? <Alert tone="error">{error}</Alert> : null}
-        <TextField
+        <PasswordField
           label={t("auth.change.password")}
           name="newPassword"
-          type="password"
           icon={Lock}
           autoComplete="new-password"
           minLength={8}

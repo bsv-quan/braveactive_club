@@ -1,28 +1,19 @@
 "use client";
 
 import { useAuth } from "@/components/auth/auth-provider";
-import { useI18n } from "@/i18n/i18n-provider";
 import { useCommunityFeed } from "@/lib/use-community-feed";
 import { GuestPrompt } from "./guest-prompt";
 import { PostComposer } from "./post-composer";
 import { PostList } from "./post-list";
-import { UpcomingActivity } from "./upcoming-activity";
+import { WiredNewsStrip } from "./wired-news-strip";
 
 /** Community screen: composer (or login prompt) above a live, paginated feed. */
 export function CommunityPage() {
-  const { t } = useI18n();
   const { user, loading: authLoading } = useAuth();
   const feed = useCommunityFeed();
 
   return (
     <section className="community">
-      <div className="community-head">
-        <h1>{t("community.title")}</h1>
-        <p className="muted">{t("community.subtitle")}</p>
-      </div>
-
-      <UpcomingActivity />
-
       {authLoading ? null : user ? (
         <PostComposer
           displayName={user.displayName}
@@ -32,6 +23,8 @@ export function CommunityPage() {
       ) : (
         <GuestPrompt />
       )}
+
+      <WiredNewsStrip />
 
       <PostList
         posts={feed.posts}

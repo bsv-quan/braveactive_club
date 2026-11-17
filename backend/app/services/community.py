@@ -17,6 +17,7 @@ from app.services.link_preview import extract_first_url, get_link_preview, norma
 
 MAX_POST_LENGTH = 2000
 PAGE_SIZE_MAX = 30
+MAX_POST_IMAGES = 4
 
 
 def image_url(name: str | None) -> str | None:
@@ -66,12 +67,22 @@ def to_post_out(row, viewer: User | None) -> PostOut:
             avatar_url=post.author.avatar_url,
         ),
         content=post.content,
-        image_url=image_url(post.image_name),
+        image_url=(
+            image_url((post.image_names or [post.image_name])[0])
+            if (post.image_names or post.image_name)
+            else None
+        ),
+        image_urls=[
+            url
+            for name in (post.image_names or ([post.image_name] if post.image_name else []))
+            if (url := image_url(name)) is not None
+        ],
         link_preview=preview,
         like_count=row.like_count,
         comment_count=row.comment_count,
         liked_by_me=bool(row.liked_by_me) if viewer else False,
         created_at=post.created_at,
+        hidden=post.hidden,
     )
 
 
@@ -87,9 +98,11 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         raise AppError("Con trỏ phân trang không hợp lệ.", 400) from None
 
 
-async def list_posts(db: AsyncSession, viewer: User | None, cursor: str | None, limit: int) -> PostPage:
+async def list_posts(db: AsyncSession, viewer: User | None, cursor: str | None, limit: int, include_hidden: bool = False) -> PostPage:
     limit = max(1, min(limit, PAGE_SIZE_MAX))
     query = _select_posts(viewer).order_by(Post.created_at.desc(), Post.id.desc()).limit(limit + 1)
+    if not include_hidden:
+        query = query.where(Post.hidden.is_(False))
     if cursor:
         created_at, post_id = _decode_cursor(cursor)
         query = query.where(or_(Post.created_at < created_at, and_(Post.created_at == created_at, Post.id < post_id)))
@@ -100,7 +113,7 @@ async def list_posts(db: AsyncSession, viewer: User | None, cursor: str | None, 
 
 
 async def get_post_out(db: AsyncSession, post_id: uuid.UUID, viewer: User | None) -> PostOut:
-    row = (await db.execute(_select_posts(viewer).where(Post.id == post_id))).first()
+    row = (await db.execute(_select_posts(viewer).where(Post.id == post_id, Post.hidden.is_(False)))).first()
     if not row:
         raise AppError("Không tìm thấy bài đăng.", 404)
     return to_post_out(row, viewer)
@@ -112,19 +125,21 @@ async def create_post(
     content: str,
     link_url: str | None,
     skip_preview: bool,
-    image: UploadFile | None,
+    images: list[UploadFile],
 ) -> PostOut:
     content = content.strip()
     if len(content) > MAX_POST_LENGTH:
         raise AppError(f"Nội dung tối đa {MAX_POST_LENGTH} ký tự.", 400)
-    has_image = image is not None and bool(image.filename)
-    if not content and not has_image:
+    image_uploads = [image for image in images if image.filename]
+    if len(image_uploads) > MAX_POST_IMAGES:
+        raise AppError(f"Mỗi bài đăng chỉ được đính kèm tối đa {MAX_POST_IMAGES} ảnh.", 400)
+    if not content and not image_uploads:
         raise AppError("Hãy nhập nội dung hoặc chọn một ảnh.", 400)
 
     post = Post(author_id=user.id, content=content)
 
     # Link preview is skipped when the user dismissed it or attached an image.
-    if not has_image and not skip_preview:
+    if not image_uploads and not skip_preview:
         raw_url = link_url or extract_first_url(content)
         if raw_url:
             try:
@@ -138,39 +153,44 @@ async def create_post(
                 post.link_image = preview.image
                 post.link_site = preview.site
 
-    if has_image:
-        post.image_name = await uploads.save_image(image)
+    saved_images: list[str] = []
     try:
+        for image in image_uploads:
+            saved_images.append(await uploads.save_image(image))
+        post.image_names = saved_images
         db.add(post)
         await db.commit()
     except Exception:
-        uploads.delete_image(post.image_name)
+        for name in saved_images:
+            uploads.delete_image(name)
         raise
     return await get_post_out(db, post.id, user)
 
 
 async def delete_post(db: AsyncSession, user: User, post_id: uuid.UUID) -> None:
     post = await db.get(Post, post_id)
-    if not post:
+    if not post or (post.hidden and user.role != "admin"):
         raise AppError("Không tìm thấy bài đăng.", 404)
     if not can_manage(user, post.author_id):
         raise AppError("Bạn không có quyền xóa bài đăng này.", 403)
-    image_name = post.image_name
+    image_names = list(dict.fromkeys([*(post.image_names or []), post.image_name]))
     await db.delete(post)
     await db.commit()
-    uploads.delete_image(image_name)
+    for image_name in image_names:
+        uploads.delete_image(image_name)
 
 
 async def update_post(db: AsyncSession, user: User, post_id: uuid.UUID, content: str) -> PostOut:
     post = await db.get(Post, post_id)
-    if not post:
+    if not post or post.hidden:
         raise AppError("Không tìm thấy bài đăng.", 404)
     if not can_manage(user, post.author_id):
         raise AppError("Bạn không có quyền sửa bài đăng này.", 403)
     content = content.strip()
     if len(content) > MAX_POST_LENGTH:
         raise AppError(f"Nội dung tối đa {MAX_POST_LENGTH} ký tự.", 400)
-    if not content and not post.image_name:
+    has_images = bool(post.image_names or post.image_name)
+    if not content and not has_images:
         raise AppError("Bài đăng cần có nội dung hoặc ảnh.", 400)
 
     post.content = content
@@ -179,7 +199,7 @@ async def update_post(db: AsyncSession, user: User, post_id: uuid.UUID, content:
     post.link_description = None
     post.link_image = None
     post.link_site = None
-    if not post.image_name:
+    if not has_images:
         raw_url = extract_first_url(content)
         if raw_url:
             try:
@@ -207,7 +227,7 @@ async def set_like(
     liked: bool,
 ) -> tuple[int, bool, bool]:
     """Idempotently like/unlike a post; returns count, current state, and whether it was newly liked."""
-    if not await db.scalar(select(Post.id).where(Post.id == post_id)):
+    if not await db.scalar(select(Post.id).where(Post.id == post_id, Post.hidden.is_(False))):
         raise AppError("Không tìm thấy bài đăng.", 404)
     if liked:
         result = await db.execute(
@@ -239,7 +259,7 @@ def to_comment_out(comment: PostComment) -> CommentOut:
 
 
 async def list_comments(db: AsyncSession, post_id: uuid.UUID) -> list[CommentOut]:
-    if not await db.scalar(select(Post.id).where(Post.id == post_id)):
+    if not await db.scalar(select(Post.id).where(Post.id == post_id, Post.hidden.is_(False))):
         raise AppError("Không tìm thấy bài đăng.", 404)
     rows = await db.scalars(
         select(PostComment).where(PostComment.post_id == post_id).order_by(PostComment.created_at).limit(500)
@@ -248,7 +268,7 @@ async def list_comments(db: AsyncSession, post_id: uuid.UUID) -> list[CommentOut
 
 
 async def add_comment(db: AsyncSession, user: User, post_id: uuid.UUID, content: str) -> tuple[CommentOut, int]:
-    if not await db.scalar(select(Post.id).where(Post.id == post_id)):
+    if not await db.scalar(select(Post.id).where(Post.id == post_id, Post.hidden.is_(False))):
         raise AppError("Không tìm thấy bài đăng.", 404)
     comment = PostComment(post_id=post_id, author_id=user.id, content=content)
     db.add(comment)
@@ -260,7 +280,7 @@ async def add_comment(db: AsyncSession, user: User, post_id: uuid.UUID, content:
 
 async def delete_comment(db: AsyncSession, user: User, post_id: uuid.UUID, comment_id: uuid.UUID) -> int:
     comment = await db.scalar(
-        select(PostComment).where(PostComment.id == comment_id, PostComment.post_id == post_id)
+        select(PostComment).join(Post, Post.id == PostComment.post_id).where(PostComment.id == comment_id, PostComment.post_id == post_id, Post.hidden.is_(False))
     )
     if not comment:
         raise AppError("Không tìm thấy bình luận.", 404)
@@ -280,7 +300,7 @@ async def update_comment(
     content: str,
 ) -> CommentOut:
     comment = await db.scalar(
-        select(PostComment).where(PostComment.id == comment_id, PostComment.post_id == post_id)
+        select(PostComment).join(Post, Post.id == PostComment.post_id).where(PostComment.id == comment_id, PostComment.post_id == post_id, Post.hidden.is_(False))
     )
     if not comment:
         raise AppError("Không tìm thấy bình luận.", 404)

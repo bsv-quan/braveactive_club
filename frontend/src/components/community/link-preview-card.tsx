@@ -1,4 +1,4 @@
-import { ExternalLink, X } from "lucide-react";
+import { CircleX, ExternalLink } from "lucide-react";
 import type { LinkPreview } from "@/lib/api/community";
 
 type Props = {
@@ -21,16 +21,18 @@ export function LinkPreviewCard({ preview, onRemove, removeLabel }: Props) {
     <div className="link-preview">
       <a href={preview.url} target="_blank" rel="noopener noreferrer nofollow ugc" className="link-preview-link">
         {preview.image ? (
-          // Remote thumbnails are arbitrary hosts, so next/image optimization is not used.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={preview.image}
-            alt=""
-            loading="lazy"
-            decoding="async"
-            referrerPolicy="no-referrer"
-            className="link-preview-image"
-          />
+          <span className="link-preview-image-frame">
+            {/* Remote thumbnails are arbitrary hosts, so next/image optimization is not used. */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={preview.image}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              referrerPolicy="no-referrer"
+              className="link-preview-image"
+            />
+          </span>
         ) : null}
         <span className="link-preview-body">
           <span className="link-preview-site">
@@ -42,7 +44,7 @@ export function LinkPreviewCard({ preview, onRemove, removeLabel }: Props) {
       </a>
       {onRemove ? (
         <button type="button" className="link-preview-remove" onClick={onRemove} aria-label={removeLabel} title={removeLabel}>
-          <X size={16} aria-hidden />
+          <CircleX size={16} strokeWidth={2} aria-hidden />
         </button>
       ) : null}
     </div>

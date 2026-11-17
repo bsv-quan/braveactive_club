@@ -1,5 +1,5 @@
-import ClubApp from "@/components/club/club-app";
+import { redirect } from "next/navigation";
 
 export default function HomePage() {
-  return <ClubApp initialView="overview" />;
+  redirect("/community");
 }

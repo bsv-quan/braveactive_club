@@ -1,4 +1,7 @@
 from tests.conftest import register
+from app.core.security import hash_password
+from app.db.session import SessionFactory
+from app.models import User
 
 ACTIVITY = {
     "title": "Cầu lông tối thứ Ba",
@@ -32,44 +35,137 @@ async def test_activity_lifecycle_and_duplicate(client):
         json={"kind": "quick-signup", "title": "Chạy bộ", "day": "2026-11-04"},
         headers=csrf,
     )
-    assert quick.status_code == 201
+    assert quick.status_code == 400
 
     session_cookie = client.cookies.get("ba_session")
     client.cookies.clear()
-    assert (await client.post(f"/api/activities/{activity_id}/join", json={"name": "Guest"})).status_code == 401
+    assert (await client.post(f"/api/activities/{activity_id}/join")).status_code == 401
     assert (await client.post(f"/api/activities/{activity_id}/comments", json={"message": "Guest"})).status_code == 401
-    assert (await client.post(f"/api/activities/{activity_id}/votes", json={"name": "Guest", "dates": ["2026-11-05"]})).status_code == 401
-    assert (await client.request("DELETE", f"/api/activities/{activity_id}/join", json={"name": "Guest"})).status_code == 401
+    assert (await client.post(f"/api/activities/{activity_id}/votes", json={"name": "Guest", "dates": ["2026-11-05"]})).status_code == 404
+    assert (await client.request("DELETE", f"/api/activities/{activity_id}/join")).status_code == 401
     assert (await client.delete(f"/api/activities/{activity_id}")).status_code == 401
     client.cookies.set("ba_session", session_cookie)
-    assert (await client.post(f"/api/activities/{activity_id}/join", json={"name": "Bình"}, headers=csrf)).status_code == 201
-    assert (await client.post(f"/api/activities/{activity_id}/join", json={"name": "bình"}, headers=csrf)).status_code == 409
-    assert (await client.post(f"/api/activities/{activity_id}/comments", json={"message": "Hẹn gặp"}, headers=csrf)).status_code == 201
+    joined = await client.post(f"/api/activities/{activity_id}/join", json={"name": "Bình"}, headers=csrf)
+    assert joined.status_code == 201 and joined.json()["name"] == "Alice"
+    assert (await client.post(f"/api/activities/{activity_id}/join", json={"name": "Bình"}, headers=csrf)).status_code == 409
+    comment = await client.post(
+        f"/api/activities/{activity_id}/comments",
+        json={"message": "Hẹn gặp", "authorName": "Bình"},
+        headers=csrf,
+    )
+    assert comment.status_code == 201
+    assert comment.json()["comment"]["authorName"] == "Alice"
 
     listed = (await client.get("/api/activities")).json()["activities"]
     scheduled = next(activity for activity in listed if activity["id"] == activity_id)
-    assert scheduled["participants"] == ["Bình"]
+    assert scheduled["participants"] == ["Alice"]
     assert scheduled["comments"][0]["message"] == "Hẹn gặp"
+    assert scheduled["comments"][0]["authorName"] == "Alice"
     assert scheduled["scheduleType"] == "scheduled" and scheduled["day"] == "2026-11-03"
+    assert "votes" not in scheduled
 
-    assert (await client.request("DELETE", f"/api/activities/{activity_id}/join", json={"name": "Bình"}, headers=csrf)).status_code == 200
+    left = await client.request("DELETE", f"/api/activities/{activity_id}/join", json={"name": "Bình"}, headers=csrf)
+    assert left.status_code == 200 and left.json()["name"] == "Alice"
     assert (await client.delete(f"/api/activities/{activity_id}", headers=csrf)).json()["deletedOccurrences"] == 1
 
 
-async def test_poll_votes(client):
+async def test_activity_sharing_and_creator_use_account_name(client):
+    csrf = await register(client, name="Organizer")
+    shared = await client.post(
+        "/api/activities",
+        json={**ACTIVITY, "title": "Giao lưu tháng 11", "creator": "Someone else", "shareToCommunity": True},
+        headers=csrf,
+    )
+    assert shared.status_code == 201, shared.text
+    result = shared.json()
+    assert result["activity"]["creator"] == "Organizer"
+    activity_url = result["communityPost"]["linkPreview"]["url"]
+    assert activity_url.endswith(f"/activities/{result['activity']['id']}")
+    assert result["communityPost"]["content"] == (
+        "Hoạt động mới: Giao lưu tháng 11\n"
+        "Nội dung:\n"
+        f"{ACTIVITY['description']}\n\n"
+        f"Loại hoạt động: {ACTIVITY['category']}\n"
+        "Thời gian: 03/11/2026 19:00\n"
+        f"Chi tiết và đăng ký:\n{activity_url}"
+    )
+
+    not_shared = await client.post(
+        "/api/activities",
+        json={**ACTIVITY, "title": "Không đăng lên cộng đồng"},
+        headers=csrf,
+    )
+    assert not_shared.status_code == 201, not_shared.text
+    assert not_shared.json()["communityPost"] is None
+    posts = await client.get("/api/posts")
+    assert [post["id"] for post in posts.json()["posts"]] == [result["communityPost"]["id"]]
+
+
+async def test_entertainment_activity_category_is_supported(client):
+    csrf = await register(client)
+    response = await client.post(
+        "/api/activities",
+        json={**ACTIVITY, "title": "Xem phim cuối tuần", "category": "GIẢI TRÍ"},
+        headers=csrf,
+    )
+
+    assert response.status_code == 201, response.text
+    assert response.json()["activity"]["category"] == "GIẢI TRÍ"
+
+
+async def test_admin_can_list_and_delete_any_activity(client):
+    member_csrf = await register(client, email="member@bravesoft.com.vn")
+    created = await client.post(
+        "/api/activities",
+        json={**ACTIVITY, "repeat": {"interval": "weekly", "endType": "count", "count": 3}},
+        headers=member_csrf,
+    )
+    activity_id = created.json()["activity"]["id"]
+    occurrence_ids = [
+        activity["id"] for activity in (await client.get("/api/activities")).json()["activities"]
+    ]
+    assert len(occurrence_ids) == 3
+    assert (await client.get("/api/admin/activities")).status_code == 403
+
+    async with SessionFactory() as db:
+        db.add(
+            User(
+                email="admin@bravesoft.com.vn",
+                display_name="Admin",
+                role="admin",
+                password_hash=hash_password("AdminPass123"),
+            )
+        )
+        await db.commit()
+    login = await client.post(
+        "/api/auth/login",
+        json={"email": "admin@bravesoft.com.vn", "password": "AdminPass123"},
+    )
+    assert login.status_code == 200
+    admin_csrf = {"X-CSRF-Token": login.json()["csrfToken"]}
+    listed = await client.get("/api/admin/activities")
+    assert listed.status_code == 200
+    assert [activity["id"] for activity in listed.json()["activities"]] == [activity_id]
+    for occurrence_id in occurrence_ids:
+        detail = await client.get(f"/api/activities/{occurrence_id}")
+        assert detail.status_code == 200
+        assert detail.json()["activity"]["id"] == activity_id
+        assert len(detail.json()["occurrences"]) == 3
+    removed = await client.delete(f"/api/activities/{occurrence_ids[-1]}", headers=admin_csrf)
+    assert removed.status_code == 200
+    assert removed.json()["deletedOccurrences"] == 3
+    assert (await client.get("/api/activities")).json()["activities"] == []
+
+
+async def test_date_polls_are_no_longer_supported(client):
     csrf = await register(client)
     poll = {**ACTIVITY, "scheduleType": "poll", "day": None, "date": None, "title": "Chọn ngày"}
     response = await client.post("/api/activities", json=poll, headers=csrf)
-    assert response.status_code == 201, response.text
-    activity_id = response.json()["activity"]["id"]
-    session_cookie = client.cookies.get("ba_session")
-    client.cookies.clear()
-    assert (await client.post(f"/api/activities/{activity_id}/votes", json={"name": "Guest", "dates": ["2026-11-05"]})).status_code == 401
-    client.cookies.set("ba_session", session_cookie)
-    vote = await client.post(f"/api/activities/{activity_id}/votes", json={"name": "An", "dates": ["2026-11-05", "2026-11-06"]}, headers=csrf)
-    assert vote.status_code == 200
-    votes = (await client.get("/api/activities")).json()["activities"][0]["votes"]
-    assert votes == {"2026-11-05": ["An"], "2026-11-06": ["An"]}
+    assert response.status_code == 400
+    quick_signup = await client.post("/api/activities", json={
+        "kind": "quick-signup", "title": "Chạy bộ", "day": "2026-11-04",
+    }, headers=csrf)
+    assert quick_signup.status_code == 400
 
 
 async def test_weekly_repeat_generates_occurrences(client):

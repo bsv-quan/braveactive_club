@@ -1,53 +1,129 @@
 # Brave Active Club
 
-Brave Active Club is split into a Next.js frontend and a Python/FastAPI backend. PostgreSQL stores club activities, users, announcements, posts, comments, likes and sessions. Redis is not used.
+Next.js frontend, Python/FastAPI backend, and PostgreSQL. Redis is not required.
 
-## Start the entire app with Docker
+## Quick start with Docker
 
-Requirements: Docker Desktop with Docker Compose.
+Install and start Docker Desktop (or Docker Engine with Compose), then run from the project root:
 
 ```sh
-cp .env.example .env
-docker compose up --build
+docker compose up --build -d
 ```
 
-Open the frontend at [http://localhost:3000](http://localhost:3000). The API and WebSocket are available at [http://localhost:8000](http://localhost:8000) and `ws://localhost:8000/ws/feed`. Compose starts PostgreSQL, applies Alembic migrations in the backend container, then starts the frontend. Uploaded images, backend daily logs, and database data are kept in named Docker volumes.
+Open http://localhost:3003. The backend is available at http://localhost:8008/health. Compose waits for PostgreSQL, applies migrations and starts one backend worker. Frontend API and media requests are proxied to the backend; browser WebSockets connect to port 8008. The stack is bound to localhost and uses development-only credentials; it is **not** a production deployment. It does not use the local/VPS `.env` file.
 
-Stop the services with `docker compose down`; database, uploads, and backend logs remain. To also remove local database/uploads/logs, use `docker compose down -v`.
+The community page includes a horizontally scrollable WIRED headline strip below the post composer and above the feed. The backend fetches up to five headlines from the Latest section of WIRED's Security, Politics and Big Story pages at startup and once per hour, then caches titles and available card metadata in PostgreSQL. Article cards open the original WIRED page in a new tab; “See more” opens WIRED's homepage. Publication times are not displayed.
 
-The compose defaults are for local development only. Set a random `SECRET_KEY` and the real admin email list in `.env`. For email delivery, configure `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD` and optionally `MAIL_FROM`. Gmail requires an app password, not the account password.
+Create the initial admin after the backend is healthy:
 
-## Run without Docker
+```sh
+docker compose exec backend python bootstrap_admin.py
+```
 
-1. Start PostgreSQL 17 and create a database/user matching `backend/.env.example`.
-2. Copy `backend/.env.example` to `backend/.env`, set a random secret and configure `DATABASE_URL`.
-3. From `backend/`, create a virtual environment, install `requirements.txt`, run `alembic upgrade head`, then run `uvicorn app.main:app --reload`.
-4. From `frontend/`, run `npm ci` and `npm run dev`. Set `BACKEND_URL=http://localhost:8000` and `NEXT_PUBLIC_WS_URL=ws://localhost:8000/ws/feed` if they differ from the defaults.
+Enter and confirm a password at the prompt. The account is `admin@bravesoft.com.vn` and must change its password on first login. The script does not overwrite existing administrators.
 
-## Authentication and mail
+To run backend tests against a separate, temporary PostgreSQL instance:
 
-- Only `@bravesoft.com.vn` addresses can register, log in or request a temporary password. The backend enforces this domain; the frontend email step is not the security boundary.
-- Registration sends an eight-character temporary password by email. Users must change it immediately after their first login; the backend blocks authenticated actions until they do.
-- Forgot password replaces the password with a new temporary password, revokes active sessions and requires the user to change it after signing in.
-- Signed-in users can update their display name and upload a square-cropped profile photo from `/profile`; image files are re-encoded by the backend.
-- The notification inbox is stored in PostgreSQL for offline delivery; authenticated WebSockets push live unread-count updates. Opening the inbox does not mark items read until it is closed, and only the displayed items are marked read.
-- Community author avatars show online/offline presence. Presence is derived from authenticated WebSocket connections and is shared in real time; one backend worker is required for this in-memory live state.
-- To grant administrator access, add the user's full company email to `ADMIN_EMAILS` before registration. Admins can manage community posts at `/admin/posts`.
-- If SMTP is not configured in development, email delivery is skipped and message bodies are not logged because they can contain credentials or reset links. Configure SMTP to test account emails.
-- Backend diagnostics are written to `backend/logs/backend-YYYY-MM-DD.log` (or the Docker `backend_logs` volume). Passwords, reset links, cookies and request bodies are excluded from logs.
+```sh
+docker compose --profile test run --rm backend-tests
+```
+
+Tests drop and recreate tables in the dedicated test database, never the application database. The test database exists only inside the test container's temporary filesystem. Stop the stack with `docker compose --profile test down`; application database, uploads and logs remain in named volumes. Do not add `-v` unless you intend to delete that data. Use `docker compose logs -f` to inspect startup.
+
+Docker uses its own Compose project and ports 3003/8008 to avoid disturbing existing stacks. For network access or different ports, update both the port mappings and the frontend URL, WebSocket build argument, and backend origin together, then rebuild. Use the VPS instructions below for production.
+
+## Run locally
+
+Requirements: Node.js 22+, Python 3.12+, PostgreSQL 17, and npm. PostgreSQL must be running before starting the application.
+
+1. Install and start PostgreSQL. On macOS with Homebrew, for example:
+
+   ```sh
+   brew install postgresql@17
+   brew services start postgresql@17
+   /opt/homebrew/opt/postgresql@17/bin/createdb braveactive
+   ```
+
+   On Intel macOS the Homebrew prefix is typically `/usr/local` rather than `/opt/homebrew`. If PostgreSQL is already running, use its existing `createdb` command and connection credentials instead.
+2. From the project root, copy `.env.example` to `.env`. Set `DATABASE_URL` to the PostgreSQL database and set a random `SECRET_KEY`. The example database URL uses the current operating-system PostgreSQL user. Values containing shell-special characters must be single-quoted: the run script sources this trusted configuration file.
+3. Install application dependencies:
+
+   ```sh
+   python3 -m venv backend/.venv
+   backend/.venv/bin/pip install -r backend/requirements.txt
+   npm --prefix frontend ci
+   ```
+
+4. Run both services with one command:
+
+   ```sh
+   bash scripts/run.sh
+   ```
+
+   The script applies database migrations and runs the API on `127.0.0.1:8000` and Next.js on `127.0.0.1:3000`. Open http://localhost:3000; Ctrl+C stops both. PostgreSQL remains running.
+
+5. After migrations, bootstrap the first admin once from another terminal:
+
+   ```sh
+   set -a; source .env; set +a
+   cd backend && .venv/bin/python bootstrap_admin.py
+   ```
+
+   Enter the initial password securely at the prompt. The script creates `admin@bravesoft.com.vn` only when no active admin exists, never overwrites an existing account, and requires a password change on first login. Do not put credentials in the repository or shell history.
+
+### Run backend tests
+
+The test suite **drops and recreates tables** in its database. Create a separate empty test database and never point `TEST_DATABASE_URL` at application or production data:
+
+```sh
+createdb braveactive_test
+cd backend
+TEST_DATABASE_URL='postgresql+asyncpg://localhost:5432/braveactive_test' .venv/bin/pytest
+```
+
+Use the appropriate PostgreSQL credentials in `TEST_DATABASE_URL` if your local server requires them. Account requests do not send email.
+
+## VPS / cPanel deployment
+
+This deployment assumes a VPS with SSH, Node.js, Python, PostgreSQL, HTTPS, and a reverse proxy that supports WebSocket upgrades. Shared cPanel hosting without long-running processes or WebSockets is not supported by this script.
+
+1. Provision PostgreSQL and a dedicated database/user. Install dependencies as above. Make the project, `backend/uploads`, and `backend/logs` writable by the service account. Keep `.env` outside public web directories and restrict its permissions (`chmod 600 .env`).
+2. Set `RUN_MODE=production`, `ENVIRONMENT=production`, a random `SECRET_KEY` of at least 32 characters, `COOKIE_SECURE=true`, and your public HTTPS origin in `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`. Set `DATABASE_URL`. Use `BACKEND_URL=http://127.0.0.1:8000` and set `NEXT_PUBLIC_WS_URL=wss://your-domain/ws/feed`. Next.js embeds the WebSocket URL and backend proxy destination at build time; rebuild after changing either.
+3. Point the HTTPS reverse proxy's `/ws/feed` route to `http://127.0.0.1:8000/ws/feed` with HTTP/1.1 WebSocket upgrade headers. Proxy all other paths to `http://127.0.0.1:3000`. The Next.js server forwards `/api` and `/media` to the backend. Ensure the proxy forwards the original `Origin` header.
+4. Run `bash scripts/run.sh` under a process supervisor such as systemd or Supervisor, configured to restart on failure and stop the process group. The script builds Next.js, applies Alembic migrations and starts one backend worker and one frontend process in the foreground. Configure the supervisor and TLS reverse proxy according to your cPanel server setup.
+5. Only set `TRUST_PROXY_HEADERS=true` behind a trusted proxy that overwrites forwarded headers. Back up PostgreSQL and `backend/uploads`; retain `backend/logs` according to your operational policy.
+
+### Automatic deployment with GitHub Actions
+
+The workflow in `.github/workflows/deploy.yml` deploys pushes to `main` (including merged pull requests). Direct pushes to `main` also deploy; protect the branch if deployments must only come from reviewed pull requests. A manual run is available from the Actions tab. Deployments use the Git commit that triggered the workflow and are serialized.
+
+One-time VPS setup:
+
+1. As a dedicated deployment/service user, clone this repository on the VPS and check out `main`. Configure SSH authentication for `git fetch origin main` from the VPS without interactive prompts, including GitHub's verified host key. Create the backend virtual environment and configure the VPS `.env` as described above; `RUN_MODE` and `ENVIRONMENT` must both be `production`. The deployment path must be an absolute path using only letters, digits, `/`, `.`, `_` and `-`.
+2. Copy `scripts/braveactive.service.example` to `/etc/systemd/system/braveactive.service`, replace `User` and both paths with the actual deployment user and repository path, then run `sudo systemctl daemon-reload` and `sudo systemctl enable --now braveactive.service`. Check `systemctl status braveactive.service` and verify both services respond. The service runs the existing start script, which builds the frontend and applies migrations on startup.
+3. Allow the deployment user to run **only** `systemctl restart braveactive.service` without a password using a narrowly scoped sudoers entry installed with `visudo` (verify the `systemctl` path on the VPS):
+
+   ```text
+   DEPLOY_USER ALL=(root) NOPASSWD: /usr/bin/systemctl restart braveactive.service
+   ```
+
+4. Create a GitHub **Environment** named `production`. Configure its secrets `DEPLOY_SSH_PRIVATE_KEY` (dedicated SSH key for the VPS deployment user) and `DEPLOY_SSH_KNOWN_HOSTS` (the VPS host-key line, independently verified against the server's fingerprint). Set environment variables `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_PATH`, and optionally `DEPLOY_PORT` (defaults to `22`). For a non-default port, use the `[host]:port` format in the known-hosts entry. Do not disable SSH host-key checking.
+
+`DATABASE_URL`, `SECRET_KEY` and other runtime settings remain in the protected VPS `.env`, not in workflow output. They are **not** automatically synchronized from GitHub Secrets. `NEXT_PUBLIC_WS_URL` is read from the VPS `.env` during each build. If you change GitHub or VPS settings, rerun the workflow manually to apply them; the bootstrap admin script is never run automatically.
+
+Deployment refuses to overwrite locally modified tracked files and requires a fast-forward from the server's `main` checkout. It installs dependencies, restarts the service, and checks backend `/health` and the frontend. Startup may interrupt service while the build and migrations run. A failed deployment does **not** roll back the source or database; inspect `journalctl -u braveactive.service`, repair the issue and rerun the workflow. Back up the database before applying migrations.
+
+## Authentication and administration
+
+- Only `@bravesoft.com.vn` addresses can register, log in or request a reset. Registration and reset create pending requests for an administrator; no email is sent.
+- Admins **must verify the requester's identity through an internal channel before approval**, manually set a temporary password, and send it separately. The user must change it after signing in. A reset does not affect the account until approval; approval revokes existing sessions and authenticated WebSockets.
+- `/admin` supports user management, request approval/rejection and post moderation. Deleting a user permanently removes their posts, comments and likes; activity registrations are name-based and are not linked to user accounts.
+- The notification inbox is stored in PostgreSQL for offline delivery; authenticated WebSockets push live updates. Presence uses the in-memory WebSocket hub, so run exactly one backend worker.
 
 ## Security and operations
 
 - The frontend proxies API/media requests to the backend so the HttpOnly, SameSite session cookie remains first-party.
-- Authenticated writes require a session-bound CSRF token. The backend also checks request Origin, rate limits sensitive operations and applies security headers/body-size limits.
-- Link previews restrict protocols, redirects, response size and public IP resolution to reduce SSRF risk. Uploads are verified and re-encoded server-side.
-- Community post and comment edits/deletes are enforced by the backend for their authors and administrators; post edits preserve an existing photo attachment.
-- Run one backend worker: the WebSocket hub and rate limiter are in-process.
-- For production, terminate TLS in a trusted reverse proxy, set `ENVIRONMENT=production`, `COOKIE_SECURE=true`, a strong `SECRET_KEY`, correct `FRONTEND_ORIGINS` and `FRONTEND_BASE_URL`, and only enable `TRUST_PROXY_HEADERS` behind a trusted proxy.
-- There is no migration of the old Redis data. Existing Redis-hosted content must be exported/imported separately if it needs to be retained.
-
-## Project layout
-
-- `frontend/`: Next.js App Router UI, reusable components, locale dictionaries (`src/i18n/messages/vi.ts`, `en.ts`, `ja.ts`) and same-origin API client.
-- `backend/`: FastAPI routes, SQLAlchemy models/services, PostgreSQL migrations, auth, mail, media upload and WebSocket feed.
-- `docker-compose.yml`: local PostgreSQL, backend and frontend services.
+- Authenticated writes require a session-bound CSRF token; the backend also checks Origin and limits request rates.
+- Link previews restrict protocols, redirects, response size and public IP resolution. Uploaded images are verified and re-encoded.
+- Backend diagnostics are written to `backend/logs/backend-YYYY-MM-DD.log`. Do not log passwords, codes, cookies or request bodies.
+- There is no migration of old Redis data; export/import separately if needed.

@@ -9,6 +9,8 @@ import { formatRelativeTime } from "@/lib/format";
 import { useI18n } from "@/i18n/i18n-provider";
 import { useFeedEvents } from "@/lib/use-feed-events";
 
+const NOTIFICATION_PAGE_SIZE = 10;
+
 function notificationMessage(
   notification: UserNotification,
   t: ReturnType<typeof useI18n>["t"],
@@ -34,19 +36,28 @@ export function NotificationBell({ userId }: { userId: string }) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<UserNotification[]>([]);
   const [loading, setLoading] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
   const [error, setError] = useState("");
 
-  const loadNotifications = useCallback(async () => {
-    setLoading(true);
+  const loadNotifications = useCallback(async (offset = 0) => {
+    if (offset === 0) setLoading(true);
+    else setLoadingMore(true);
     setError("");
     try {
-      const page: NotificationPage = await communityApi.listNotifications();
-      setItems(page.notifications);
+      const page: NotificationPage = await communityApi.listNotifications(offset, NOTIFICATION_PAGE_SIZE);
+      setItems((current) => {
+        if (offset === 0) return page.notifications;
+        const existingIds = new Set(current.map((item) => item.id));
+        return [...current, ...page.notifications.filter((item) => !existingIds.has(item.id))];
+      });
       setUnreadCount(page.unreadCount);
+      setHasMore(page.hasMore);
     } catch (reason) {
       setError(errorMessage(reason, t("notifications.loadError")));
     } finally {
-      setLoading(false);
+      if (offset === 0) setLoading(false);
+      else setLoadingMore(false);
     }
   }, [t]);
 
@@ -113,7 +124,7 @@ export function NotificationBell({ userId }: { userId: string }) {
 
   function openNotification(notification: UserNotification) {
     void closeAndRead();
-    router.push(notification.postId ? `/community?post=${notification.postId}` : "/community");
+    router.push(notification.postId ? `/community/posts/${notification.postId}` : "/community");
   }
 
   return (
@@ -146,22 +157,34 @@ export function NotificationBell({ userId }: { userId: string }) {
           {loading && !items.length ? (
             <p className="notification-state">{t("common.loading")}</p>
           ) : items.length ? (
-            <ul className="notification-list">
-              {items.map((item) => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className={item.readAt ? "notification-item" : "notification-item unread"}
-                    onClick={() => openNotification(item)}
-                  >
-                    <span className="notification-item-text">{notificationMessage(item, t)}</span>
-                    <time dateTime={item.createdAt}>
-                      {formatRelativeTime(item.createdAt, intlLocale) ?? t("community.post.justNow")}
-                    </time>
-                  </button>
-                </li>
-              ))}
-            </ul>
+            <>
+              <ul className="notification-list">
+                {items.map((item) => (
+                  <li key={item.id}>
+                    <button
+                      type="button"
+                      className={item.readAt ? "notification-item" : "notification-item unread"}
+                      onClick={() => openNotification(item)}
+                    >
+                      <span className="notification-item-text">{notificationMessage(item, t)}</span>
+                      <time dateTime={item.createdAt}>
+                        {formatRelativeTime(item.createdAt, intlLocale) ?? t("community.post.justNow")}
+                      </time>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {hasMore ? (
+                <button
+                  type="button"
+                  className="notification-load-more"
+                  disabled={loadingMore}
+                  onClick={() => void loadNotifications(items.length)}
+                >
+                  {loadingMore ? t("common.loading") : t("notifications.loadMore")}
+                </button>
+              ) : null}
+            </>
           ) : (
             <p className="notification-state">{t("notifications.empty")}</p>
           )}

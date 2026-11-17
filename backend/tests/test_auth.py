@@ -1,107 +1,135 @@
-from tests.conftest import TEMP_PASSWORDS, register
+from sqlalchemy import select
+
+from app.core.security import hash_password
+from app.db.session import SessionFactory
+from app.models import AccountRequest, User
+from tests.conftest import register
 
 
-async def test_register_login_me_logout(client):
+async def admin_login(client):
+    async with SessionFactory() as db:
+        db.add(User(email="admin@bravesoft.com.vn", display_name="Admin", role="admin",
+                    password_hash=hash_password("TestPass123")))
+        await db.commit()
+    result = await client.post("/api/auth/login", json={"email": "admin@bravesoft.com.vn", "password": "TestPass123"})
+    assert result.status_code == 200
+    return {"X-CSRF-Token": result.json()["csrfToken"]}
+
+
+async def test_register_approval_first_login_and_reset(client):
+    email = "new@bravesoft.com.vn"
+    response = await client.post("/api/auth/register", json={"email": email, "displayName": "New User"})
+    assert response.status_code == 202
+    assert (await client.post("/api/auth/login", json={"email": email, "password": "TestPass123"})).status_code == 401
+    admin = await admin_login(client)
+    requests = (await client.get("/api/admin/requests")).json()["requests"]
+    assert len(requests) == 1 and requests[0]["purpose"] == "register"
+    approved = await client.post(f"/api/admin/requests/{requests[0]['id']}/approve", json={"password": "TempPass123"}, headers=admin)
+    assert approved.status_code == 200
+    assert (await client.post(f"/api/admin/requests/{requests[0]['id']}/approve", json={"password": "TempPass123"}, headers=admin)).status_code == 404
+    login = await client.post("/api/auth/login", json={"email": email, "password": "TempPass123"})
+    assert login.status_code == 200 and login.json()["user"]["mustChangePassword"]
+    csrf = {"X-CSRF-Token": login.json()["csrfToken"]}
+    assert (await client.post("/api/posts", data={"content": "blocked"}, headers=csrf)).status_code == 403
+    assert (await client.post("/api/auth/change-password", json={"password": "NewPass123"}, headers=csrf)).status_code == 200
+    unknown = await client.post("/api/auth/forgot-password", json={"email": "missing@bravesoft.com.vn"})
+    known = await client.post("/api/auth/forgot-password", json={"email": email})
+    assert unknown.json() == known.json()
+    assert (await client.get("/api/auth/me")).json()["user"] is not None
+    admin_login_response = await client.post("/api/auth/login", json={"email": "admin@bravesoft.com.vn", "password": "TestPass123"})
+    admin = {"X-CSRF-Token": admin_login_response.json()["csrfToken"]}
+    requests = (await client.get("/api/admin/requests")).json()["requests"]
+    assert len(requests) == 1 and requests[0]["purpose"] == "reset"
+    assert (await client.post(f"/api/admin/requests/{requests[0]['id']}/approve", json={"password": "SecondPass123"}, headers=admin)).status_code == 200
+    assert (await client.post("/api/auth/login", json={"email": email, "password": "NewPass123"})).status_code == 401
+    login = await client.post("/api/auth/login", json={"email": email, "password": "SecondPass123"})
+    assert login.status_code == 200 and login.json()["user"]["mustChangePassword"]
+
+
+async def test_admin_permissions_and_last_admin_protection(client):
+    assert (await client.get("/api/admin/users")).status_code == 401
+    member = await register(client)
+    assert (await client.get("/api/admin/users")).status_code == 403
+    assert (await client.post("/api/admin/users", json={"email": "bad@bravesoft.com.vn", "displayName": "Bad", "password": "TestPass123"}, headers=member)).status_code == 403
+    admin = await admin_login(client)
+    users = (await client.get("/api/admin/users")).json()["users"]
+    own_id = next(u["id"] for u in users if u["role"] == "admin")
+    assert (await client.delete(f"/api/admin/users/{own_id}", headers=admin)).status_code == 400
+    assert (await client.patch(f"/api/admin/users/{own_id}", json={"displayName": "Admin", "role": "user"}, headers=admin)).status_code == 400
+
+
+async def test_company_domain_and_deduplicated_requests(client):
+    assert (await client.post("/api/auth/check-email", json={"email": "person@example.com"})).json() == {"allowed": False}
+    assert (await client.post(
+        "/api/auth/check-email",
+        json={"email": "person@bravesoft.com.vn"},
+        headers={"Origin": "http://localhost:3000"},
+    )).status_code == 200
+    assert (await client.post(
+        "/api/auth/check-email",
+        json={"email": "person@bravesoft.com.vn"},
+        headers={"Origin": "https://evil.example"},
+    )).status_code == 403
+    assert (await client.post("/api/auth/register", json={"email": "person@example.com", "displayName": "User"})).status_code == 400
+    body = {"email": "a@bravesoft.com.vn", "displayName": "Alice"}
+    assert (await client.post("/api/auth/register", json=body)).status_code == 202
+    assert (await client.post("/api/auth/register", json=body)).status_code == 202
+    async with SessionFactory() as db:
+        assert len((await db.scalars(select(AccountRequest))).all()) == 1
+
+
+async def test_guest_session_csrf_and_origin(client):
+    assert (await client.get("/api/auth/me")).json() == {"user": None, "csrfToken": None}
     csrf = await register(client)
-    me = (await client.get("/api/auth/me")).json()
-    assert me["user"]["email"] == "a@bravesoft.com.vn"
-    assert me["csrfToken"] == csrf["X-CSRF-Token"]
-
+    assert (await client.post("/api/posts", data={"content": "hello"})).status_code == 403
+    assert (await client.post("/api/posts", data={"content": "hello"}, headers=csrf)).status_code == 201
+    assert (await client.post("/api/auth/login", json={"email": "a@bravesoft.com.vn", "password": "x"},
+                              headers={"Origin": "https://evil.example"})).status_code == 403
     assert (await client.post("/api/auth/logout", headers=csrf)).status_code == 200
     assert (await client.get("/api/auth/me")).json()["user"] is None
 
 
-async def test_guest_me_is_null(client):
-    assert (await client.get("/api/auth/me")).json() == {"user": None, "csrfToken": None}
+async def test_hidden_posts_are_admin_only(client):
+    csrf = await register(client)
+    post = await client.post("/api/posts", data={"content": "Visible post"}, headers=csrf)
+    post_id = post.json()["id"]
+    admin = await admin_login(client)
+    assert (await client.patch(f"/api/admin/posts/{post_id}/visibility", json={"hidden": True}, headers=admin)).status_code == 200
+    assert (await client.get("/api/posts")).json()["posts"] == []
+    assert (await client.get(f"/api/posts/{post_id}")).status_code == 404
+    assert (await client.get(f"/api/posts/{post_id}/comments")).status_code == 404
+    assert (await client.get("/api/admin/posts")).json()["posts"][0]["hidden"] is True
+    assert (await client.patch(f"/api/admin/posts/{post_id}/visibility", json={"hidden": False}, headers=admin)).status_code == 200
+    assert len((await client.get("/api/posts")).json()["posts"]) == 1
 
 
-async def test_email_check_and_auth_are_company_domain_only(client):
-    allowed = await client.post("/api/auth/check-email", json={"email": "person@bravesoft.com.vn"})
-    denied = await client.post("/api/auth/check-email", json={"email": "person@example.com"})
-    assert allowed.json() == {"allowed": True}
-    assert denied.json() == {"allowed": False}
-    login = await client.post("/api/auth/login", json={"email": "person@example.com", "password": "Anything1"})
-    assert login.status_code == 400
-
-
-async def test_duplicate_email_and_corporate_domain(client):
+async def test_login_lockout_and_rate_limit(client):
     await register(client)
-    dup = await client.post("/api/auth/register", json={"email": "A@bravesoft.com.vn", "displayName": "Bob"})
-    assert dup.status_code == 409
-    invalid = await client.post("/api/auth/register", json={"email": "b@example.com", "displayName": "Bob"})
-    assert invalid.status_code == 400
-
-
-async def test_wrong_password_is_generic_and_locks_after_repeated_failures(client):
-    await register(client)
-    await client.post("/api/auth/logout", headers={})
     for _ in range(5):
         response = await client.post("/api/auth/login", json={"email": "a@bravesoft.com.vn", "password": "wrong-pass1"})
         assert response.status_code == 401
-    locked = await client.post("/api/auth/login", json={"email": "a@bravesoft.com.vn", "password": TEMP_PASSWORDS["a@bravesoft.com.vn"]})
+    locked = await client.post("/api/auth/login", json={"email": "a@bravesoft.com.vn", "password": "TestPass123"})
     assert locked.status_code == 429
 
 
-async def test_login_rate_limited_per_ip(client):
-    statuses = [
-        (await client.post("/api/auth/login", json={"email": f"x{i}@bravesoft.com.vn", "password": "whatever1"})).status_code
-        for i in range(12)
-    ]
-    assert statuses[:10] == [401] * 10
-    assert statuses[10:] == [429, 429]
-
-
-async def test_csrf_header_required_for_authenticated_writes(client):
-    csrf = await register(client)
-    denied = await client.post("/api/posts/", data={"content": "hello"})
-    assert denied.status_code in (403, 404, 307)  # trailing slash variants
-    no_csrf = await client.post("/api/posts", data={"content": "hello"})
-    assert no_csrf.status_code == 403
-    ok = await client.post("/api/posts", data={"content": "hello"}, headers=csrf)
-    assert ok.status_code == 201
-
-
-async def test_foreign_origin_is_rejected(client):
-    response = await client.post(
-        "/api/auth/login",
-        json={"email": "a@bravesoft.com.vn", "password": "x"},
-        headers={"Origin": "https://evil.example"},
-    )
-    assert response.status_code == 403
-
-
-async def test_session_cookie_flags(client):
-    response = await client.post(
-        "/api/auth/register", json={"email": "c@bravesoft.com.vn", "displayName": "Cara"}
-    )
-    assert response.status_code == 202
-    assert response.headers.get("set-cookie") is None
-
-
-async def test_forgot_password_emails_temp_password_and_forces_change(client):
-    await register(client)
-
-    unknown = await client.post("/api/auth/forgot-password", json={"email": "nobody@bravesoft.com.vn"})
-    known = await client.post("/api/auth/forgot-password", json={"email": "a@bravesoft.com.vn"})
-    assert unknown.status_code == known.status_code == 200
-    assert unknown.json() == known.json()  # no user enumeration
-
-    assert (await client.get("/api/auth/me")).json()["user"] is None
-    temporary_password = TEMP_PASSWORDS["a@bravesoft.com.vn"]
-    assert len(temporary_password) == 8
-    login = await client.post(
-        "/api/auth/login",
-        json={"email": "a@bravesoft.com.vn", "password": temporary_password},
-    )
-    assert login.status_code == 200
-    assert login.json()["user"]["mustChangePassword"] is True
-    csrf = {"X-CSRF-Token": login.json()["csrfToken"]}
-    blocked = await client.post("/api/posts", data={"content": "blocked"}, headers=csrf)
-    assert blocked.status_code == 403
-    changed = await client.post(
-        "/api/auth/change-password",
-        json={"password": "NewPassw0rd"},
-        headers=csrf,
-    )
-    assert changed.status_code == 200
-    assert changed.json()["user"]["mustChangePassword"] is False
+async def test_admin_can_create_update_and_delete_user(client):
+    csrf = await admin_login(client)
+    created = await client.post("/api/admin/users", json={
+        "email": "member@bravesoft.com.vn",
+        "role": "user", "password": "TempPass123",
+    }, headers=csrf)
+    assert created.status_code == 201
+    user_id = created.json()["id"]
+    created_user = next(user for user in (await client.get("/api/admin/users")).json()["users"]
+                        if user["id"] == user_id)
+    assert created_user["displayName"] == "member"
+    updated = await client.patch(f"/api/admin/users/{user_id}", json={
+        "displayName": "New Name", "role": "admin",
+    }, headers=csrf)
+    assert updated.status_code == 200
+    assert any(user["id"] == user_id and user["role"] == "admin"
+               for user in (await client.get("/api/admin/users")).json()["users"])
+    assert (await client.delete(f"/api/admin/users/{user_id}", headers=csrf)).status_code == 200
+    assert (await client.post("/api/auth/login", json={
+        "email": "member@bravesoft.com.vn", "password": "TempPass123"
+    })).status_code == 401

@@ -27,17 +27,25 @@ async def unread_count(db: AsyncSession, user_id: uuid.UUID) -> int:
     )
 
 
-async def list_for_user(db: AsyncSession, user_id: uuid.UUID, limit: int = 30) -> NotificationPage:
+async def list_for_user(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+    limit: int = 10,
+    offset: int = 0,
+) -> NotificationPage:
     limit = max(1, min(limit, MAX_VISIBLE_NOTIFICATIONS))
-    items = await db.scalars(
+    result = await db.scalars(
         select(Notification)
         .where(Notification.recipient_id == user_id)
         .order_by(Notification.created_at.desc(), Notification.id.desc())
-        .limit(limit)
+        .offset(max(0, offset))
+        .limit(limit + 1)
     )
+    rows = list(result)
     return NotificationPage(
-        notifications=[_out(item) for item in items],
+        notifications=[_out(item) for item in rows[:limit]],
         unread_count=await unread_count(db, user_id),
+        has_more=len(rows) > limit,
     )
 
 
