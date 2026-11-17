@@ -11,11 +11,12 @@ from app.api.deps import CurrentUser, DbSession
 from app.core.errors import AppError
 from app.core.security import hash_password
 from app.models import AccountRequest, Post, User, UserSession
+from app.schemas.club import ActivityCreated
 from app.schemas.auth import CorporateEmail, Password
 from app.schemas.base import CamelModel
-from app.services import activities as activity_service
+from app.services import activities as activity_service, community, notifications
 from app.services import uploads
-from app.services.realtime import manager, publish
+from app.services.realtime import manager, publish, publish_to_user
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -38,6 +39,35 @@ async def list_activities(
 ):
     activities, has_more = await activity_service.list_activity_page(db, offset, limit)
     return {"activities": activities, "hasMore": has_more}
+
+
+@router.get("/activities/pending")
+async def list_pending_activities(
+    db: DbSession,
+    _: Admin,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
+    activities, has_more = await activity_service.list_pending_activity_page(db, offset, limit)
+    return {"activities": activities, "hasMore": has_more}
+
+
+@router.post("/activities/{activity_id}/approve", response_model=ActivityCreated)
+async def approve_activity(activity_id: uuid.UUID, db: DbSession, user: Admin):
+    activity, recurrence, generated, community_post_id = await activity_service.approve_activity(db, activity_id)
+    community_post = None
+    if community_post_id:
+        community_post = await community.get_post_out(db, community_post_id, user)
+        recipients = await notifications.notify_post_created(db, user, community_post_id)
+        for recipient_id, unread_count in recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
+        await publish("post.created", post=community_post.model_dump(mode="json", by_alias=True))
+    return ActivityCreated(
+        activity=activity_service.to_activity_out(activity, {}),
+        recurrence=recurrence,
+        generated_occurrences=generated,
+        community_post=community_post,
+    )
 
 
 class AdminUserCreate(CamelModel):

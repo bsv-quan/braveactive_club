@@ -60,6 +60,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [activityFormError, setActivityFormError] = useState("");
   const [activityFormLoading, setActivityFormLoading] = useState(false);
+  const [activitySubmissionNotice, setActivitySubmissionNotice] = useState("");
   const [announcementFormError, setAnnouncementFormError] = useState("");
   const [announcementFormLoading, setAnnouncementFormLoading] = useState(false);
   const [editingAnnouncement, setEditingAnnouncement] =
@@ -208,6 +209,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
       return;
     }
     setActivityFormError("");
+    setActivitySubmissionNotice("");
     setIsCreateModalOpen(true);
   }, [authLoading, user, loginHref, router]);
 
@@ -253,7 +255,11 @@ export default function ClubApp({ initialView }: { initialView: View }) {
       const createdActivity = data.activity;
       setIsCreateModalOpen(false);
       await loadActivities();
-      router.push(`/activities/${encodeURIComponent(createdActivity.id)}`);
+      if (createdActivity.approved) {
+        router.push(`/activities/${encodeURIComponent(createdActivity.id)}`);
+      } else {
+        setActivitySubmissionNotice(t("club.calendar.pendingApprovalNotice"));
+      }
     } catch (error) {
       setActivityFormError(errorMessage(error, t("club.errors.createActivity")));
     } finally {
@@ -388,6 +394,9 @@ export default function ClubApp({ initialView }: { initialView: View }) {
         <ClubHeader
           currentPage={initialView === "overview" ? "overview" : "activities"}
         />
+        {activitySubmissionNotice ? (
+          <p className="activity-pending-notice" role="status">{activitySubmissionNotice}</p>
+        ) : null}
 
         {initialView === "overview" ? (
           <>

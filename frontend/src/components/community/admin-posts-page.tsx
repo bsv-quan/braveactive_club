@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -17,6 +17,7 @@ export function AdminPostsPage() {
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [actionPostId, setActionPostId] = useState<string | null>(null);
   const cursorRef = useRef<string | null>(null);
   const inFlight = useRef(false);
 
@@ -76,17 +77,49 @@ export function AdminPostsPage() {
       </div>
       {posts.length === 0 && !loading && !error ? <p className="feed-note">{t("community.admin.empty")}</p> : null}
       {posts.map((post) => (
-        <div key={post.id}>
-        <button className="button-secondary" type="button" onClick={() => {
-          void communityApi.setPostHidden(post.id, !post.hidden)
-            .then(({ hidden }) => patchPost(post.id, { hidden }))
-            .catch((reason) => setError(errorMessage(reason, t("admin.error"))));
-        }}>{post.hidden ? t("admin.unhide") : t("admin.hide")}</button>
+        <div className="admin-post-item" key={post.id}>
+        <div className="admin-post-actions">
+          <button
+            className="admin-post-action"
+            type="button"
+            title={post.hidden ? t("admin.unhide") : t("admin.hide")}
+            aria-label={post.hidden ? t("admin.unhide") : t("admin.hide")}
+            disabled={actionPostId === post.id}
+            onClick={() => {
+              setActionPostId(post.id);
+              setError("");
+              void communityApi.setPostHidden(post.id, !post.hidden)
+                .then(({ hidden }) => patchPost(post.id, { hidden }))
+                .catch((reason) => setError(errorMessage(reason, t("admin.error"))))
+                .finally(() => setActionPostId(null));
+            }}
+          >
+            {post.hidden ? <Eye size={17} aria-hidden /> : <EyeOff size={17} aria-hidden />}
+          </button>
+          <button
+            className="admin-post-action danger"
+            type="button"
+            title={t("common.delete")}
+            aria-label={t("common.delete")}
+            disabled={actionPostId === post.id}
+            onClick={() => {
+              if (!window.confirm(t("community.post.deleteConfirm"))) return;
+              setActionPostId(post.id);
+              setError("");
+              void communityApi.deleteAdminPost(post.id)
+                .then(() => removePost(post.id))
+                .catch((reason) => setError(errorMessage(reason, t("admin.error"))))
+                .finally(() => setActionPostId(null));
+            }}
+          >
+            <Trash2 size={17} aria-hidden />
+          </button>
+        </div>
         <PostCard
           post={post}
           viewerId={user.id}
           isAdmin
-          deleteRequest={communityApi.deleteAdminPost}
+          showActionsMenu={false}
           onPatch={patchPost}
           onRemove={removePost}
         />

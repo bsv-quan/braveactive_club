@@ -1,10 +1,11 @@
 "use client";
 
-import { CalendarDays, LogIn, LogOut, Settings, UserPlus, Users } from "lucide-react";
+import { CalendarDays, LogIn, LogOut, UserPlus, UserRoundStar, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
+import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { useI18n } from "@/i18n/i18n-provider";
@@ -129,6 +130,7 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
       </nav>
       <div className="auth-menu">
         <LanguageSwitcher />
+        <ThemeSwitcher />
         {loading ? null : user ? (
           <>
             {!user.mustChangePassword ? <NotificationBell key={user.id} userId={user.id} /> : null}
@@ -144,7 +146,7 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
                 title={t("nav.adminPosts")}
                 aria-current={currentPage === "admin" ? "page" : undefined}
               >
-                <Settings size={19} aria-hidden />
+                <UserRoundStar size={19} aria-hidden />
               </Link>
             ) : null}
             <button

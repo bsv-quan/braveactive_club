@@ -8,6 +8,7 @@
   --danger-color: #ef4444;
   --bg-main: #f0f2f5;
   --bg-card: #ffffff;
+  --bg-hover: #e4e6eb;
   --text-main: #1e293b;
   --text-muted: #64748b;
   --border-color: #e2e8f0;
@@ -19,6 +20,441 @@
   --line: var(--border-color);
   --paper: var(--bg-card);
   --coral: var(--accent-color);
+  color-scheme: light;
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-pending-activities {
+  border-color: var(--border-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-pending-activity {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-pending-notice {
+  border-color: #36513d;
+  background: #25372a;
+  color: #d3ead5;
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-post-action {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-post-action:hover:not(:disabled) {
+  border-color: var(--primary-color);
+  color: var(--primary-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-post-action.danger:hover:not(:disabled) {
+  border-color: var(--danger-color);
+  color: var(--danger-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-social-hero {
+  border-color: var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-social-avatar,
+:is(.dark, :root[data-theme="dark"]) .social-member-count {
+  background: var(--bg-hover);
+  color: var(--primary-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-social-title > p,
+:is(.dark, :root[data-theme="dark"]) .activity-social-meta,
+:is(.dark, :root[data-theme="dark"]) .repeat-join-help,
+:is(.dark, :root[data-theme="dark"]) .repeat-date-option span,
+:is(.dark, :root[data-theme="dark"]) .social-empty-members,
+:is(.dark, :root[data-theme="dark"]) .activity-social-about p,
+:is(.dark, :root[data-theme="dark"]) .activity-social-about > div,
+:is(.dark, :root[data-theme="dark"]) .activity-chat-live,
+:is(.dark, :root[data-theme="dark"]) .activity-chat-message time,
+:is(.dark, :root[data-theme="dark"]) .activity-chat-empty {
+  color: var(--text-muted);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-social-title h1,
+:is(.dark, :root[data-theme="dark"]) .social-card-heading h2,
+:is(.dark, :root[data-theme="dark"]) .social-join-card h2,
+:is(.dark, :root[data-theme="dark"]) .repeat-date-option strong,
+:is(.dark, :root[data-theme="dark"]) .social-member-list li,
+:is(.dark, :root[data-theme="dark"]) .repeat-participant-day > strong,
+:is(.dark, :root[data-theme="dark"]) .repeat-participant-day > .repeat-participant-names,
+:is(.dark, :root[data-theme="dark"]) .activity-chat-message p {
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .repeat-date-option {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+}
+
+:is(.dark, :root[data-theme="dark"]) .repeat-date-option.selected {
+  border-color: var(--primary-color);
+  background: color-mix(in srgb, var(--primary-color) 14%, var(--bg-card));
+}
+
+:is(.dark, :root[data-theme="dark"]) .repeat-join-form,
+:is(.dark, :root[data-theme="dark"]) .activity-chat-form,
+:is(.dark, :root[data-theme="dark"]) .repeat-participant-day,
+:is(.dark, :root[data-theme="dark"]) .activity-social-about > div {
+  border-color: var(--border-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-chat-message {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-chat-live i {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color) 20%, var(--bg-card));
+}
+
+.dark, :root[data-theme="dark"] {
+  --primary-color: #3b82f6;
+  --primary-hover: #60a5fa;
+  --accent-color: #38bdf8;
+  --success-color: #4ade80;
+  --danger-color: #f87171;
+  --bg-main: #18191a;
+  --bg-card: #242526;
+  --bg-hover: #3a3b3c;
+  --text-main: #e4e6eb;
+  --text-muted: #b0b3b8;
+  --border-color: #393a3b;
+  --ink: var(--text-main);
+  --muted: var(--text-muted);
+  --green: var(--primary-color);
+  --green-dark: var(--primary-hover);
+  --line: var(--border-color);
+  --paper: var(--bg-card);
+  --coral: var(--accent-color);
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .activity-social-hero {
+    border-color: var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-main);
+  }
+  :root:not([data-theme]) .activity-social-avatar,
+  :root:not([data-theme]) .social-member-count {
+    background: var(--bg-hover);
+    color: var(--primary-color);
+  }
+  :root:not([data-theme]) .activity-social-title > p,
+  :root:not([data-theme]) .activity-social-meta,
+  :root:not([data-theme]) .repeat-join-help,
+  :root:not([data-theme]) .repeat-date-option span,
+  :root:not([data-theme]) .social-empty-members,
+  :root:not([data-theme]) .activity-social-about p,
+  :root:not([data-theme]) .activity-social-about > div,
+  :root:not([data-theme]) .activity-chat-live,
+  :root:not([data-theme]) .activity-chat-message time,
+  :root:not([data-theme]) .activity-chat-empty { color: var(--text-muted); }
+  :root:not([data-theme]) .activity-social-title h1,
+  :root:not([data-theme]) .social-card-heading h2,
+  :root:not([data-theme]) .social-join-card h2,
+  :root:not([data-theme]) .repeat-date-option strong,
+  :root:not([data-theme]) .social-member-list li,
+  :root:not([data-theme]) .repeat-participant-day > strong,
+  :root:not([data-theme]) .repeat-participant-day > .repeat-participant-names,
+  :root:not([data-theme]) .activity-chat-message p { color: var(--text-main); }
+  :root:not([data-theme]) .repeat-date-option {
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+  }
+  :root:not([data-theme]) .repeat-date-option.selected {
+    border-color: var(--primary-color);
+    background: color-mix(in srgb, var(--primary-color) 14%, var(--bg-card));
+  }
+  :root:not([data-theme]) .repeat-join-form,
+  :root:not([data-theme]) .activity-chat-form,
+  :root:not([data-theme]) .repeat-participant-day,
+  :root:not([data-theme]) .activity-social-about > div { border-color: var(--border-color); }
+  :root:not([data-theme]) .activity-chat-message {
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+  }
+  :root:not([data-theme]) .activity-chat-live i {
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--success-color) 20%, var(--bg-card));
+  }
+  :root:not([data-theme]) .admin-pending-activities { border-color: var(--border-color); }
+  :root:not([data-theme]) .admin-pending-activity { border-color: var(--border-color); background: var(--bg-hover); }
+  :root:not([data-theme]) .activity-pending-notice {
+    border-color: #36513d;
+    background: #25372a;
+    color: #d3ead5;
+  }
+  :root:not([data-theme]) {
+    --primary-color: #3b82f6;
+    --primary-hover: #60a5fa;
+    --accent-color: #38bdf8;
+    --success-color: #4ade80;
+    --danger-color: #f87171;
+    --bg-main: #18191a;
+    --bg-card: #242526;
+    --bg-hover: #3a3b3c;
+    --text-main: #e4e6eb;
+    --text-muted: #b0b3b8;
+    --border-color: #393a3b;
+    --ink: var(--text-main);
+    --muted: var(--text-muted);
+    --green: var(--primary-color);
+    --green-dark: var(--primary-hover);
+    --line: var(--border-color);
+    --paper: var(--bg-card);
+    --coral: var(--accent-color);
+    color-scheme: dark;
+  }
+}
+
+:is(.dark, :root[data-theme="dark"]) .activities-page-heading p,
+:is(.dark, :root[data-theme="dark"]) .calendar-title-row p,
+:is(.dark, :root[data-theme="dark"]) .calendar-badge small,
+:is(.dark, :root[data-theme="dark"]) .weekday,
+:is(.dark, :root[data-theme="dark"]) .calendar-legend span,
+:is(.dark, :root[data-theme="dark"]) .signup-date div span,
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card .feed-kind,
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card .feed-card-main > p,
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card .feed-card-footer,
+:is(.dark, :root[data-theme="dark"]) .selected-day-activity > span:last-child,
+:is(.dark, :root[data-theme="dark"]) .empty-day-activities,
+:is(.dark, :root[data-theme="dark"]) .poll-results > p {
+  color: var(--text-muted);
+}
+
+:is(.dark, :root[data-theme="dark"]) .calendar-panel,
+:is(.dark, :root[data-theme="dark"]) .signup-panel {
+  background: var(--bg-card);
+}
+
+:is(.dark, :root[data-theme="dark"]) .calendar-legend,
+:is(.dark, :root[data-theme="dark"]) .members-section,
+:is(.dark, :root[data-theme="dark"]) .member-list li,
+:is(.dark, :root[data-theme="dark"]) .selected-day-join-form {
+  border-color: var(--border-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .icon-button,
+:is(.dark, :root[data-theme="dark"]) .day-cell:not(.day-selected),
+:is(.dark, :root[data-theme="dark"]) .selected-day-activity,
+:is(.dark, :root[data-theme="dark"]) .announcement-action:not(.delete),
+:is(.dark, :root[data-theme="dark"]) .button-secondary,
+:is(.dark, :root[data-theme="dark"]) .activity-detail-meta,
+:is(.dark, :root[data-theme="dark"]) .signup-footnote {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .day-cell:not(.day-selected):hover,
+:is(.dark, :root[data-theme="dark"]) .icon-button:hover,
+:is(.dark, :root[data-theme="dark"]) .selected-day-activity:hover,
+:is(.dark, :root[data-theme="dark"]) .announcement-action:not(.delete):hover,
+:is(.dark, :root[data-theme="dark"]) .button-secondary:hover {
+  background: #48494a;
+}
+
+:is(.dark, :root[data-theme="dark"]) .day-cell.day-outside:not(.day-selected) {
+  color: #77797c;
+}
+
+:is(.dark, :root[data-theme="dark"]) .day-cell.day-today:not(.day-selected) {
+  box-shadow: inset 0 0 0 1px var(--primary-color);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card.feed-mint,
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card.feed-peach,
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card.feed-lavender {
+  border-color: var(--border-color);
+  background-color: var(--bg-card);
+  background-image: none;
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-feed-card .feed-card-main h2,
+:is(.dark, :root[data-theme="dark"]) .signup-date div strong,
+:is(.dark, :root[data-theme="dark"]) .activity-detail-meta strong,
+:is(.dark, :root[data-theme="dark"]) .activity-form label,
+:is(.dark, :root[data-theme="dark"]) .selected-day-join-form label,
+:is(.dark, :root[data-theme="dark"]) .poll-result-row {
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .activity-detail-meta div > span,
+:is(.dark, :root[data-theme="dark"]) .signup-form > small,
+:is(.dark, :root[data-theme="dark"]) .members-heading div > span,
+:is(.dark, :root[data-theme="dark"]) .member-date,
+:is(.dark, :root[data-theme="dark"]) .empty-members p,
+:is(.dark, :root[data-theme="dark"]) .empty-members small {
+  color: var(--text-muted);
+}
+
+:is(.dark, :root[data-theme="dark"]) .announcement-action:not(.delete) {
+  color: var(--text-main);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .activities-page-heading p,
+  :root:not([data-theme]) .calendar-title-row p,
+  :root:not([data-theme]) .calendar-badge small,
+  :root:not([data-theme]) .weekday,
+  :root:not([data-theme]) .calendar-legend span,
+  :root:not([data-theme]) .signup-date div span,
+  :root:not([data-theme]) .activity-feed-card .feed-kind,
+  :root:not([data-theme]) .activity-feed-card .feed-card-main > p,
+  :root:not([data-theme]) .activity-feed-card .feed-card-footer,
+  :root:not([data-theme]) .selected-day-activity > span:last-child,
+  :root:not([data-theme]) .empty-day-activities,
+  :root:not([data-theme]) .poll-results > p,
+  :root:not([data-theme]) .activity-detail-meta div > span,
+  :root:not([data-theme]) .signup-form > small,
+  :root:not([data-theme]) .members-heading div > span,
+  :root:not([data-theme]) .member-date,
+  :root:not([data-theme]) .empty-members p,
+  :root:not([data-theme]) .empty-members small { color: var(--text-muted); }
+
+  :root:not([data-theme]) .calendar-panel,
+  :root:not([data-theme]) .signup-panel { background: var(--bg-card); }
+
+  :root:not([data-theme]) .calendar-legend,
+  :root:not([data-theme]) .members-section,
+  :root:not([data-theme]) .member-list li,
+  :root:not([data-theme]) .selected-day-join-form { border-color: var(--border-color); }
+
+  :root:not([data-theme]) .icon-button,
+  :root:not([data-theme]) .day-cell:not(.day-selected),
+  :root:not([data-theme]) .selected-day-activity,
+  :root:not([data-theme]) .announcement-action:not(.delete),
+  :root:not([data-theme]) .button-secondary,
+  :root:not([data-theme]) .activity-detail-meta,
+  :root:not([data-theme]) .signup-footnote {
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+    color: var(--text-main);
+  }
+
+  :root:not([data-theme]) .day-cell:not(.day-selected):hover,
+  :root:not([data-theme]) .icon-button:hover,
+  :root:not([data-theme]) .selected-day-activity:hover,
+  :root:not([data-theme]) .announcement-action:not(.delete):hover,
+  :root:not([data-theme]) .button-secondary:hover { background: #48494a; }
+
+  :root:not([data-theme]) .day-cell.day-outside:not(.day-selected) { color: #77797c; }
+  :root:not([data-theme]) .day-cell.day-today:not(.day-selected) { box-shadow: inset 0 0 0 1px var(--primary-color); }
+
+  :root:not([data-theme]) .activity-feed-card.feed-mint,
+  :root:not([data-theme]) .activity-feed-card.feed-peach,
+  :root:not([data-theme]) .activity-feed-card.feed-lavender {
+    border-color: var(--border-color);
+    background-color: var(--bg-card);
+    background-image: none;
+    color: var(--text-main);
+  }
+
+  :root:not([data-theme]) .activity-feed-card .feed-card-main h2,
+  :root:not([data-theme]) .signup-date div strong,
+  :root:not([data-theme]) .activity-detail-meta strong,
+  :root:not([data-theme]) .activity-form label,
+  :root:not([data-theme]) .selected-day-join-form label,
+  :root:not([data-theme]) .poll-result-row,
+  :root:not([data-theme]) .announcement-action:not(.delete) { color: var(--text-main); }
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-panel {
+  border-color: var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-form label,
+:is(.dark, :root[data-theme="dark"]) .admin-form h2,
+:is(.dark, :root[data-theme="dark"]) .admin-row,
+:is(.dark, :root[data-theme="dark"]) .admin-row strong,
+:is(.dark, :root[data-theme="dark"]) .admin-panel-content > p:not(.feed-note),
+:is(.dark, :root[data-theme="dark"]) .admin-panel-content time {
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-panel .button-secondary,
+:is(.dark, :root[data-theme="dark"]) .admin-tabs .button-secondary {
+  border-color: var(--border-color);
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-panel .button-secondary:hover,
+:is(.dark, :root[data-theme="dark"]) .admin-tabs .button-secondary:hover {
+  background: #48494a;
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-panel .ui-button-ghost {
+  color: var(--text-main);
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-credentials {
+  border-color: #36513d;
+  background: #25372a;
+  color: #d3ead5;
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-credentials strong,
+:is(.dark, :root[data-theme="dark"]) .admin-credentials span {
+  color: inherit;
+}
+
+:is(.dark, :root[data-theme="dark"]) .admin-pagination {
+  border-color: var(--border-color);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) .admin-post-action {
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+    color: var(--text-main);
+  }
+  :root:not([data-theme]) .admin-post-action:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+  }
+  :root:not([data-theme]) .admin-post-action.danger:hover:not(:disabled) {
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+  }
+  :root:not([data-theme]) .admin-panel {
+    border-color: var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-main);
+  }
+  :root:not([data-theme]) .admin-form label,
+  :root:not([data-theme]) .admin-form h2,
+  :root:not([data-theme]) .admin-row,
+  :root:not([data-theme]) .admin-row strong,
+  :root:not([data-theme]) .admin-panel-content > p:not(.feed-note),
+  :root:not([data-theme]) .admin-panel-content time { color: var(--text-main); }
+  :root:not([data-theme]) .admin-panel .button-secondary,
+  :root:not([data-theme]) .admin-tabs .button-secondary {
+    border-color: var(--border-color);
+    background: var(--bg-hover);
+    color: var(--text-main);
+  }
+  :root:not([data-theme]) .admin-panel .button-secondary:hover,
+  :root:not([data-theme]) .admin-tabs .button-secondary:hover { background: #48494a; }
+  :root:not([data-theme]) .admin-panel .ui-button-ghost { color: var(--text-main); }
+  :root:not([data-theme]) .admin-credentials {
+    border-color: #36513d;
+    background: #25372a;
+    color: #d3ead5;
+  }
+  :root:not([data-theme]) .admin-pagination { border-color: var(--border-color); }
 }
 
 * { box-sizing: border-box; }
@@ -26,9 +462,10 @@ html { scroll-behavior: smooth; }
 body {
   margin: 0;
   background: var(--bg-main);
-  color: var(--ink);
+  color: var(--text-main);
   font-family: "DM Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
+  transition: background-color .3s ease, color .3s ease;
 }
 button, input { font: inherit; }
 button, a { -webkit-tap-highlight-color: transparent; }
@@ -445,6 +882,17 @@ h1, h2, h3, p { margin-top: 0; }
 .admin-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--line); padding: 14px 0; }
 .admin-row-actions { display: flex; align-items: center; gap: 8px; }
 .admin-row-actions .admin-row-action { box-sizing: border-box; height: 34px; min-height: 34px; line-height: 1; white-space: nowrap; }
+.admin-post-item { display: grid; gap: 8px; margin-bottom: 4px; }
+.admin-post-actions { display: flex; justify-content: flex-end; gap: 7px; padding: 0 2px; }
+.admin-post-action { display: inline-grid; place-items: center; width: 34px; height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-card); color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
+.admin-post-action:hover:not(:disabled) { border-color: var(--primary-color); background: var(--bg-hover); color: var(--primary-color); }
+.admin-post-action.danger:hover:not(:disabled) { border-color: var(--danger-color); color: var(--danger-color); }
+.admin-post-action:disabled { opacity: .55; cursor: wait; }
+.admin-pending-activities { display: grid; gap: 8px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
+.admin-pending-activities h2 { margin: 0; font-size: 17px; }
+.admin-pending-activities > p { margin: 0; color: var(--muted); font-size: 13px; }
+.admin-pending-activity { border: 1px solid var(--line); border-radius: 8px; padding: 12px; }
+.activity-pending-notice { margin: 12px auto 0; width: min(100%, 1000px); padding: 12px 14px; border: 1px solid #b8d5bd; border-radius: 8px; background: #eaf5ec; color: #2c6a3f; font-size: 13px; }
 .admin-activity-details { min-width: 0; overflow-wrap: anywhere; }
 .admin-activity-details p { margin: 5px 0; }
 .admin-activity-details > span { color: var(--muted); font-size: 13px; }
@@ -478,6 +926,8 @@ h1, h2, h3, p { margin-top: 0; }
 .notification-error { margin: 8px 12px 0; color: #a3392d; font-size: 11px; }
 .notification-close-hint { margin: 0; padding: 9px 14px; border-top: 1px solid #edf0ec; color: #8c958e; font-size: 10px; text-align: center; }
 .lang-switcher { display: inline-flex; align-items: center; gap: 2px; padding: 3px 6px; border: 1px solid var(--line); border-radius: 999px; background: #f7f8f4; color: #6f7a73; }
+.theme-switcher { display: inline-grid; flex: none; place-items: center; width: 34px; height: 34px; border: 1px solid var(--line); border-radius: 50%; background: #f7f8f4; color: #53665a; cursor: pointer; transition: background-color .2s, color .2s, border-color .2s; }
+.theme-switcher:hover { background: var(--bg-hover); color: var(--primary-color); }
 .lang-option { border: 0; background: transparent; padding: 4px 8px; border-radius: 999px; font-size: 12px; font-weight: 700; color: #6f7a73; cursor: pointer; }
 .lang-option.active { background: var(--green); color: #fff; }
 .nav-badge { display: inline-grid; place-items: center; min-width: 19px; height: 19px; padding: 0 5px; border-radius: 999px; background: #e0455c; color: #fff; font-size: 11px; font-weight: 700; line-height: 1; }
@@ -717,4 +1167,111 @@ h1, h2, h3, p { margin-top: 0; }
   .calendar-create-actions { gap: 5px; }.calendar-create-actions .button-primary, .calendar-create-actions .button-secondary { padding: 9px 10px; font-size: 9px; }
   .announcement-create-page { min-height: 0; padding: 25px 0 40px; }.announcement-create-panel { padding: 22px 17px; }.announcement-create-panel h1 { font-size: 30px; }.announcement-form-actions { justify-content: stretch; }.announcement-form-actions > * { flex: 1; }
   .calendar-page { padding: 35px 0 44px; }.calendar-title-row { align-items: start; margin-bottom: 24px; }.calendar-title-row h1 { font-size: 39px; letter-spacing: -2px; }.calendar-title-row p { max-width: 270px; font-size: 12px; line-height: 1.6; }.calendar-badge { display: none; }.calendar-layout { grid-template-columns: 1fr; gap: 12px; }.calendar-panel { padding: 15px 11px 12px; }.calendar-toolbar { gap: 4px; margin-bottom: 14px; }.month-navigation { gap: 7px; }.month-navigation h2 { min-width: 128px; font-size: 14px; }.icon-button { width: 25px; height: 25px; }.mode-switch button { padding: 6px 8px; font-size: 10px; }.day-cell { min-height: 42px; font-size: 12px; }.calendar-legend { gap: 12px; }.calendar-legend span { font-size: 9px; }.signup-panel { padding: 17px; }.footer { min-height: 42px; flex-wrap: nowrap; gap: 8px; padding: 5px 0; }.footer-logo { width: 90px; height: 26px; }.footer > span:nth-child(2) { display: none; }
+}
+
+.dark input:not([type="checkbox"]):not([type="radio"]),
+.dark textarea,
+.dark select,
+:root[data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
+:root[data-theme="dark"] textarea,
+:root[data-theme="dark"] select { border-color: var(--border-color); background: var(--bg-card); color: var(--text-main); }
+
+.dark input::placeholder, .dark textarea::placeholder,
+:root[data-theme="dark"] input::placeholder, :root[data-theme="dark"] textarea::placeholder { color: var(--text-muted); }
+.dark .card, .dark .post-card, .dark .social-card, .dark .profile-card, .dark .auth-card,
+.dark .calendar-panel, .dark .signup-panel, .dark .activity-modal, .dark .announcement-create-panel,
+.dark .activity-social-hero, .dark .activity-feed-card, .dark .scheduled-card, .dark .community-upcoming-card,
+.dark .wired-news-strip, .dark .wired-news-card, .dark .latest-community-post, .dark .link-preview-link,
+.dark .emoji-picker-panel, .dark .post-menu, .dark .notification-panel, .dark .activity-notification-panel,
+:root[data-theme="dark"] .card, :root[data-theme="dark"] .post-card, :root[data-theme="dark"] .social-card,
+:root[data-theme="dark"] .profile-card, :root[data-theme="dark"] .auth-card, :root[data-theme="dark"] .calendar-panel,
+:root[data-theme="dark"] .signup-panel, :root[data-theme="dark"] .activity-modal, :root[data-theme="dark"] .announcement-create-panel,
+:root[data-theme="dark"] .activity-social-hero, :root[data-theme="dark"] .activity-feed-card, :root[data-theme="dark"] .scheduled-card,
+:root[data-theme="dark"] .community-upcoming-card, :root[data-theme="dark"] .wired-news-strip, :root[data-theme="dark"] .wired-news-card,
+:root[data-theme="dark"] .latest-community-post, :root[data-theme="dark"] .link-preview-link, :root[data-theme="dark"] .emoji-picker-panel,
+:root[data-theme="dark"] .post-menu, :root[data-theme="dark"] .notification-panel, :root[data-theme="dark"] .activity-notification-panel {
+  border-color: var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--text-main);
+}
+.dark .community-upcoming-copy strong, .dark .wired-news-heading h2, .dark .wired-news-card > strong,
+.dark .post-menu button, .dark .notification-item-text, .dark .activity-chat-message p,
+:root[data-theme="dark"] .community-upcoming-copy strong, :root[data-theme="dark"] .wired-news-heading h2,
+:root[data-theme="dark"] .wired-news-card > strong, :root[data-theme="dark"] .post-menu button,
+:root[data-theme="dark"] .notification-item-text, :root[data-theme="dark"] .activity-chat-message p { color: var(--text-main); }
+.dark .community-upcoming-kicker, .dark .community-upcoming-meta, .dark .wired-news-kicker,
+.dark .wired-news-category, .dark .wired-news-summary, .dark .wired-news-external, .dark .post-byline small,
+.dark .feed-note, .dark .post-action-count, .dark .comment-bubble small, .dark .auth-subtitle,
+.dark .notification-item time, .dark .notification-close-hint,
+:root[data-theme="dark"] .community-upcoming-kicker, :root[data-theme="dark"] .community-upcoming-meta,
+:root[data-theme="dark"] .wired-news-kicker, :root[data-theme="dark"] .wired-news-category,
+:root[data-theme="dark"] .wired-news-summary, :root[data-theme="dark"] .wired-news-external,
+:root[data-theme="dark"] .post-byline small, :root[data-theme="dark"] .feed-note,
+:root[data-theme="dark"] .post-action-count, :root[data-theme="dark"] .comment-bubble small,
+:root[data-theme="dark"] .auth-subtitle, :root[data-theme="dark"] .notification-item time,
+:root[data-theme="dark"] .notification-close-hint { color: var(--text-muted); }
+.dark .community-hub-switcher, .dark .lang-switcher, .dark .theme-switcher,
+:root[data-theme="dark"] .community-hub-switcher, :root[data-theme="dark"] .lang-switcher,
+:root[data-theme="dark"] .theme-switcher { border-color: var(--border-color); background: var(--bg-card); color: var(--text-main); }
+.dark .community-hub-link:hover, .dark .community-hub-link.active,
+.dark .lang-option, .dark .theme-switcher,
+:root[data-theme="dark"] .community-hub-link:hover, :root[data-theme="dark"] .community-hub-link.active,
+:root[data-theme="dark"] .lang-option, :root[data-theme="dark"] .theme-switcher { color: var(--text-main); }
+.dark .lang-option.active, :root[data-theme="dark"] .lang-option.active { background: var(--primary-color); color: #fff; }
+.dark .community-hub-link:hover, .dark .post-menu button:hover, .dark .post-action:hover,
+.dark .emoji-picker-panel button:hover, .dark .notification-item:hover, .dark .notification-item.unread,
+.dark .ui-icon-button:hover, .dark .admin-header-link:hover, .dark .profile-icon-link:hover,
+:root[data-theme="dark"] .community-hub-link:hover, :root[data-theme="dark"] .post-menu button:hover,
+:root[data-theme="dark"] .post-action:hover, :root[data-theme="dark"] .emoji-picker-panel button:hover,
+:root[data-theme="dark"] .notification-item:hover, :root[data-theme="dark"] .notification-item.unread,
+:root[data-theme="dark"] .ui-icon-button:hover, :root[data-theme="dark"] .admin-header-link:hover,
+:root[data-theme="dark"] .profile-icon-link:hover { background-color: var(--bg-hover); }
+.dark .comment-bubble, .dark .activity-chat-message, .dark .link-preview-link,
+:root[data-theme="dark"] .comment-bubble, :root[data-theme="dark"] .activity-chat-message,
+:root[data-theme="dark"] .link-preview-link { background-color: var(--bg-hover); }
+.dark .post-skeleton, :root[data-theme="dark"] .post-skeleton {
+  background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
+  background-size: 200% 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) input:not([type="checkbox"]):not([type="radio"]),
+  :root:not([data-theme]) textarea,
+  :root:not([data-theme]) select { border-color: var(--border-color); background: var(--bg-card); color: var(--text-main); }
+  :root:not([data-theme]) .card, :root:not([data-theme]) .post-card, :root:not([data-theme]) .social-card,
+  :root:not([data-theme]) .profile-card, :root:not([data-theme]) .auth-card, :root:not([data-theme]) .calendar-panel,
+  :root:not([data-theme]) .signup-panel, :root:not([data-theme]) .activity-modal, :root:not([data-theme]) .announcement-create-panel,
+  :root:not([data-theme]) .activity-social-hero, :root:not([data-theme]) .activity-feed-card, :root:not([data-theme]) .scheduled-card,
+  :root:not([data-theme]) .community-upcoming-card, :root:not([data-theme]) .wired-news-strip, :root:not([data-theme]) .wired-news-card,
+  :root:not([data-theme]) .latest-community-post, :root:not([data-theme]) .link-preview-link, :root:not([data-theme]) .emoji-picker-panel,
+  :root:not([data-theme]) .post-menu, :root:not([data-theme]) .notification-panel, :root:not([data-theme]) .activity-notification-panel {
+    border-color: var(--border-color);
+    background-color: var(--bg-card);
+    color: var(--text-main);
+  }
+  :root:not([data-theme]) .community-upcoming-copy strong, :root:not([data-theme]) .wired-news-heading h2,
+  :root:not([data-theme]) .wired-news-card > strong, :root:not([data-theme]) .post-menu button,
+  :root:not([data-theme]) .notification-item-text, :root:not([data-theme]) .activity-chat-message p { color: var(--text-main); }
+  :root:not([data-theme]) .community-upcoming-kicker, :root:not([data-theme]) .community-upcoming-meta,
+  :root:not([data-theme]) .wired-news-kicker, :root:not([data-theme]) .wired-news-category,
+  :root:not([data-theme]) .wired-news-summary, :root:not([data-theme]) .wired-news-external,
+  :root:not([data-theme]) .post-byline small, :root:not([data-theme]) .feed-note,
+  :root:not([data-theme]) .post-action-count, :root:not([data-theme]) .comment-bubble small,
+  :root:not([data-theme]) .auth-subtitle, :root:not([data-theme]) .notification-item time,
+  :root:not([data-theme]) .notification-close-hint { color: var(--text-muted); }
+  :root:not([data-theme]) .community-hub-switcher, :root:not([data-theme]) .lang-switcher,
+  :root:not([data-theme]) .theme-switcher { border-color: var(--border-color); background: var(--bg-card); color: var(--text-main); }
+  :root:not([data-theme]) .lang-option, :root:not([data-theme]) .theme-switcher { color: var(--text-main); }
+  :root:not([data-theme]) .lang-option.active { background: var(--primary-color); color: #fff; }
+  :root:not([data-theme]) .community-hub-link:hover, :root:not([data-theme]) .post-menu button:hover,
+  :root:not([data-theme]) .post-action:hover, :root:not([data-theme]) .emoji-picker-panel button:hover,
+  :root:not([data-theme]) .notification-item:hover, :root:not([data-theme]) .notification-item.unread,
+  :root:not([data-theme]) .ui-icon-button:hover, :root:not([data-theme]) .admin-header-link:hover,
+  :root:not([data-theme]) .profile-icon-link:hover { background-color: var(--bg-hover); }
+  :root:not([data-theme]) .comment-bubble, :root:not([data-theme]) .activity-chat-message,
+  :root:not([data-theme]) .link-preview-link { background-color: var(--bg-hover); }
+  :root:not([data-theme]) .post-skeleton {
+    background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-hover) 50%, var(--bg-card) 75%);
+    background-size: 200% 100%;
+  }
 }

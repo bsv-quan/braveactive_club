@@ -14,8 +14,12 @@ export function AdminActivitiesPanel() {
   const { user } = useAuth();
   const { t, intlLocale } = useI18n();
   const [activities, setActivities] = useState<ClubActivity[]>([]);
+  const [pendingActivities, setPendingActivities] = useState<ClubActivity[]>([]);
   const [hasMore, setHasMore] = useState(false);
+  const [pendingHasMore, setPendingHasMore] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [pendingLoading, setPendingLoading] = useState(false);
+  const [approving, setApproving] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -39,9 +43,46 @@ export function AdminActivitiesPanel() {
     }
   }, [t]);
 
+  const loadPending = useCallback(async (offset = 0, replace = true) => {
+    setPendingLoading(true);
+    setError("");
+    try {
+      const page = await apiJson<{ activities: ClubActivity[]; hasMore: boolean }>(
+        `/api/admin/activities/pending?offset=${offset}&limit=${PAGE_SIZE}`,
+        { cache: "no-store" },
+      );
+      setPendingActivities((current) => {
+        const merged = replace ? page.activities : [...current, ...page.activities];
+        return [...new Map(merged.map((activity) => [activity.id, activity])).values()];
+      });
+      setPendingHasMore(page.hasMore);
+    } catch (reason) {
+      setError(errorMessage(reason, t("admin.error")));
+    } finally {
+      setPendingLoading(false);
+    }
+  }, [t]);
+
   useEffect(() => {
-    if (user?.role === "admin") void loadPage(0, true);
-  }, [loadPage, user?.id, user?.role]);
+    if (user?.role === "admin") {
+      void loadPage(0, true);
+      void loadPending();
+    }
+  }, [loadPage, loadPending, user?.id, user?.role]);
+
+  async function approveActivity(activity: ClubActivity) {
+    setApproving(activity.id);
+    setError("");
+    try {
+      await apiJson(`/api/admin/activities/${encodeURIComponent(activity.id)}/approve`, { method: "POST" });
+      setPendingActivities((items) => items.filter((item) => item.id !== activity.id));
+      await Promise.all([loadPage(0, true), loadPending(0, true)]);
+    } catch (reason) {
+      setError(errorMessage(reason, t("admin.error")));
+    } finally {
+      setApproving(null);
+    }
+  }
 
   async function deleteActivity(activity: ClubActivity) {
     if (!window.confirm(t("admin.deleteActivityConfirm", { title: activity.title }))) return;
@@ -63,6 +104,40 @@ export function AdminActivitiesPanel() {
 
   return (
     <section className="admin-activities">
+      <section className="admin-pending-activities" aria-labelledby="pending-activities-title">
+        <h2 id="pending-activities-title">{t("admin.pendingActivities")}</h2>
+        {pendingLoading ? <p>{t("common.loading")}</p> : pendingActivities.length === 0 ? (
+          <p>{t("admin.noPendingActivities")}</p>
+        ) : pendingActivities.map((activity) => (
+          <article className="admin-row admin-pending-activity" key={activity.id}>
+            <div className="admin-activity-details">
+              <strong>{activity.title}</strong>
+              <p>{activity.description}</p>
+              <span>
+                {activity.date
+                  ? new Intl.DateTimeFormat(intlLocale, { dateStyle: "medium", timeStyle: "short" }).format(new Date(activity.date))
+                  : activity.day ?? ""}
+                {" · "}{activity.category}{" · "}{activity.creator}
+              </span>
+            </div>
+            <Button
+              type="button"
+              variant="primary"
+              size="sm"
+              disabled={approving !== null}
+              loading={approving === activity.id}
+              onClick={() => void approveActivity(activity)}
+            >
+              {t("admin.approveActivity")}
+            </Button>
+          </article>
+        ))}
+        {pendingHasMore && !pendingLoading ? (
+          <Button variant="secondary" onClick={() => void loadPending(pendingActivities.length, false)}>
+            {t("community.admin.loadMore")}
+          </Button>
+        ) : null}
+      </section>
       {activities.length === 0 && !loading && !error && <p>{t("admin.noActivities")}</p>}
       {activities.map((activity) => (
         <article className="admin-row" key={activity.id}>

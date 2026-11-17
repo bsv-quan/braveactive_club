@@ -19,6 +19,7 @@ class ActivityCommentOut(CamelModel):
 
 class ActivityOut(CamelModel):
     id: uuid.UUID
+    approved: bool = True
     kind: str
     recurrence_series_id: uuid.UUID | None = None
     repeat: dict[str, Any] | None = None

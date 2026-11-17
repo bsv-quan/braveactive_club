@@ -6,6 +6,7 @@ from datetime import datetime
 
 from sqlalchemy import (
     JSON,
+    Boolean,
     Date,
     DateTime,
     ForeignKey,
@@ -46,6 +47,8 @@ class Activity(Base):
     day: Mapped[dt.date | None] = mapped_column(Date)
     creator: Mapped[str] = mapped_column(String(40))
     created_by: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    approved: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
+    share_to_community: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false", nullable=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     participants: Mapped[list["ActivityParticipant"]] = relationship(

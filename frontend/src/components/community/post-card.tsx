@@ -25,6 +25,7 @@ type Props = {
   initialCommentsOpen?: boolean;
   loginNext?: string;
   showFullContent?: boolean;
+  showActionsMenu?: boolean;
   onPatch: (postId: string, patch: Partial<CommunityPost>) => void;
   onRemove: (postId: string) => void;
 };
@@ -127,6 +128,7 @@ function PostCardBase({
   initialCommentsOpen = false,
   loginNext = "/community",
   showFullContent = false,
+  showActionsMenu = true,
   onPatch,
   onRemove,
 }: Props) {
@@ -256,52 +258,54 @@ function PostCardBase({
           <strong>{post.author.displayName}</strong>
           <small>{formatRelativeTime(post.createdAt, intlLocale) ?? t("community.post.justNow")}</small>
         </div>
-        <div className="post-menu-wrap" ref={postMenuRef}>
-          <IconButton
-            icon={EllipsisVertical}
-            label={t("community.post.moreActions")}
-            aria-haspopup="menu"
-            aria-expanded={showPostMenu}
-            onClick={() => setShowPostMenu((visible) => !visible)}
-          />
-          {showPostMenu ? (
-            <div className="post-menu" role="menu">
-              {canManage ? (
-                <>
+        {showActionsMenu ? (
+          <div className="post-menu-wrap" ref={postMenuRef}>
+            <IconButton
+              icon={EllipsisVertical}
+              label={t("community.post.moreActions")}
+              aria-haspopup="menu"
+              aria-expanded={showPostMenu}
+              onClick={() => setShowPostMenu((visible) => !visible)}
+            />
+            {showPostMenu ? (
+              <div className="post-menu" role="menu">
+                {canManage ? (
+                  <>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={() => {
+                        setShowPostMenu(false);
+                        setDraft(post.content);
+                        setEditing(true);
+                      }}
+                    >
+                      <Pencil size={16} aria-hidden /> {t("community.post.edit")}
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => { setShowPostMenu(false); void handleDelete(); }}>
+                      <Trash2 size={16} aria-hidden /> {t("community.post.delete")}
+                    </button>
+                  </>
+                ) : null}
+                {!showFullContent ? (
                   <button
                     type="button"
                     role="menuitem"
                     onClick={() => {
                       setShowPostMenu(false);
-                      setDraft(post.content);
-                      setEditing(true);
+                      router.push(`/community/posts/${encodeURIComponent(post.id)}`);
                     }}
                   >
-                    <Pencil size={16} aria-hidden /> {t("community.post.edit")}
+                    <FileText size={16} aria-hidden /> {t("community.post.details")}
                   </button>
-                  <button type="button" role="menuitem" onClick={() => { setShowPostMenu(false); void handleDelete(); }}>
-                    <Trash2 size={16} aria-hidden /> {t("community.post.delete")}
-                  </button>
-                </>
-              ) : null}
-              {!showFullContent ? (
-                <button
-                  type="button"
-                  role="menuitem"
-                  onClick={() => {
-                    setShowPostMenu(false);
-                    router.push(`/community/posts/${encodeURIComponent(post.id)}`);
-                  }}
-                >
-                  <FileText size={16} aria-hidden /> {t("community.post.details")}
+                ) : null}
+                <button type="button" role="menuitem" onClick={() => void handleShare()}>
+                  <Share2 size={16} aria-hidden /> {t("community.post.share")}
                 </button>
-              ) : null}
-              <button type="button" role="menuitem" onClick={() => void handleShare()}>
-                <Share2 size={16} aria-hidden /> {t("community.post.share")}
-              </button>
-            </div>
-          ) : null}
-        </div>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </header>
 
       {error ? <Alert tone="error">{error}</Alert> : null}

@@ -44,6 +44,7 @@ export type ActivityRecurrence = ActivityRepeatConfig & {
 
 export type ClubActivity = {
   id: string;
+  approved: boolean;
   kind?: "activity" | "quick-signup";
   recurrenceSeriesId?: string | null;
   repeat?: ActivityRepeatConfig | null;

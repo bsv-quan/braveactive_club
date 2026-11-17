@@ -130,6 +130,21 @@ export default function ActivityDetailPage({
     }
   }
 
+  async function leaveOwnActivity(occurrenceId = activity?.id) {
+    if (!activity || !occurrenceId) return;
+    setJoinError("");
+    setJoinLoading(true);
+    try {
+      await apiJson(`/api/activities/${occurrenceId}/join`, { method: "DELETE" });
+      setJoiningOccurrenceId(null);
+      await loadActivity();
+    } catch (error) {
+      setJoinError(errorMessage(error, t("club.detail.errors.leaveFailed")));
+    } finally {
+      setJoinLoading(false);
+    }
+  }
+
   async function sendMessage(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!activity) return;
@@ -326,6 +341,12 @@ export default function ActivityDetailPage({
                                 dateKey(new Date(occurrence.date as string));
                               const selected =
                                 joiningOccurrenceId === occurrence.id;
+                              const registered = Boolean(
+                                user &&
+                                  occurrence.participants.some((participant) =>
+                                    isOwnParticipant(user.displayName, participant),
+                                  ),
+                              );
                               return (
                                 <div
                                   className={`repeat-date-option ${selected ? "selected" : ""}`}
@@ -350,20 +371,27 @@ export default function ActivityDetailPage({
                                         : t("club.detail.join.noRegistered")}
                                     </span>
                                   </div>
-                                  <button
-                                    className={
-                                      selected
-                                        ? "button-secondary"
-                                        : "button-primary"
-                                    }
-                                    type="button"
-                                    onClick={() => {
-                                      setJoiningOccurrenceId(occurrence.id);
-                                      setJoinError("");
-                                    }}
-                                  >
-                                    {selected ? t("club.detail.join.selected") : t("club.detail.join.chooseDay")}
-                                  </button>
+                                  {registered ? (
+                                    <button
+                                      className="button-secondary"
+                                      type="button"
+                                      disabled={joinLoading}
+                                      onClick={() => void leaveOwnActivity(occurrence.id)}
+                                    >
+                                      {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.cancelRegistration")}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      className={selected ? "button-secondary" : "button-primary"}
+                                      type="button"
+                                      onClick={() => {
+                                        setJoiningOccurrenceId(occurrence.id);
+                                        setJoinError("");
+                                      }}
+                                    >
+                                      {selected ? t("club.detail.join.selected") : t("club.detail.join.chooseDay")}
+                                    </button>
+                                  )}
                                 </div>
                               );
                             })
@@ -388,11 +416,9 @@ export default function ActivityDetailPage({
                               {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.confirm")}
                             </button>
                           </div>
-                          {joinError && (
-                            <p className="modal-error" role="alert">{joinError}</p>
-                          )}
                         </form>
                       )}
+                      {joinError && <p className="modal-error" role="alert">{joinError}</p>}
                     </section>
                   ) : (
                     <form className="social-card social-join-card" onSubmit={joinActivity}>
@@ -404,9 +430,24 @@ export default function ActivityDetailPage({
                         <span className="activity-join-account">
                           {t("club.detail.join.asAccount", { name: user?.displayName ?? "" })}
                         </span>
-                        <button className="button-primary" type="submit" disabled={joinLoading}>
-                          {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.join")}
-                        </button>
+                        {activity.participants.some((participant) =>
+                          isOwnParticipant(user.displayName, participant),
+                        ) ? (
+                          <button
+                            className="button-secondary"
+                            type="button"
+                            disabled={joinLoading}
+                            onClick={() => void leaveOwnActivity()}
+                          >
+                            {joinLoading
+                              ? t("club.detail.join.registering")
+                              : t("club.detail.join.cancelRegistration")}
+                          </button>
+                        ) : (
+                          <button className="button-primary" type="submit" disabled={joinLoading}>
+                            {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.join")}
+                          </button>
+                        )}
                       </div>
                       {joinError && <p className="modal-error" role="alert">{joinError}</p>}
                     </form>

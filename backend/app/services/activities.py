@@ -97,6 +97,7 @@ def to_activity_out(activity: Activity, repeat_by_series: dict[uuid.UUID, dict])
     repeat = repeat_by_series.get(activity.recurrence_series_id) if activity.recurrence_series_id else None
     return ActivityOut(
         id=activity.id,
+        approved=activity.approved,
         kind=activity.kind,
         recurrence_series_id=activity.recurrence_series_id,
         repeat=repeat or activity.repeat,
@@ -113,9 +114,11 @@ def to_activity_out(activity: Activity, repeat_by_series: dict[uuid.UUID, dict])
     )
 
 
-async def get_activity_or_404(db: AsyncSession, activity_id: uuid.UUID) -> Activity:
+async def get_activity_or_404(
+    db: AsyncSession, activity_id: uuid.UUID, *, include_pending: bool = False
+) -> Activity:
     activity = await db.get(Activity, activity_id)
-    if not activity:
+    if not activity or (not activity.approved and not include_pending):
         raise AppError("Không tìm thấy hoạt động.", 404)
     return activity
 
@@ -129,7 +132,11 @@ def validate_person_name(raw: str, message: str = "Tên cần từ 2 đến 40 k
 
 # ----------------------------------------------------------------- queries
 async def list_activities(db: AsyncSession) -> list[ActivityOut]:
-    activities = (await db.scalars(select(Activity).order_by(Activity.created_at.desc()))).all()
+    activities = (
+        await db.scalars(
+            select(Activity).where(Activity.approved.is_(True)).order_by(Activity.created_at.desc())
+        )
+    ).all()
     recurrences = (await db.scalars(select(ActivityRecurrence))).all()
     repeat_by_series = {rec.id: repeat_config(rec) for rec in recurrences}
     return [to_activity_out(activity, repeat_by_series) for activity in activities]
@@ -152,6 +159,7 @@ async def list_activity_page(db: AsyncSession, offset: int, limit: int) -> tuple
                 Activity.recurrence_series_id.is_(None)
                 | (Activity.id == series_root_id)
             )
+            .where(Activity.approved.is_(True))
             .order_by(Activity.created_at.desc(), Activity.id)
             .offset(offset)
             .limit(limit + 1)
@@ -167,6 +175,26 @@ async def list_activity_page(db: AsyncSession, offset: int, limit: int) -> tuple
         ).all()
         repeat_by_series = {rec.id: repeat_config(rec) for rec in recurrences}
     return [to_activity_out(activity, repeat_by_series) for activity in activities], has_more
+
+
+async def list_pending_activity_page(
+    db: AsyncSession, offset: int, limit: int
+) -> tuple[list[ActivityOut], bool]:
+    rows = (
+        await db.scalars(
+            select(Activity)
+            .outerjoin(
+                ActivityRecurrence,
+                Activity.recurrence_series_id == ActivityRecurrence.id,
+            )
+            .where(Activity.approved.is_(False), ActivityRecurrence.id.is_(None))
+            .order_by(Activity.created_at.desc(), Activity.id)
+            .offset(offset)
+            .limit(limit + 1)
+        )
+    ).all()
+    has_more = len(rows) > limit
+    return [to_activity_out(activity, {}) for activity in rows[:limit]], has_more
 
 
 async def get_activity_detail(db: AsyncSession, activity_id: uuid.UUID) -> tuple[ActivityOut, list[ActivityOut]]:
@@ -217,10 +245,72 @@ def _validate_repeat(raw: dict | None, day: date | None) -> dict | None:
     return config
 
 
+async def _activate_activity(
+    db: AsyncSession, activity: Activity
+) -> tuple[dict | None, int, uuid.UUID | None]:
+    """Create recurrence rows and the optional community post for an approved activity."""
+    recurrence_out: dict | None = None
+    generated = 0
+    if activity.repeat and activity.day and activity.date and activity.recurrence_series_id:
+        repeat = activity.repeat
+        anchor = activity.day.day
+        rec = ActivityRecurrence(
+            id=activity.recurrence_series_id,
+            interval=repeat["interval"],
+            end_type=repeat["endType"],
+            count=repeat.get("count"),
+            until=parse_day(repeat.get("until")),
+            next_day=next_activity_day(activity.day, repeat["interval"], anchor),
+            occurrence_count=1,
+            anchor_day=anchor,
+            template={
+                "kind": activity.kind,
+                "title": activity.title,
+                "description": activity.description,
+                "category": activity.category,
+                "creator": activity.creator,
+                "createdBy": str(activity.created_by) if activity.created_by else None,
+                "time": activity.date.astimezone(timezone.utc).strftime("%H:%M:%S"),
+                "repeat": repeat,
+            },
+        )
+        horizon = activity.day + timedelta(days=HORIZON_DAYS)
+        generated, _ = await expand_series(db, rec, horizon, MAX_OCCURRENCES_PER_RUN - 1)
+        if not is_complete(rec):
+            db.add(rec)
+            recurrence_out = {"id": str(rec.id), **repeat_config(rec)}
+
+    community_post_id = None
+    if activity.share_to_community and activity.created_by:
+        local_when = activity.date.astimezone(timezone(timedelta(hours=7))) if activity.date else None
+        activity_url = f"{get_settings().frontend_base_url.rstrip('/')}/activities/{activity.id}"
+        scheduled_time = f"{local_when:%d/%m/%Y %H:%M}" if local_when else ""
+        post = Post(
+            author_id=activity.created_by,
+            content=(
+                f"Hoạt động mới: {activity.title}\n"
+                "Nội dung:\n"
+                f"{activity.description}\n\n"
+                f"Loại hoạt động: {activity.category}\n"
+                f"Thời gian: {scheduled_time}\n"
+                f"Chi tiết và đăng ký:\n{activity_url}"
+            ),
+            link_url=activity_url,
+            link_title=activity.title,
+            link_description=activity.description,
+            link_site="Brave Active",
+        )
+        db.add(post)
+        await db.flush()
+        community_post_id = post.id
+
+    return recurrence_out, generated, community_post_id
+
+
 async def create_activity(
     db: AsyncSession, body: ActivityCreate, user: User
 ) -> tuple[Activity, dict | None, int, uuid.UUID | None]:
-    """Create an activity and optional community post in one transaction."""
+    """Create admin activities immediately and queue member activities for approval."""
     if body.kind not in (None, "activity"):
         raise AppError("Loại đăng ký không hợp lệ.", 400)
     if (
@@ -265,7 +355,9 @@ async def create_activity(
         date=when,
         day=day,
         creator=creator,
-        created_by=user.id if user else None,
+        created_by=user.id,
+        approved=user.role == "admin",
+        share_to_community=body.share_to_community,
     )
     db.add(activity)
     try:
@@ -274,61 +366,26 @@ async def create_activity(
         await db.rollback()
         raise AppError("Đã có hoạt động cùng tên trong ngày này.", 409) from None
 
-    recurrence_out: dict | None = None
-    generated = 0
-    if repeat and day and when:
-        anchor = day.day
-        rec = ActivityRecurrence(
-            id=series_id,
-            interval=repeat["interval"],
-            end_type=repeat["endType"],
-            count=repeat.get("count"),
-            until=parse_day(repeat.get("until")),
-            next_day=next_activity_day(day, repeat["interval"], anchor),
-            occurrence_count=1,
-            anchor_day=anchor,
-            template={
-                "kind": activity.kind,
-                "title": title,
-                "description": description,
-                "category": category,
-                "creator": creator,
-                "createdBy": str(user.id) if user else None,
-                "time": when.astimezone(timezone.utc).strftime("%H:%M:%S"),
-                "repeat": repeat,
-            },
-        )
-        horizon = day + timedelta(days=HORIZON_DAYS)
-        generated, _ = await expand_series(db, rec, horizon, MAX_OCCURRENCES_PER_RUN - 1)
-        if not is_complete(rec):
-            db.add(rec)
-            recurrence_out = {"id": str(rec.id), **repeat_config(rec)}
+    if not activity.approved:
+        await db.commit()
+        await db.refresh(activity)
+        return activity, None, 0, None
 
-    community_post_id = None
-    if body.share_to_community:
-        local_when = when.astimezone(timezone(timedelta(hours=7)))
-        activity_url = (
-            f"{get_settings().frontend_base_url.rstrip('/')}/activities/{activity.id}"
-        )
-        post = Post(
-            author_id=user.id,
-            content=(
-                f"Hoạt động mới: {title}\n"
-                "Nội dung:\n"
-                f"{description}\n\n"
-                f"Loại hoạt động: {category}\n"
-                f"Thời gian: {local_when:%d/%m/%Y %H:%M}\n"
-                f"Chi tiết và đăng ký:\n{activity_url}"
-            ),
-            link_url=activity_url,
-            link_title=title,
-            link_description=description,
-            link_site="Brave Active",
-        )
-        db.add(post)
-        await db.flush()
-        community_post_id = post.id
+    recurrence_out, generated, community_post_id = await _activate_activity(db, activity)
+    await db.commit()
+    await db.refresh(activity)
+    return activity, recurrence_out, generated, community_post_id
 
+
+async def approve_activity(
+    db: AsyncSession, activity_id: uuid.UUID
+) -> tuple[Activity, dict | None, int, uuid.UUID | None]:
+    """Approve a pending activity and materialize its recurrence and optional community post."""
+    activity = await get_activity_or_404(db, activity_id, include_pending=True)
+    if activity.approved:
+        raise AppError("Hoạt động này đã được duyệt.", 409)
+    activity.approved = True
+    recurrence_out, generated, community_post_id = await _activate_activity(db, activity)
     await db.commit()
     await db.refresh(activity)
     return activity, recurrence_out, generated, community_post_id
