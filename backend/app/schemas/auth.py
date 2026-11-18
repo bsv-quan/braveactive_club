@@ -18,13 +18,14 @@ def validate_password_strength(value: str) -> str:
 
 
 Password = Annotated[str, Field(max_length=128), AfterValidator(validate_password_strength)]
-CORPORATE_EMAIL_DOMAIN = "bravesoft.com.vn"
+CORPORATE_EMAIL_DOMAINS = ("bravesoft.vn", "bravesoft.com.vn")
 
 
 def validate_corporate_email(value: str) -> str:
     email = str(value).strip().lower()
-    if email.rsplit("@", 1)[-1] != CORPORATE_EMAIL_DOMAIN:
-        raise ValueError(f"Chỉ chấp nhận email @{CORPORATE_EMAIL_DOMAIN}.")
+    if email.rsplit("@", 1)[-1] not in CORPORATE_EMAIL_DOMAINS:
+        domains = " hoặc ".join(f"@{domain}" for domain in CORPORATE_EMAIL_DOMAINS)
+        raise ValueError(f"Chỉ chấp nhận email {domains}.")
     return email
 
 
