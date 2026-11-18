@@ -153,19 +153,58 @@ async def crawl_wired(db: AsyncSession) -> dict[str, int]:
                 logger.exception("Could not crawl Wired section %s", category)
 
     cached_rows = (await db.execute(select(ExternalNews.url, ExternalNews.category))).all()
-    cached_urls: dict[str, set[str]] = {}
+    cached_category_by_url: dict[str, str] = {}
     for url, category in cached_rows:
-        cached_urls.setdefault(category, set()).add(url)
+        cached_category_by_url[url] = category
 
+    changed_categories = {
+        category
+        for category, articles in successful.items()
+        if any(article.url not in cached_category_by_url for article in articles)
+    }
     updated: dict[str, int] = {}
+    if not changed_categories:
+        for category in successful:
+            updated[category] = 0
+            logger.info("Wired section %s is unchanged; keeping its cached headlines.", category)
+        return updated
+
+    successful_urls = {
+        category: {article.url for article in articles}
+        for category, articles in successful.items()
+    }
+    preferred_owner = {
+        url: owner_category
+        for url, owner_category in cached_category_by_url.items()
+        if owner_category not in changed_categories
+        or (
+            owner_category in successful_urls
+            and url in successful_urls[owner_category]
+        )
+    }
+    claimed_urls = {
+        url
+        for url, owner_category in preferred_owner.items()
+        if owner_category not in changed_categories
+    }
+    for category in changed_categories:
+        await db.execute(delete(ExternalNews).where(ExternalNews.category == category))
+
     for category, articles in successful.items():
-        article_urls = {article.url for article in articles}
-        if not article_urls.difference(cached_urls.get(category, set())):
+        if category not in changed_categories:
             updated[category] = 0
             logger.info("Wired section %s is unchanged; keeping its cached headlines.", category)
             continue
 
-        await db.execute(delete(ExternalNews).where(ExternalNews.category == category))
+        unique_articles = []
+        for article in articles:
+            owner_category = preferred_owner.get(article.url)
+            if owner_category is not None and owner_category != category:
+                continue
+            if article.url in claimed_urls and owner_category != category:
+                continue
+            unique_articles.append(article)
+            claimed_urls.add(article.url)
         db.add_all(
             ExternalNews(
                 url=article.url,
@@ -175,11 +214,11 @@ async def crawl_wired(db: AsyncSession) -> dict[str, int]:
                 image_url=article.image_url,
                 published_at=None,
             )
-            for article in articles
+            for article in unique_articles
         )
-        updated[category] = len(articles)
+        updated[category] = len(unique_articles)
 
-    if any(updated.values()):
+    if changed_categories:
         await db.flush()
         all_rows = (await db.scalars(select(ExternalNews))).all()
         random.shuffle(all_rows)
