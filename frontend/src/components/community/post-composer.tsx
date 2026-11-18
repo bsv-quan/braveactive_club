@@ -35,6 +35,7 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
   // URLs whose preview the user removed; they are not fetched again.
   const [dismissedUrl, setDismissedUrl] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const objectUrls = useRef(new Set<string>());
@@ -128,6 +129,7 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
     if (!content.trim() && !images.length) return setError(t("community.composer.empty"));
     setSubmitting(true);
     setError("");
+    setNotice("");
     try {
       const post = await communityApi.createPost({
         content: content.trim(),
@@ -136,6 +138,7 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
         skipPreview: Boolean(images.length) || (detectedUrl !== null && detectedUrl === dismissedUrl),
       });
       onPosted(post);
+      if (!post.approved) setNotice(t("community.composer.pendingApproval"));
       setContent("");
       clearImages();
       setPreview(null);
@@ -208,6 +211,7 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
       ) : null}
 
       {error ? <Alert tone="error">{error}</Alert> : null}
+      {notice ? <Alert tone="success">{notice}</Alert> : null}
 
       <div className="composer-actions">
         <input ref={fileInput} type="file" accept={ALLOWED_TYPES.join(",")} multiple hidden onChange={pickImage} />

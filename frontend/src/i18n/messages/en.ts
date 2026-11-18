@@ -180,6 +180,8 @@ const en: Messages = {
     admin: {
       postsTitle: "Manage posts",
       postsSubtitle: "Review and moderate community posts.",
+      pending: "Post is awaiting approval",
+      approve: "Approve post",
       accessDenied: "Administrator access is required to view this page.",
       loadError: "Could not load admin posts.",
       empty: "There are no posts yet.",
@@ -195,6 +197,7 @@ const en: Messages = {
       removeImage: "Remove photo",
       post: "Post",
       posting: "Posting...",
+      pendingApproval: "Your post was submitted and is waiting for an administrator's approval.",
       imageType: "Only JPG, PNG or WebP images are supported.",
       imageSize: "Image is too large (max {size} MB).",
       imageLimit: "You can add up to {max} photos to a post.",

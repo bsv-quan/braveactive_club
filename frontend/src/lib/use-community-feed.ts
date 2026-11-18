@@ -97,7 +97,7 @@ export function useCommunityFeed() {
   }, refresh);
 
   const addLocalPost = useCallback((post: CommunityPost) => {
-    setState((s) => ({ ...s, posts: mergePosts(s.posts, [post]) }));
+    if (post.approved) setState((s) => ({ ...s, posts: mergePosts(s.posts, [post]) }));
   }, []);
 
   const patchPost = useCallback((postId: string, patch: Partial<CommunityPost>) => {
