@@ -832,6 +832,9 @@ h1, h2, h3, p { margin-top: 0; }
 .ui-input-wrap input { width: 100%; border: 1px solid #dfe5df; border-radius: 8px; padding: 11px 12px; background: #fff; outline: none; }
 .ui-input-wrap input.has-icon { padding-left: 38px; }
 .ui-input-wrap input.has-trailing { padding-right: 44px; }
+.ui-input-wrap input.has-trailing:has(+ .ui-input-trailing-actions.has-copy) { padding-right: 78px; }
+.ui-input-trailing-actions { position: absolute; right: 6px; display: flex; align-items: center; }
+.ui-input-trailing-actions .ui-input-toggle { position: static; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #748078; cursor: pointer; }
 .ui-input-toggle { position: absolute; right: 6px; display: grid; place-items: center; width: 34px; height: 34px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: #748078; cursor: pointer; }
 .ui-input-toggle:hover { background: #f1f4ef; color: var(--green); }
 .ui-input-toggle:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
