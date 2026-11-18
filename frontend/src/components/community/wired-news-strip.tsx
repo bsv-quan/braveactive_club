@@ -45,6 +45,8 @@ export function WiredNewsStrip() {
     };
   }, [t]);
 
+  if (error || (!loading && items.length === 0)) return null;
+
   return (
     <section className="wired-news-strip" aria-label={t("community.wiredNews.source")}>
       <header className="wired-news-heading">
@@ -55,7 +57,6 @@ export function WiredNewsStrip() {
           {t("community.wiredNews.more")} <ArrowUpRight size={15} aria-hidden />
         </a>
       </header>
-      {error ? <p className="wired-news-state" role="status">{error}</p> : null}
       {loading && !items.length ? (
         <p className="wired-news-state">{t("community.wiredNews.loading")}</p>
       ) : items.length ? (
@@ -88,8 +89,6 @@ export function WiredNewsStrip() {
             );
           })}
         </div>
-      ) : !error ? (
-        <p className="wired-news-state">{t("community.wiredNews.empty")}</p>
       ) : null}
     </section>
   );

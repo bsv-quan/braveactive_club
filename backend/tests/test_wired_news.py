@@ -100,6 +100,42 @@ async def test_crawler_caches_up_to_five_latest_articles_per_section(monkeypatch
     } == before
 
 
+async def test_crawler_deduplicates_articles_shared_by_sections(monkeypatch):
+    async def fake_fetch_html(_client, url):
+        category = next(name for name, source in external_news.SOURCES if source == url)
+        slug = category.lower().replace(" ", "-")
+        html = f"""
+        <section>
+          <h2>Latest</h2>
+          <ul>
+            <li><a href="https://www.wired.com/story/shared-headline/">A shared headline across WIRED sections</a></li>
+            <li><a href="https://www.wired.com/story/{slug}-headline/">A unique {category} headline for this section</a></li>
+          </ul>
+        </section>
+        """
+        return html, url
+
+    monkeypatch.setattr(external_news, "_fetch_html", fake_fetch_html)
+    async with SessionFactory() as db:
+        first_result = await external_news.crawl_wired(db)
+        first_rows = (await db.scalars(select(ExternalNews))).all()
+        second_result = await external_news.crawl_wired(db)
+        second_rows = (await db.scalars(select(ExternalNews))).all()
+
+    assert first_result == {"Security": 2, "Politics": 1, "Big Story": 1}
+    assert len(first_rows) == 4
+    assert len({row.url for row in first_rows}) == 4
+    assert sum(row.url.endswith("/shared-headline/") for row in first_rows) == 1
+    assert second_result == {"Security": 0, "Politics": 0, "Big Story": 0}
+    assert {
+        row.url: (row.category, row.fetched_at, row.display_order)
+        for row in second_rows
+    } == {
+        row.url: (row.category, row.fetched_at, row.display_order)
+        for row in first_rows
+    }
+
+
 async def test_new_headline_replaces_only_its_section_and_persists_order(monkeypatch):
     new_security_headline = False
 
