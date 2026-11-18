@@ -10,10 +10,11 @@ from sqlalchemy import delete, func, select, text
 from app.api.deps import CurrentUser, DbSession
 from app.core.errors import AppError
 from app.core.security import hash_password
-from app.models import AccountRequest, Post, User, UserSession
+from app.models import AccountRequest, Feedback, Post, User, UserSession
 from app.schemas.club import ActivityCreated
 from app.schemas.auth import CorporateEmail, Password
 from app.schemas.base import CamelModel
+from app.schemas.feedback import FeedbackOut, FeedbackPage
 from app.services import activities as activity_service, community, notifications
 from app.services import uploads
 from app.services.realtime import manager, publish, publish_to_user
@@ -28,6 +29,28 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 Admin = Annotated[User, Depends(require_admin)]
+
+
+@router.get("/feedback", response_model=FeedbackPage)
+async def list_feedback(
+    db: DbSession,
+    _: Admin,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
+    rows = (
+        await db.scalars(
+            select(Feedback)
+            .order_by(Feedback.created_at.desc(), Feedback.id.desc())
+            .offset(offset)
+            .limit(limit + 1)
+        )
+    ).all()
+    page = rows[:limit]
+    return FeedbackPage(
+        feedback=[FeedbackOut.model_validate(item) for item in page],
+        has_more=len(rows) > limit,
+    )
 
 
 @router.get("/activities")

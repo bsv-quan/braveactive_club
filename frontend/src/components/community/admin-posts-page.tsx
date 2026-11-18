@@ -47,7 +47,16 @@ export function AdminPostsPage() {
   }, [loadPage, user?.id, user?.role]);
 
   const patchPost = useCallback((postId: string, patch: Partial<CommunityPost>) => {
-    setPosts((items) => items.map((post) => (post.id === postId ? { ...post, ...patch } : post)));
+    setPosts((items) =>
+      items
+        .map((post) => (post.id === postId ? { ...post, ...patch } : post))
+        .sort(
+          (left, right) =>
+            Number(left.approved) - Number(right.approved) ||
+            right.createdAt.localeCompare(left.createdAt) ||
+            right.id.localeCompare(left.id),
+        ),
+    );
   }, []);
 
   const removePost = useCallback((postId: string) => {
@@ -59,7 +68,6 @@ export function AdminPostsPage() {
     return (
       <section className="community">
         <div className="community-head">
-          <h1>{t("community.admin.postsTitle")}</h1>
           <p className="muted">{t("community.admin.accessDenied")}</p>
         </div>
         <Link className="ui-button ui-button-primary" href="/login?next=/admin/posts">
@@ -71,10 +79,6 @@ export function AdminPostsPage() {
 
   return (
     <section className="community admin-posts">
-      <div className="community-head">
-        <h1>{t("community.admin.postsTitle")}</h1>
-        <p className="muted">{t("community.admin.postsSubtitle")}</p>
-      </div>
       {posts.length === 0 && !loading && !error ? <p className="feed-note">{t("community.admin.empty")}</p> : null}
       {posts.map((post) => (
         <div className="admin-post-item" key={post.id}>

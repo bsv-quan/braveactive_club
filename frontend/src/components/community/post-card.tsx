@@ -250,6 +250,7 @@ function PostCardBase({
   }
 
   const canManage = viewerId !== null && (viewerId === post.author.id || isAdmin);
+  const canEdit = viewerId !== null && viewerId === post.author.id;
 
   return (
     <article className="post-card">
@@ -270,23 +271,23 @@ function PostCardBase({
             />
             {showPostMenu ? (
               <div className="post-menu" role="menu">
+                {canEdit ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowPostMenu(false);
+                      setDraft(post.content);
+                      setEditing(true);
+                    }}
+                  >
+                    <Pencil size={16} aria-hidden /> {t("community.post.edit")}
+                  </button>
+                ) : null}
                 {canManage ? (
-                  <>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setShowPostMenu(false);
-                        setDraft(post.content);
-                        setEditing(true);
-                      }}
-                    >
-                      <Pencil size={16} aria-hidden /> {t("community.post.edit")}
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => { setShowPostMenu(false); void handleDelete(); }}>
-                      <Trash2 size={16} aria-hidden /> {t("community.post.delete")}
-                    </button>
-                  </>
+                  <button type="button" role="menuitem" onClick={() => { setShowPostMenu(false); void handleDelete(); }}>
+                    <Trash2 size={16} aria-hidden /> {t("community.post.delete")}
+                  </button>
                 ) : null}
                 {!showFullContent ? (
                   <button

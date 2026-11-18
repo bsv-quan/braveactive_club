@@ -34,6 +34,14 @@ export type PostComment = {
 };
 
 export type PostPage = { posts: CommunityPost[]; nextCursor: string | null };
+export type FeedbackItem = {
+  id: string;
+  authorName: string | null;
+  title: string;
+  content: string;
+  createdAt: string;
+};
+export type FeedbackPage = { feedback: FeedbackItem[]; hasMore: boolean };
 export type UserNotification = {
   id: string;
   actorName: string;
@@ -74,6 +82,10 @@ export type NewPostInput = {
 };
 
 export const communityApi = {
+  submitFeedback: (input: { title: string; content: string }) =>
+    apiJson<FeedbackItem>("/api/feedback", { method: "POST", json: input }),
+  listAdminFeedback: (offset = 0, limit = 50) =>
+    apiJson<FeedbackPage>(`/api/admin/feedback?limit=${limit}&offset=${offset}`, { cache: "no-store" }),
   getPresence: (userIds: string[]) => {
     const query = new URLSearchParams();
     userIds.slice(0, 100).forEach((id) => query.append("userIds", id));

@@ -176,6 +176,58 @@ async def test_owner_can_edit_comment(client):
     assert updated.json()["author"]["displayName"] == "Alice"
 
 
+async def test_admin_cannot_edit_another_users_post(client):
+    author_csrf = await register(client, "author@bravesoft.com.vn", "Author")
+    post = await client.post("/api/posts", data={"content": "Author's text"}, headers=author_csrf)
+    await client.post("/api/auth/logout", headers=author_csrf)
+
+    admin_csrf = await register(client, "admin@bravesoft.com.vn", "Admin")
+    await promote_to_admin("admin@bravesoft.com.vn")
+    response = await client.put(
+        f"/api/posts/{post.json()['id']}",
+        json={"content": "Changed by admin"},
+        headers=admin_csrf,
+    )
+
+    assert response.status_code == 403
+    assert response.json()["error"] == "Bạn không có quyền sửa bài đăng này."
+
+
+async def test_feedback_submission_and_admin_listing(client):
+    anonymous = await client.post(
+        "/api/feedback",
+        json={"title": "  A suggestion  ", "content": "  Let us share ideas.  "},
+    )
+    assert anonymous.status_code == 201
+    assert anonymous.json()["title"] == "A suggestion"
+    assert anonymous.json()["content"] == "Let us share ideas."
+    assert anonymous.json()["authorName"] is None
+
+    member_csrf = await register(client, "member@bravesoft.com.vn", "Member")
+    member_feedback = await client.post(
+        "/api/feedback",
+        json={"title": "Member suggestion", "content": "A member idea."},
+        headers=member_csrf,
+    )
+    assert member_feedback.status_code == 201
+    assert member_feedback.json()["authorName"] == "Member"
+    assert (await client.get("/api/admin/feedback")).status_code == 403
+
+    await promote_to_admin("member@bravesoft.com.vn")
+    first = await client.get("/api/admin/feedback", params={"limit": 1})
+    assert first.status_code == 200
+    assert len(first.json()["feedback"]) == 1
+    assert first.json()["hasMore"] is True
+    second = await client.get("/api/admin/feedback", params={"limit": 1, "offset": 1})
+    assert len(second.json()["feedback"]) == 1
+    assert second.json()["hasMore"] is False
+
+
+async def test_feedback_requires_nonblank_title_and_content(client):
+    response = await client.post("/api/feedback", json={"title": "   ", "content": "Message"})
+    assert response.status_code == 400
+
+
 async def test_profile_avatar_upload_and_profile_update(client):
     csrf = await register(client)
     uploaded = await client.put(
@@ -275,6 +327,25 @@ async def test_pagination(client):
     assert len(first["posts"]) == 3 and first["nextCursor"]
     second = (await client.get("/api/posts", params={"limit": 3, "cursor": first["nextCursor"]})).json()
     assert len(second["posts"]) == 2 and second["nextCursor"] is None
+
+
+async def test_admin_post_queue_prioritizes_pending_posts_across_pages(client):
+    csrf = await register(client)
+    pending = await client.post("/api/posts", data={"content": "Needs review"}, headers=csrf)
+    await promote_to_admin()
+    approved = await client.post("/api/posts", data={"content": "Already approved"}, headers=csrf)
+
+    first = await client.get("/api/admin/posts", params={"limit": 1})
+    assert first.status_code == 200
+    assert first.json()["posts"][0]["id"] == pending.json()["id"]
+    assert first.json()["posts"][0]["approved"] is False
+    assert first.json()["nextCursor"]
+
+    second = await client.get(
+        "/api/admin/posts",
+        params={"limit": 1, "cursor": first.json()["nextCursor"]},
+    )
+    assert second.json()["posts"][0]["id"] == approved.json()["id"]
 
 
 async def test_admin_post_management_requires_admin_role(client):

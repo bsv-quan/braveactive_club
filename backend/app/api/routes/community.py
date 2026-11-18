@@ -22,6 +22,7 @@ from app.schemas.community import (
     PostUpdate,
     CommentUpdate,
 )
+from app.schemas.feedback import FeedbackCreate, FeedbackOut
 from app.schemas.notifications import MarkNotificationsRead, NotificationPage
 from app.schemas.external_news import ExternalNewsPage
 from app.schemas.auth import MessageOut
@@ -32,7 +33,7 @@ from app.services.realtime import manager, publish, publish_to_user
 from app.db.session import SessionFactory
 from app.services.auth import get_user_by_session
 from app.core.security import hash_token
-from app.models import Post
+from app.models import Feedback, Post
 from pydantic import BaseModel
 
 logger = logging.getLogger("app.community")
@@ -51,6 +52,25 @@ async def list_posts(
 ):
     """Public feed (guests can read everything)."""
     return await community.list_posts(db, viewer, cursor, limit)
+
+
+@router.post(
+    "/feedback",
+    response_model=FeedbackOut,
+    status_code=201,
+    dependencies=[Depends(rate_limit("feedback", 5, 3600))],
+)
+async def submit_feedback(body: FeedbackCreate, db: DbSession, user: OptionalUser):
+    feedback = Feedback(
+        author_id=user.id if user else None,
+        author_name=user.display_name if user else None,
+        title=body.title,
+        content=body.content,
+    )
+    db.add(feedback)
+    await db.commit()
+    await db.refresh(feedback)
+    return feedback
 
 
 @router.get("/news/wired", response_model=ExternalNewsPage)
@@ -95,7 +115,7 @@ async def list_posts_for_admin(
     if user.role != "admin":
         raise AppError("Bạn không có quyền truy cập trang quản lý.", 403)
     return await community.list_posts(
-        db, user, cursor, limit, include_hidden=True, include_unapproved=True
+        db, user, cursor, limit, include_hidden=True, include_unapproved=True, pending_first=True
     )
 
 
