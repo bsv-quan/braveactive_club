@@ -36,6 +36,7 @@ const en: Messages = {
   },
   admin: {
     title: "Administration", users: "Users", requests: "Requests", posts: "Posts", activities: "Activities",
+    addNewUser: "Add new user",
     error: "Could not complete the administration action.", editUser: "Edit user",
     createUser: "Add user", initialPassword: "Temporary password (8+ characters, letters and numbers)",
     nameCanBeSetLater: "The user can choose their display name from their profile after signing in.",
@@ -297,6 +298,7 @@ const en: Messages = {
       loginToParticipate: "Log in to join or create activities",
       loginToCreateActivity: "Log in to create an activity.",
       loginToCreateAnnouncement: "Log in to create an announcement.",
+      adminOnlyAnnouncement: "Only administrators can create announcements.",
     },
     errors: {
       loadContent: "Could not load the news feed.",

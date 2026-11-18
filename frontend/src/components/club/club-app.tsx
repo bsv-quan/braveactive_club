@@ -165,7 +165,6 @@ export default function ClubApp({ initialView }: { initialView: View }) {
       .slice(0, 3);
   }, [activities]);
   const allAnnouncements = useMemo(() => content?.announcements ?? [], [content]);
-  const announcementLoginHref = `/login?next=${encodeURIComponent("/activities/announcements/new")}`;
   const movePeriod = useCallback((direction: number) => {
     setAnchorDate((current) => {
       const next = new Date(current);
@@ -523,7 +522,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               actionError={announcementActionError}
               actionLoading={announcementActionLoading}
               canManage={user !== null}
-              createHref={user || authLoading ? "/activities/announcements/new" : announcementLoginHref}
+              canCreate={user?.role === "admin"}
               onRetry={retryContent}
               onEdit={handleEditAnnouncement}
               onDelete={handleDeleteAnnouncement}
@@ -536,11 +535,15 @@ export default function ClubApp({ initialView }: { initialView: View }) {
               <div className="eyebrow"><span className="eyebrow-dot" /> {t("club.announcements.createPage.eyebrow")}</div>
               <h1>{t("club.announcements.createPage.title")}<span className="hero-period">.</span></h1>
               <p>{t("club.announcements.createPage.subtitle")}</p>
-              {!authLoading && !user ? (
+              {authLoading ? (
+                <p>{t("common.loading")}</p>
+              ) : !user ? (
                 <p className="modal-error" role="alert">
                   {t("club.auth.loginToCreateAnnouncement")}{" "}
                   <Link className="text-link" href={loginHref}>{t("club.auth.login")}</Link>
                 </p>
+              ) : user.role !== "admin" ? (
+                <p className="modal-error" role="alert">{t("club.auth.adminOnlyAnnouncement")}</p>
               ) : (
               <form className="activity-form" onSubmit={createAnnouncement}>
                 <label htmlFor="announcement-category">{t("club.announcements.form.categoryLabel")}</label>

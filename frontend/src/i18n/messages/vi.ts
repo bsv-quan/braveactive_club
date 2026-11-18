@@ -39,6 +39,7 @@ const vi = {
   },
   admin: {
     title: "Quản trị", users: "Người dùng", requests: "Yêu cầu", posts: "Bài đăng", activities: "Hoạt động",
+    addNewUser: "Thêm người dùng mới",
     error: "Không thể hoàn tất thao tác quản trị.", editUser: "Sửa người dùng",
     createUser: "Thêm người dùng", initialPassword: "Mật khẩu tạm thời (tối thiểu 8 ký tự, có chữ và số)",
     nameCanBeSetLater: "Người dùng có thể tự đặt tên hiển thị trong hồ sơ sau khi đăng nhập.",
@@ -300,6 +301,7 @@ const vi = {
       loginToParticipate: "Đăng nhập để tham gia hoặc tạo hoạt động",
       loginToCreateActivity: "Đăng nhập để tạo hoạt động.",
       loginToCreateAnnouncement: "Đăng nhập để tạo thông báo.",
+      adminOnlyAnnouncement: "Chỉ quản trị viên mới có thể tạo thông báo.",
     },
     errors: {
       loadContent: "Không thể tải bảng tin.",

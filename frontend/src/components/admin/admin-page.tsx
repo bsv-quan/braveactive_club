@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Dices } from "lucide-react";
+import { Check, Copy, Dices, UserPlus } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AdminActivitiesPanel } from "@/components/admin/admin-activities-panel";
 import { AdminPostsPage } from "@/components/community/admin-posts-page";
@@ -49,6 +49,7 @@ export function AdminPage() {
   const [name, setName] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"user" | "admin">("user");
+  const [addingUser, setAddingUser] = useState(false);
   const [editing, setEditing] = useState<string | null>(null);
   const [approving, setApproving] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
@@ -78,6 +79,7 @@ export function AdminPage() {
     try {
       await action();
       setPassword("");
+      setAddingUser(false);
       setApproving(null);
       setEditing(null);
       setEmail("");
@@ -106,6 +108,17 @@ export function AdminPage() {
     } catch (reason) {
       setError(errorMessage(reason, t("admin.passwordGenerationError")));
     }
+  }
+
+  function closeUserForm() {
+    setAddingUser(false);
+    setEditing(null);
+    setEmail("");
+    setName("");
+    setPassword("");
+    setRole("user");
+    setCopied(null);
+    setError("");
   }
 
   function copyButton(key: string, value: string, label: string) {
@@ -144,7 +157,7 @@ export function AdminPage() {
       <nav className="admin-tabs" aria-label={t("admin.title")}>
         {(["users", "requests", "posts", "activities"] as const).map((item) => (
           <button key={item} type="button" className={tab === item ? "button-primary" : "button-secondary"}
-            aria-pressed={tab === item} onClick={() => { setTab(item); setError(""); setEditing(null); setApproving(null); setPassword(""); setCredentialNotice(null); }}>
+            aria-pressed={tab === item} onClick={() => { setTab(item); setError(""); setAddingUser(false); setEditing(null); setApproving(null); setPassword(""); setCredentialNotice(null); }}>
             {t(`admin.${item}`)}
           </button>
         ))}
@@ -157,7 +170,25 @@ export function AdminPage() {
           {tab === "posts" ? <AdminPostsPage /> : tab === "activities" ? <AdminActivitiesPanel /> : tab === "users" ? (
         <>
           {credentialNotice && credentialSummary(credentialNotice)}
-          <form className="admin-form" onSubmit={(event) => {
+          {!addingUser && !editing ? (
+            <Button
+              type="button"
+              variant="secondary"
+              icon={UserPlus}
+              onClick={() => {
+                setEmail("");
+                setPassword("");
+                setName("");
+                setRole("user");
+                setCopied(null);
+                setCredentialNotice(null);
+                setAddingUser(true);
+              }}
+            >
+              {t("admin.addNewUser")}
+            </Button>
+          ) : null}
+          {addingUser || editing ? <form className="admin-form" onSubmit={(event) => {
             event.preventDefault();
             const submittedEmail = email.trim().toLowerCase();
             const submittedPassword = password;
@@ -187,13 +218,13 @@ export function AdminPage() {
             {editing && <label>{t("auth.register.displayName")}<input required minLength={2} maxLength={40} value={name} onChange={(e) => setName(e.target.value)} /></label>}
             <label>{t("admin.role")}<select className="ui-select" value={role} onChange={(e) => setRole(e.target.value === "admin" ? "admin" : "user")}><option value="user">{t("admin.member")}</option><option value="admin">{t("admin.adminRole")}</option></select></label>
             <Button type="submit" loading={busy}>{t("admin.save")}</Button>
-            {editing && <Button variant="ghost" onClick={() => { setEditing(null); setName(""); setRole("user"); }}>{t("common.cancel")}</Button>}
-          </form>
+            <Button type="button" variant="ghost" disabled={busy} onClick={closeUserForm}>{t("common.cancel")}</Button>
+          </form> : null}
           {users.map((item) => (
             <article key={item.id} className="admin-row">
               <span><strong>{item.displayName}</strong> · {item.email} · {item.role === "admin" ? t("admin.adminRole") : t("admin.member")}</span>
               <div className="admin-row-actions">
-                <button className="button-secondary admin-row-action" type="button" onClick={() => { setEditing(item.id); setName(item.displayName); setRole(item.role); setCredentialNotice(null); }}>{t("admin.edit")}</button>
+                <button className="button-secondary admin-row-action" type="button" onClick={() => { setAddingUser(false); setEmail(""); setPassword(""); setEditing(item.id); setName(item.displayName); setRole(item.role); setCredentialNotice(null); }}>{t("admin.edit")}</button>
                 {item.id !== user.id && <button className="button-secondary admin-row-action" type="button" disabled={busy} onClick={() => {
                   if (window.confirm(t("admin.deleteUserConfirm", { email: item.email }))) void perform(() => apiJson(`/api/admin/users/${item.id}`, { method: "DELETE" }));
                 }}>{t("common.delete")}</button>}

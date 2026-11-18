@@ -73,9 +73,9 @@ type AnnouncementFeedProps = {
   contentError: string;
   actionError: string;
   actionLoading: boolean;
-  /** The API does not expose an owner, so any signed-in user sees the buttons; the backend enforces owner-or-admin. */
+  /** The API does not expose an owner, so signed-in users see edit/delete controls; the backend enforces owner-or-admin. */
   canManage: boolean;
-  createHref: string;
+  canCreate: boolean;
   onRetry: () => void;
   onEdit: (announcement: ClubAnnouncement) => void;
   onDelete: (announcement: ClubAnnouncement) => void;
@@ -88,7 +88,7 @@ function AnnouncementFeedSectionBase({
   actionError,
   actionLoading,
   canManage,
-  createHref,
+  canCreate,
   onRetry,
   onEdit,
   onDelete,
@@ -101,9 +101,11 @@ function AnnouncementFeedSectionBase({
           <span className="section-kicker">{t("club.announcements.kicker")}</span>
           <h2>{t("club.announcements.title")}<span className="hero-period">.</span></h2>
         </div>
-        <Link className="button-primary" href={createHref}>
-          <span className="create-button-plus">+</span> {t("club.announcements.create")}
-        </Link>
+        {canCreate && (
+          <Link className="button-primary" href="/activities/announcements/new">
+            <span className="create-button-plus">+</span> {t("club.announcements.create")}
+          </Link>
+        )}
       </div>
       <div className="activity-feed">
         {welcomeAnnouncement && (

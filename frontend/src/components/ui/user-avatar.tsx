@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useI18n } from "@/i18n/i18n-provider";
 
 const AVATAR_COLORS = ["#f4c6a8", "#cfe3b6", "#c9c6e8", "#f2dc9b", "#b7d7e8", "#f0b9c5"];
@@ -61,7 +62,7 @@ export function UserAvatar({
           </button>
           {online !== undefined ? <PresenceIndicator online={online} /> : null}
         </span>
-        {isOpen ? (
+        {isOpen ? createPortal(
           <div
             className="avatar-viewer-backdrop"
             role="dialog"
@@ -82,7 +83,8 @@ export function UserAvatar({
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img className="avatar-viewer-image" src={avatarUrl} alt={name} onClick={(event) => event.stopPropagation()} />
-          </div>
+          </div>,
+          document.body,
         ) : null}
       </>
     );

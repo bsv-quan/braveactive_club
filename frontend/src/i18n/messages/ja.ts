@@ -36,6 +36,7 @@ const ja: Messages = {
   },
   admin: {
     title: "管理", users: "ユーザー", requests: "申請", posts: "投稿", activities: "アクティビティ",
+    addNewUser: "新しいユーザーを追加",
     error: "管理操作を完了できませんでした。", editUser: "ユーザーを編集",
     createUser: "ユーザーを追加", initialPassword: "一時パスワード（英字と数字を含む8文字以上）",
     nameCanBeSetLater: "ユーザーはログイン後、プロフィールから表示名を設定できます。",
@@ -297,6 +298,7 @@ const ja: Messages = {
       loginToParticipate: "ログインして活動への参加または作成を行ってください",
       loginToCreateActivity: "ログインして活動を作成してください。",
       loginToCreateAnnouncement: "ログインしてお知らせを作成してください。",
+      adminOnlyAnnouncement: "お知らせを作成できるのは管理者のみです。",
     },
     errors: {
       loadContent: "ニュースフィードを読み込めませんでした。",
