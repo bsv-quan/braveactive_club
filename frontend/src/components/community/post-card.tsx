@@ -10,6 +10,7 @@ import { IconButton } from "@/components/ui/button";
 import { Alert } from "@/components/ui/form-controls";
 import { communityApi, type CommunityPost } from "@/lib/api/community";
 import { errorMessage } from "@/lib/api/client";
+import { copyToClipboard } from "@/lib/clipboard";
 import { formatRelativeTime, splitLinks } from "@/lib/format";
 import { useI18n } from "@/i18n/i18n-provider";
 import { CommentSection } from "./comment-section";
@@ -239,7 +240,7 @@ function PostCardBase({
       if (navigator.share) {
         await navigator.share({ title: post.content.slice(0, 100), text: post.content, url });
       } else {
-        await navigator.clipboard.writeText(url);
+        await copyToClipboard(url);
         setShareNotice(t("community.post.linkCopied"));
       }
     } catch (err) {

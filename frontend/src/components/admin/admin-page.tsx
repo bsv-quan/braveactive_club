@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { PasswordField } from "@/components/ui/form-controls";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
+import { copyToClipboard } from "@/lib/clipboard";
 
 type User = { id: string; email: string; displayName: string; role: "user" | "admin" };
 type Request = { id: string; email: string; displayName: string | null; purpose: "register" | "reset"; createdAt: string };
@@ -89,7 +90,7 @@ export function AdminPage() {
 
   async function copyValue(key: string, value: string) {
     try {
-      await navigator.clipboard.writeText(value);
+      await copyToClipboard(value);
       setCopied(key);
       setError("");
     } catch (reason) {
@@ -177,9 +178,10 @@ export function AdminPage() {
                 </div>
                 <p className="admin-form-hint">{t("admin.nameCanBeSetLater")}</p>
                 <div className="admin-password-row">
-                  <PasswordField label={t("admin.initialPassword")} name="initialPassword" required minLength={8} maxLength={128} value={password} onChange={(e) => { setPassword(e.target.value); setCredentialNotice(null); }} autoComplete="new-password" />
+                  <PasswordField label={t("admin.initialPassword")} name="initialPassword" required minLength={8} maxLength={128} value={password} onChange={(e) => { setPassword(e.target.value); setCopied(null); setCredentialNotice(null); }} autoComplete="new-password"
+                    onCopy={password ? () => void copyValue("new-password", password) : undefined}
+                    copyLabel={t("admin.copyPassword")} copiedLabel={t("admin.copied")} copied={copied === "new-password"} />
                   <Button type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
-                  {password && copyButton("new-password", password, t("admin.copyPassword"))}
                 </div>
               </>
             )}
@@ -218,10 +220,11 @@ export function AdminPage() {
                   });
                 }}>
                   <div className="admin-password-row">
-                    <PasswordField label={t("admin.initialPassword")} name="approvalPassword" minLength={8} maxLength={128} required value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="new-password" />
-                    <Button type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
-                    {password && copyButton("approval-password", password, t("admin.copyPassword"))}
-                  </div>
+                  <PasswordField label={t("admin.initialPassword")} name="approvalPassword" minLength={8} maxLength={128} required value={password} onChange={(e) => { setPassword(e.target.value); setCopied(null); }} autoComplete="new-password"
+                    onCopy={password ? () => void copyValue("approval-password", password) : undefined}
+                    copyLabel={t("admin.copyPassword")} copiedLabel={t("admin.copied")} copied={copied === "approval-password"} />
+                  <Button type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
+                </div>
                   <Button type="submit" loading={busy}>{t("admin.approve")}</Button>
                   <Button variant="ghost" onClick={() => { setApproving(null); setPassword(""); }}>{t("common.cancel")}</Button>
                 </form>
