@@ -32,13 +32,14 @@ export function TextField({ label, icon: Icon, hint, trailing, id, name, classNa
 
 type PasswordFieldProps = Omit<TextFieldProps, "type" | "trailing"> & {
   onCopy?: () => void;
+  copyDisabled?: boolean;
   copyLabel?: string;
   copiedLabel?: string;
   copied?: boolean;
 };
 
 /** Password input with an accessible control to reveal or conceal its value. */
-export function PasswordField({ onCopy, copyLabel, copiedLabel, copied = false, ...props }: PasswordFieldProps) {
+export function PasswordField({ onCopy, copyDisabled = false, copyLabel, copiedLabel, copied = false, ...props }: PasswordFieldProps) {
   const { t } = useI18n();
   const [visible, setVisible] = useState(false);
   const visibilityLabel = t(visible ? "common.hidePassword" : "common.showPassword");
@@ -55,6 +56,7 @@ export function PasswordField({ onCopy, copyLabel, copiedLabel, copied = false, 
             <button
               type="button"
               className="ui-input-toggle"
+              disabled={copyDisabled}
               aria-label={copied ? copiedLabel : copyLabel}
               title={copied ? copiedLabel : copyLabel}
               onMouseDown={(event) => event.preventDefault()}

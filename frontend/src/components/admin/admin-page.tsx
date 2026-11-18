@@ -119,10 +119,9 @@ export function AdminPage() {
         className="admin-row-action"
         icon={Icon}
         aria-label={isCopied ? t("admin.copied") : label}
+        title={isCopied ? t("admin.copied") : label}
         onClick={() => void copyValue(key, value)}
-      >
-        {isCopied ? t("admin.copied") : label}
-      </Button>
+      />
     );
   }
 
@@ -221,7 +220,7 @@ export function AdminPage() {
                 }}>
                   <div className="admin-password-row">
                   <PasswordField label={t("admin.initialPassword")} name="approvalPassword" minLength={8} maxLength={128} required value={password} onChange={(e) => { setPassword(e.target.value); setCopied(null); }} autoComplete="new-password"
-                    onCopy={password ? () => void copyValue("approval-password", password) : undefined}
+                    onCopy={() => void copyValue("approval-password", password)} copyDisabled={!password}
                     copyLabel={t("admin.copyPassword")} copiedLabel={t("admin.copied")} copied={copied === "approval-password"} />
                   <Button className="admin-generate-password" type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
                 </div>
