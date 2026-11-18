@@ -67,6 +67,7 @@ export function WiredNewsStrip() {
               : item.category === "Politics"
                 ? t("community.wiredNews.categories.politics")
                 : t("community.wiredNews.categories.bigStory");
+            const categoryClass = item.category.toLowerCase().replace(" ", "-");
             return (
               <a
                 className="wired-news-card"
@@ -79,7 +80,7 @@ export function WiredNewsStrip() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img className="wired-news-image" src={item.imageUrl} alt="" loading="lazy" decoding="async" />
                 ) : null}
-                <span className="wired-news-category">
+                <span className={`wired-news-category wired-news-category-${categoryClass}`}>
                   {categoryLabel}
                 </span>
                 <strong>{item.title}</strong>

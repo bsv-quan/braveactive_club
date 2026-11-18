@@ -3,6 +3,7 @@
 from fastapi import APIRouter
 
 from app.api.deps import CurrentUser, DbSession
+from app.core.errors import AppError
 from app.schemas.club import AnnouncementBody, ContentOut
 from app.services import announcements as service
 
@@ -16,6 +17,8 @@ async def get_content(db: DbSession):
 
 @router.post("/announcements", status_code=201)
 async def create_announcement(body: AnnouncementBody, db: DbSession, user: CurrentUser):
+    if user.role != "admin":
+        raise AppError("Chỉ quản trị viên mới có thể tạo thông báo.", 403)
     return {"announcement": await service.create_announcement(db, user, body)}
 
 

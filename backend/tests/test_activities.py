@@ -233,16 +233,18 @@ async def test_announcements_and_content(client):
     csrf = await register(client)
     body = {"title": "Giải đấu mới", "description": "Đăng ký tham gia nhé", "category": "CẦU LÔNG"}
     assert (await client.post("/api/announcements", json=body)).status_code == 403  # cookie without CSRF header
-    created = await client.post("/api/announcements", json=body, headers=csrf)
+    assert (await client.post("/api/announcements", json=body, headers=csrf)).status_code == 403
+    admin_csrf = await login_as_admin(client)
+    created = await client.post("/api/announcements", json=body, headers=admin_csrf)
     assert created.status_code == 201
     content = (await client.get("/api/content")).json()
     assert [a["id"] for a in content["announcements"]][0] == "welcome"
     assert len(content["announcements"]) == 2 and len(content["posts"]) == 3
 
     ann_id = created.json()["announcement"]["id"]
-    edited = await client.patch(f"/api/announcements/{ann_id}", json={**body, "title": "Giải đấu 2"}, headers=csrf)
+    edited = await client.patch(f"/api/announcements/{ann_id}", json={**body, "title": "Giải đấu 2"}, headers=admin_csrf)
     assert edited.json()["announcement"]["title"] == "Giải đấu 2"
-    assert (await client.delete(f"/api/announcements/{ann_id}", headers=csrf)).status_code == 200
+    assert (await client.delete(f"/api/announcements/{ann_id}", headers=admin_csrf)).status_code == 200
 
 
 async def test_cron_requires_secret(client):
