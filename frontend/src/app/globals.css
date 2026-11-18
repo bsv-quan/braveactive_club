@@ -878,6 +878,7 @@ h1, h2, h3, p { margin-top: 0; }
 .admin-email-field label { width: 100%; }
 .admin-password-row { display: flex; flex: 1 1 100%; flex-wrap: wrap; align-items: end; gap: 8px; min-width: 0; }
 .admin-password-row > .ui-field { flex: 1 1 240px; min-width: 0; }
+.admin-password-row > .admin-generate-password { margin-bottom: 3px; }
 .admin-form-hint { flex: 1 1 100%; margin: -7px 0 0; color: var(--muted); font-size: 12px; }
 .admin-credentials { display: grid; gap: 9px; margin: 10px 0 18px; padding: 13px; border: 1px solid #cfe1d1; border-radius: 8px; background: #f1f8f0; color: #355342; font-size: 12px; }
 .admin-credentials > div { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; overflow-wrap: anywhere; }
@@ -1136,6 +1137,7 @@ h1, h2, h3, p { margin-top: 0; }
   .admin-tabs { gap: 6px; }
   .admin-tabs .ui-button, .admin-tabs button { padding: 8px 10px; font-size: 12px; }
   .admin-password-row { align-items: stretch; }
+  .admin-password-row > .admin-generate-password { margin-bottom: 0; }
   .admin-password-row > .ui-field { flex-basis: 100%; }
   .auth-name { display: none; }
   .page-shell .topbar { height: auto; min-height: 56px; flex-wrap: wrap; gap: 8px; padding: 8px 0; }
