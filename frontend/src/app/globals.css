@@ -926,12 +926,41 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .admin-row-actions { display: flex; align-items: center; gap: 8px; }
 .admin-row-actions .admin-row-action { box-sizing: border-box; height: 34px; min-height: 34px; line-height: 1; white-space: nowrap; }
 .admin-post-item { display: grid; gap: 8px; margin-bottom: 4px; }
+.admin-ai-trigger { margin-bottom: 14px; }
 .admin-post-actions { display: flex; justify-content: flex-end; gap: 7px; padding: 0 2px; }
 .admin-post-action { display: inline-grid; place-items: center; width: 34px; height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-card); color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
-.feedback-launcher { position: fixed; z-index: 150; left: max(16px, env(safe-area-inset-left)); bottom: max(18px, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 9px; min-height: 48px; padding: 0 17px; border: 0; border-radius: 999px; background: var(--primary-gradient); color: #fff; box-shadow: 0 8px 26px #162b2840; font: 700 14px/1 Manrope, sans-serif; cursor: pointer; transition: transform .18s, box-shadow .18s; }
+.feedback-launcher { position: fixed; z-index: 150; right: max(16px, env(safe-area-inset-right)); bottom: max(18px, env(safe-area-inset-bottom)); display: inline-flex; align-items: center; gap: 9px; min-height: 48px; padding: 0 17px; border: 0; border-radius: 999px; background: var(--primary-gradient); color: #fff; box-shadow: 0 8px 26px #162b2840; font: 700 14px/1 Manrope, sans-serif; cursor: pointer; transition: transform .18s, box-shadow .18s, bottom .18s; }
 .feedback-launcher:hover { transform: translateY(-2px); box-shadow: 0 11px 30px #162b2852; }
 .feedback-launcher:focus-visible, .feedback-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--primary-color) 45%, transparent); outline-offset: 3px; }
 .feedback-backdrop { position: fixed; z-index: 2200; inset: 0; display: flex; align-items: center; justify-content: center; overflow-y: auto; padding: 20px; background: #10191499; backdrop-filter: blur(3px); }
+.admin-ai-backdrop { position: fixed; z-index: 2200; inset: 0; display: flex; align-items: center; justify-content: center; overflow-y: auto; padding: 20px; background: #10191499; backdrop-filter: blur(3px); }
+.admin-ai-dialog { position: relative; width: min(100%, 680px); max-height: min(92vh, 820px); max-height: min(92dvh, 820px); overflow-y: auto; padding: 26px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-card); color: var(--text-main); box-shadow: 0 24px 70px #10191445; }
+.admin-ai-dialog h2 { margin: 0 42px 6px 0; font: 800 24px/1.3 Manrope, sans-serif; }
+.admin-ai-dialog-intro { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
+.admin-ai-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)) auto; align-items: end; gap: 12px; }
+.admin-ai-fields label, .admin-ai-preview label { display: grid; gap: 6px; color: var(--text-muted); font-size: 12px; font-weight: 700; }
+.admin-ai-select-wrap { position: relative; display: block; }
+.admin-ai-fields select, .admin-ai-preview input, .admin-ai-preview textarea { width: 100%; min-width: 0; border: 1px solid var(--border-color); border-radius: 8px; padding: 10px 40px 10px 11px; background: var(--bg-input); color: var(--text-main); font: inherit; }
+.admin-ai-fields select { appearance: none; }
+.admin-ai-select-wrap > svg { position: absolute; top: 50%; right: 12px; color: var(--text-muted); pointer-events: none; transform: translateY(-50%); }
+.admin-ai-search { min-height: 42px; white-space: nowrap; }
+.admin-ai-preview { display: grid; gap: 12px; margin-top: 15px; }
+.admin-ai-preview textarea { min-height: 170px; resize: vertical; line-height: 1.55; }
+.admin-ai-source { display: grid; gap: 4px; padding: 11px 12px; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-hover); font-size: 12px; }
+.admin-ai-source > span { color: var(--text-muted); font-weight: 700; }
+.admin-ai-source a { overflow-wrap: anywhere; color: var(--primary-color); font-weight: 700; }
+.admin-ai-source time { color: var(--text-muted); }
+.admin-ai-loading { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 170px; color: var(--text-muted); font-size: 13px; }
+.admin-ai-hint, .admin-ai-approval-note { margin: 8px 0 0; color: var(--text-muted); font-size: 12px; line-height: 1.5; }
+.admin-ai-approval-note { margin: 0; }
+.admin-ai-dialog-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; margin-top: 18px; }
+@media (max-width: 560px) {
+  .admin-ai-dialog { padding: 21px 17px; }
+  .admin-ai-fields { grid-template-columns: 1fr; gap: 9px; }
+  .admin-ai-search { justify-content: center; }
+  .admin-ai-dialog-actions { display: grid; grid-template-columns: 1fr; }
+  .admin-ai-dialog-actions .ui-button { justify-content: center; }
+}
 .feedback-dialog { position: relative; width: min(100%, 480px); max-height: min(90vh, 720px); max-height: min(90dvh, 720px); overflow-y: auto; padding: 26px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-card); color: var(--text-main); box-shadow: 0 24px 70px #10191445; }
 .feedback-dialog h2 { margin: 0 42px 6px 0; font: 800 24px/1.3 Manrope, sans-serif; }
 .feedback-dialog > p { margin: 0 0 18px; color: var(--text-muted); font-size: 13px; line-height: 1.55; }
@@ -1044,23 +1073,6 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .community-upcoming-copy strong { overflow: hidden; color: #263a2e; font: 700 14px/1.35 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .community-upcoming-meta { color: #758078; font-size: 11px; }
 .community-upcoming-cta { display: inline-flex; flex: none; align-items: center; gap: 3px; color: var(--green); font-size: 11px; font-weight: 700; }
-.wired-news-strip { position: static; min-width: 0; padding: 14px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-card); box-shadow: 0 2px 8px rgba(15, 23, 42, .04); }
-.wired-news-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
-.wired-news-heading > div { min-width: 0; }
-.wired-news-kicker { display: inline-flex; align-items: center; gap: 5px; color: #78867b; font-size: 9px; font-weight: 800; letter-spacing: 1px; }
-.wired-news-heading h2 { margin: 3px 0 0; color: #263a2e; font: 700 17px/1.3 Manrope, sans-serif; }
-.wired-news-heading > a { display: inline-flex; flex: none; align-items: center; gap: 4px; color: var(--green); font-size: 11px; font-weight: 700; }
-.wired-news-list { display: flex; gap: 10px; overflow-x: auto; overscroll-behavior-x: contain; padding: 1px 1px 7px; scroll-snap-type: x mandatory; scrollbar-color: #b7c8b3 transparent; scrollbar-width: thin; }
-.wired-news-card { position: relative; display: grid; flex: 0 0 clamp(230px, 30%, 285px); align-content: start; gap: 6px; min-width: 0; min-height: 150px; padding: 10px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-card); scroll-snap-align: start; transition: border-color .2s, transform .2s, box-shadow .2s; }
-.wired-news-card:hover { border-color: var(--primary-color); box-shadow: 0 6px 18px rgba(79, 70, 229, .1); transform: translateY(-2px); }
-.wired-news-image { width: calc(100% + 20px); height: 96px; margin: -10px -10px 2px; object-fit: cover; background: #eef1ec; }
-.wired-news-category { justify-self: start; border-radius: 6px; padding: 2px 8px; color: var(--primary-solid); background: color-mix(in srgb, var(--primary-solid) 10%, var(--bg-card)); font-size: 9px; font-weight: 600; letter-spacing: .5px; text-transform: uppercase; }
-.wired-news-category-politics { color: #0284c7; background: color-mix(in srgb, #0ea5e9 12%, var(--bg-card)); }
-.wired-news-category-big-story { color: #ea580c; background: color-mix(in srgb, var(--accent-energy) 12%, var(--bg-card)); }
-.wired-news-card > strong { display: -webkit-box; overflow: hidden; color: #263a2e; font: 700 12px/1.45 Manrope, sans-serif; -webkit-box-orient: vertical; -webkit-line-clamp: 3; }
-.wired-news-summary { display: -webkit-box; overflow: hidden; color: #748078; font-size: 10px; line-height: 1.45; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
-.wired-news-external { position: absolute; right: 9px; bottom: 8px; color: #98a39a; }
-.wired-news-state { margin: 0; padding: 12px; color: var(--muted); font-size: 12px; }
 .latest-community-section { padding: 36px 0 42px; border-top: 1px solid var(--line); }
 .latest-community-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .latest-community-heading h2 { margin: 7px 0 0; font: 700 25px/1.2 Manrope, sans-serif; letter-spacing: -.5px; }
@@ -1180,8 +1192,6 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   .latest-community-list { grid-template-columns: 1fr; }
   .latest-community-heading h2 { font-size: 22px; }
   .community { padding-top: 24px; padding-bottom: 30px; }
-  .wired-news-strip { padding: 10px; }
-  .wired-news-card { flex-basis: min(78vw, 285px); }
   .footer { min-height: 46px; gap: 4px 10px; }
   .profile-page { padding: 30px 0 34px; }
   .notification-panel { right: -45px; }
@@ -1248,31 +1258,27 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .dark .card, .dark .post-card, .dark .social-card, .dark .profile-card, .dark .auth-card,
 .dark .calendar-panel, .dark .signup-panel, .dark .activity-modal, .dark .announcement-create-panel,
 .dark .activity-social-hero, .dark .activity-feed-card, .dark .scheduled-card, .dark .community-upcoming-card,
-.dark .wired-news-strip, .dark .wired-news-card, .dark .latest-community-post, .dark .link-preview-link,
+.dark .latest-community-post, .dark .link-preview-link,
 .dark .emoji-picker-panel, .dark .post-menu, .dark .notification-panel, .dark .activity-notification-panel,
 :root[data-theme="dark"] .card, :root[data-theme="dark"] .post-card, :root[data-theme="dark"] .social-card,
 :root[data-theme="dark"] .profile-card, :root[data-theme="dark"] .auth-card, :root[data-theme="dark"] .calendar-panel,
 :root[data-theme="dark"] .signup-panel, :root[data-theme="dark"] .activity-modal, :root[data-theme="dark"] .announcement-create-panel,
 :root[data-theme="dark"] .activity-social-hero, :root[data-theme="dark"] .activity-feed-card, :root[data-theme="dark"] .scheduled-card,
-:root[data-theme="dark"] .community-upcoming-card, :root[data-theme="dark"] .wired-news-strip, :root[data-theme="dark"] .wired-news-card,
+:root[data-theme="dark"] .community-upcoming-card,
 :root[data-theme="dark"] .latest-community-post, :root[data-theme="dark"] .link-preview-link, :root[data-theme="dark"] .emoji-picker-panel,
 :root[data-theme="dark"] .post-menu, :root[data-theme="dark"] .notification-panel, :root[data-theme="dark"] .activity-notification-panel {
   border-color: var(--border-color);
   background-color: var(--bg-card);
   color: var(--text-main);
 }
-.dark .community-upcoming-copy strong, .dark .wired-news-heading h2, .dark .wired-news-card > strong,
+.dark .community-upcoming-copy strong,
 .dark .post-menu button, .dark .notification-item-text, .dark .activity-chat-message p,
-:root[data-theme="dark"] .community-upcoming-copy strong, :root[data-theme="dark"] .wired-news-heading h2,
-:root[data-theme="dark"] .wired-news-card > strong, :root[data-theme="dark"] .post-menu button,
+:root[data-theme="dark"] .community-upcoming-copy strong, :root[data-theme="dark"] .post-menu button,
 :root[data-theme="dark"] .notification-item-text, :root[data-theme="dark"] .activity-chat-message p { color: var(--text-main); }
-.dark .community-upcoming-kicker, .dark .community-upcoming-meta, .dark .wired-news-kicker,
-.dark .wired-news-category, .dark .wired-news-summary, .dark .wired-news-external, .dark .post-byline small,
+.dark .community-upcoming-kicker, .dark .community-upcoming-meta, .dark .post-byline small,
 .dark .feed-note, .dark .post-action-count, .dark .comment-bubble small, .dark .auth-subtitle,
 .dark .notification-item time, .dark .notification-close-hint,
 :root[data-theme="dark"] .community-upcoming-kicker, :root[data-theme="dark"] .community-upcoming-meta,
-:root[data-theme="dark"] .wired-news-kicker, :root[data-theme="dark"] .wired-news-category,
-:root[data-theme="dark"] .wired-news-summary, :root[data-theme="dark"] .wired-news-external,
 :root[data-theme="dark"] .post-byline small, :root[data-theme="dark"] .feed-note,
 :root[data-theme="dark"] .post-action-count, :root[data-theme="dark"] .comment-bubble small,
 :root[data-theme="dark"] .auth-subtitle, :root[data-theme="dark"] .notification-item time,
@@ -1327,10 +1333,6 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   filter: brightness(1.2) saturate(.8) hue-rotate(8deg) drop-shadow(0 0 5px rgba(56, 189, 248, .25));
 }
 :is(.dark, :root[data-theme="dark"]) .topbar .auth-name,
-:is(.dark, :root[data-theme="dark"]) .wired-news-heading > a {
-  color: var(--brand-text-dark);
-}
-:is(.dark, :root[data-theme="dark"]) .wired-news-heading > a:hover,
 :is(.dark, :root[data-theme="dark"]) .topbar .auth-name:hover {
   color: var(--link-hover-color-dark);
 }
@@ -1344,18 +1346,6 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 }
 :is(.dark, :root[data-theme="dark"]) .post-text a:hover {
   color: var(--link-hover-color-dark);
-}
-:is(.dark, :root[data-theme="dark"]) .wired-news-category-security {
-  color: #93c5fd;
-  background: rgba(59, 130, 246, .2);
-}
-:is(.dark, :root[data-theme="dark"]) .wired-news-category-politics {
-  color: #c4b5fd;
-  background: rgba(139, 92, 246, .2);
-}
-:is(.dark, :root[data-theme="dark"]) .wired-news-category-big-story {
-  color: #fdba74;
-  background: color-mix(in srgb, var(--accent-energy) 20%, var(--bg-card));
 }
 :is(.dark, :root[data-theme="dark"]) .lang-option.active {
   background: #4f46e5;
@@ -1377,19 +1367,16 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   :root:not([data-theme]) .profile-card, :root:not([data-theme]) .auth-card, :root:not([data-theme]) .calendar-panel,
   :root:not([data-theme]) .signup-panel, :root:not([data-theme]) .activity-modal, :root:not([data-theme]) .announcement-create-panel,
   :root:not([data-theme]) .activity-social-hero, :root:not([data-theme]) .activity-feed-card, :root:not([data-theme]) .scheduled-card,
-  :root:not([data-theme]) .community-upcoming-card, :root:not([data-theme]) .wired-news-strip, :root:not([data-theme]) .wired-news-card,
+  :root:not([data-theme]) .community-upcoming-card,
   :root:not([data-theme]) .latest-community-post, :root:not([data-theme]) .link-preview-link, :root:not([data-theme]) .emoji-picker-panel,
   :root:not([data-theme]) .post-menu, :root:not([data-theme]) .notification-panel, :root:not([data-theme]) .activity-notification-panel {
     border-color: var(--border-color);
     background-color: var(--bg-card);
     color: var(--text-main);
   }
-  :root:not([data-theme]) .community-upcoming-copy strong, :root:not([data-theme]) .wired-news-heading h2,
-  :root:not([data-theme]) .wired-news-card > strong, :root:not([data-theme]) .post-menu button,
+  :root:not([data-theme]) .community-upcoming-copy strong, :root:not([data-theme]) .post-menu button,
   :root:not([data-theme]) .notification-item-text, :root:not([data-theme]) .activity-chat-message p { color: var(--text-main); }
   :root:not([data-theme]) .community-upcoming-kicker, :root:not([data-theme]) .community-upcoming-meta,
-  :root:not([data-theme]) .wired-news-kicker, :root:not([data-theme]) .wired-news-category,
-  :root:not([data-theme]) .wired-news-summary, :root:not([data-theme]) .wired-news-external,
   :root:not([data-theme]) .post-byline small, :root:not([data-theme]) .feed-note,
   :root:not([data-theme]) .post-action-count, :root:not([data-theme]) .comment-bubble small,
   :root:not([data-theme]) .auth-subtitle, :root:not([data-theme]) .notification-item time,
@@ -1431,9 +1418,7 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   :root:not([data-theme]) .topbar > .brand .brand-logo {
     filter: brightness(1.2) saturate(.8) hue-rotate(8deg) drop-shadow(0 0 5px rgba(56, 189, 248, .25));
   }
-  :root:not([data-theme]) .topbar .auth-name,
-  :root:not([data-theme]) .wired-news-heading > a { color: var(--brand-text-dark); }
-  :root:not([data-theme]) .wired-news-heading > a:hover,
+  :root:not([data-theme]) .topbar .auth-name { color: var(--brand-text-dark); }
   :root:not([data-theme]) .topbar .auth-name:hover { color: var(--link-hover-color-dark); }
   :root:not([data-theme]) .community-hub-link.active {
     border: 1px solid rgba(129, 140, 248, .4);
@@ -1442,18 +1427,6 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   }
   :root:not([data-theme]) .post-text a { color: var(--link-color-dark); }
   :root:not([data-theme]) .post-text a:hover { color: var(--link-hover-color-dark); }
-  :root:not([data-theme]) .wired-news-category-security {
-    color: #93c5fd;
-    background: rgba(59, 130, 246, .2);
-  }
-  :root:not([data-theme]) .wired-news-category-politics {
-    color: #c4b5fd;
-    background: rgba(139, 92, 246, .2);
-  }
-  :root:not([data-theme]) .wired-news-category-big-story {
-    color: #fdba74;
-    background: color-mix(in srgb, var(--accent-energy) 20%, var(--bg-card));
-  }
   :root:not([data-theme]) .lang-option.active {
     background: #4f46e5;
     color: #ffffff;

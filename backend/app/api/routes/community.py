@@ -6,6 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, Form, Query, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.deps import SESSION_COOKIE, DbSession, CurrentUser, OptionalUser
 from app.core.config import get_settings
@@ -24,10 +25,8 @@ from app.schemas.community import (
 )
 from app.schemas.feedback import FeedbackCreate, FeedbackOut
 from app.schemas.notifications import MarkNotificationsRead, NotificationPage
-from app.schemas.external_news import ExternalNewsPage
 from app.schemas.auth import MessageOut
-from app.services import community, notifications, uploads
-from app.services import external_news
+from app.services import ai_content, community, notifications, uploads
 from app.services.link_preview import get_link_preview, normalize_url
 from app.services.realtime import manager, publish, publish_to_user
 from app.db.session import SessionFactory
@@ -71,12 +70,6 @@ async def submit_feedback(body: FeedbackCreate, db: DbSession, user: OptionalUse
     await db.commit()
     await db.refresh(feedback)
     return feedback
-
-
-@router.get("/news/wired", response_model=ExternalNewsPage)
-async def list_wired_news(db: DbSession):
-    """Public cached headlines from the approved Wired sections."""
-    return await external_news.list_wired_news(db)
 
 
 @router.get("/notifications", response_model=NotificationPage)
@@ -250,6 +243,19 @@ async def create_comment(post_id: uuid.UUID, body: CommentCreate, db: DbSession,
         commentCount=count,
         comment=comment.model_dump(mode="json", by_alias=True),
     )
+    try:
+        reply = await ai_content.reply_to_comment(db, post_id, user)
+    except (AppError, SQLAlchemyError):
+        logger.exception("Could not save an AI reply for post_id=%s", post_id)
+        reply = None
+    if reply:
+        ai_comment, count = reply
+        await publish(
+            "comment.created",
+            postId=str(post_id),
+            commentCount=count,
+            comment=ai_comment.model_dump(mode="json", by_alias=True),
+        )
     return CommentCreated(comment=comment, comment_count=count)
 
 

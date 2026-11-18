@@ -14,6 +14,31 @@ export function FeedbackWidget() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [sent, setSent] = useState(false);
+  const [footerOffset, setFooterOffset] = useState<number | null>(null);
+
+  useEffect(() => {
+    const footer = document.querySelector<HTMLElement>(".app-shell > .footer");
+    if (!footer) return;
+    const footerElement = footer;
+
+    function updateFooterOffset() {
+      const footerTop = footerElement.getBoundingClientRect().top;
+      const nextOffset = Math.max(18, Math.ceil(window.innerHeight - footerTop + 16));
+      setFooterOffset((current) => current === nextOffset ? current : nextOffset);
+    }
+
+    window.addEventListener("scroll", updateFooterOffset, { passive: true });
+    window.addEventListener("resize", updateFooterOffset);
+    const resizeObserver = new ResizeObserver(updateFooterOffset);
+    resizeObserver.observe(footerElement);
+    updateFooterOffset();
+
+    return () => {
+      window.removeEventListener("scroll", updateFooterOffset);
+      window.removeEventListener("resize", updateFooterOffset);
+      resizeObserver.disconnect();
+    };
+  }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +69,7 @@ export function FeedbackWidget() {
     <>
       <button
         className="feedback-launcher"
+        style={footerOffset === null ? undefined : { bottom: `${footerOffset}px` }}
         type="button"
         onClick={() => {
           setOpen(true);

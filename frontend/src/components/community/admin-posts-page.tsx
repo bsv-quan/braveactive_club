@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { useI18n } from "@/i18n/i18n-provider";
 import { communityApi, type CommunityPost } from "@/lib/api/community";
 import { errorMessage } from "@/lib/api/client";
+import { AdminAiPostDialog } from "./admin-ai-post-dialog";
 import { PostCard } from "./post-card";
 
 export function AdminPostsPage() {
@@ -59,6 +60,17 @@ export function AdminPostsPage() {
     );
   }, []);
 
+  const addGeneratedPost = useCallback((post: CommunityPost) => {
+    setPosts((items) =>
+      [...items.filter((item) => item.id !== post.id), post].sort(
+        (left, right) =>
+          Number(left.approved) - Number(right.approved) ||
+          right.createdAt.localeCompare(left.createdAt) ||
+          right.id.localeCompare(left.id),
+      ),
+    );
+  }, []);
+
   const removePost = useCallback((postId: string) => {
     setPosts((items) => items.filter((post) => post.id !== postId));
   }, []);
@@ -79,6 +91,7 @@ export function AdminPostsPage() {
 
   return (
     <section className="community admin-posts">
+      <AdminAiPostDialog onPostCreated={addGeneratedPost} />
       {posts.length === 0 && !loading && !error ? <p className="feed-note">{t("community.admin.empty")}</p> : null}
       {posts.map((post) => (
         <div className="admin-post-item" key={post.id}>

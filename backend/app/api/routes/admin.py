@@ -15,7 +15,9 @@ from app.schemas.club import ActivityCreated
 from app.schemas.auth import CorporateEmail, Password
 from app.schemas.base import CamelModel
 from app.schemas.feedback import FeedbackOut, FeedbackPage
-from app.services import activities as activity_service, community, notifications
+from app.schemas.ai_content import AIPostPreview, AIPostPreviewRequest, AIPostPublishRequest
+from app.schemas.community import PostOut
+from app.services import activities as activity_service, ai_content, community, notifications
 from app.services import uploads
 from app.services.realtime import manager, publish, publish_to_user
 
@@ -29,6 +31,17 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 Admin = Annotated[User, Depends(require_admin)]
+
+
+@router.post("/ai-posts/preview", response_model=AIPostPreview)
+async def preview_ai_post(body: AIPostPreviewRequest, db: DbSession, _: Admin):
+    return await ai_content.preview_post(db, body.topic, body.hours, body.exclude_source_urls)
+
+
+@router.post("/ai-posts/publish", response_model=PostOut, status_code=201)
+async def publish_ai_post(body: AIPostPublishRequest, db: DbSession, user: Admin):
+    post = await ai_content.publish_preview(db, body)
+    return await community.get_post_out(db, post.id, user, include_hidden=True)
 
 
 @router.get("/feedback", response_model=FeedbackPage)

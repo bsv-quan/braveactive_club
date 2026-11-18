@@ -42,6 +42,18 @@ export type FeedbackItem = {
   createdAt: string;
 };
 export type FeedbackPage = { feedback: FeedbackItem[]; hasMore: boolean };
+export type AIPostTopic = "all" | "health" | "sports" | "travel" | "technology" | "entertainment";
+export type AIPostHours = 1 | 4 | 12 | 24;
+export type AIPostPreview = {
+  topic: AIPostTopic;
+  hours: AIPostHours;
+  title: string;
+  content: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  sourceDescription: string;
+  sourcePublishedAt: string;
+};
 export type UserNotification = {
   id: string;
   actorName: string;
@@ -106,6 +118,13 @@ export const communityApi = {
     apiJson<PostPage>(`/api/admin/posts?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
       cache: "no-store",
     }),
+  previewAiPost: (topic: AIPostTopic, hours: AIPostHours, excludeSourceUrls: string[] = []) =>
+    apiJson<AIPostPreview>("/api/admin/ai-posts/preview", {
+      method: "POST",
+      json: { topic, hours, excludeSourceUrls },
+    }),
+  publishAiPost: (input: Pick<AIPostPreview, "topic" | "hours" | "title" | "content" | "sourceUrl">) =>
+    apiJson<CommunityPost>("/api/admin/ai-posts/publish", { method: "POST", json: input }),
 
   /** Multipart upload: the image (if any) is validated and re-encoded server side. */
   async createPost(input: NewPostInput): Promise<CommunityPost> {
