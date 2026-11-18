@@ -5,7 +5,6 @@ import { useCommunityFeed } from "@/lib/use-community-feed";
 import { GuestPrompt } from "./guest-prompt";
 import { PostComposer } from "./post-composer";
 import { PostList } from "./post-list";
-import { WiredNewsStrip } from "./wired-news-strip";
 
 /** Community screen: composer (or login prompt) above a live, paginated feed. */
 export function CommunityPage() {
@@ -23,8 +22,6 @@ export function CommunityPage() {
       ) : (
         <GuestPrompt />
       )}
-
-      <WiredNewsStrip />
 
       <PostList
         posts={feed.posts}

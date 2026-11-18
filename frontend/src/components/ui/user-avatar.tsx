@@ -46,7 +46,9 @@ export function UserAvatar({
   useEffect(() => {
     if (isOpen) closeButton.current?.focus();
   }, [isOpen]);
-  if (avatarUrl) {
+  const resolvedAvatarUrl =
+    avatarUrl ?? (name.trim().toLowerCase() === "braveactive ai" ? "/braveactive-ai.jpg" : null);
+  if (resolvedAvatarUrl) {
     return (
       <>
         <span className="ui-avatar-wrap" style={{ width: size, height: size }}>
@@ -58,7 +60,7 @@ export function UserAvatar({
             onClick={() => setIsOpen(true)}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="ui-avatar-image" src={avatarUrl} alt="" />
+            <img className="ui-avatar-image" src={resolvedAvatarUrl} alt="" />
           </button>
           {online !== undefined ? <PresenceIndicator online={online} /> : null}
         </span>
@@ -82,7 +84,7 @@ export function UserAvatar({
               {t("auth.profile.closePhoto")}
             </button>
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img className="avatar-viewer-image" src={avatarUrl} alt={name} onClick={(event) => event.stopPropagation()} />
+            <img className="avatar-viewer-image" src={resolvedAvatarUrl} alt={name} onClick={(event) => event.stopPropagation()} />
           </div>,
           document.body,
         ) : null}

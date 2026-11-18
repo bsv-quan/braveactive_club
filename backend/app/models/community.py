@@ -52,3 +52,15 @@ class PostComment(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     author: Mapped[User] = relationship(lazy="joined")
+
+
+class Feedback(Base):
+    __tablename__ = "feedback"
+    __table_args__ = (Index("ix_feedback_created_at_id", "created_at", "id"),)
+
+    id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
+    author_id: Mapped[uuid.UUID | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), index=True)
+    author_name: Mapped[str | None] = mapped_column(String(40))
+    title: Mapped[str] = mapped_column(String(160))
+    content: Mapped[str] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())

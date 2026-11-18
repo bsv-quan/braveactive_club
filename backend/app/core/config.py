@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     admin_emails: Annotated[list[str], NoDecode] = []
     cron_secret: str = ""
 
+    # --- AI-assisted community content ---
+    openai_api_key: str = ""
+    openai_model: str = "gpt-4.1-mini"
+
     # --- Mail (Gmail SMTP: smtp.gmail.com:587 + an app password) ---
     smtp_host: str = ""
     smtp_port: int = 587

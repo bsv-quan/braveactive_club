@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Copy, Dices, UserPlus } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AdminActivitiesPanel } from "@/components/admin/admin-activities-panel";
+import { AdminFeedbackPanel } from "@/components/admin/admin-feedback-panel";
 import { AdminPostsPage } from "@/components/community/admin-posts-page";
 import { Button } from "@/components/ui/button";
 import { PasswordField } from "@/components/ui/form-controls";
@@ -13,7 +14,7 @@ import { copyToClipboard } from "@/lib/clipboard";
 
 type User = { id: string; email: string; displayName: string; role: "user" | "admin" };
 type Request = { id: string; email: string; displayName: string | null; purpose: "register" | "reset"; createdAt: string };
-type Tab = "users" | "requests" | "posts" | "activities";
+type Tab = "users" | "requests" | "posts" | "activities" | "feedback";
 type Credentials = { email: string; password: string };
 
 function generateTemporaryPassword() {
@@ -56,7 +57,7 @@ export function AdminPage() {
   const [credentialNotice, setCredentialNotice] = useState<Credentials | null>(null);
 
   const load = useCallback(async () => {
-    if (user?.role !== "admin" || tab === "posts" || tab === "activities") return;
+    if (user?.role !== "admin" || tab === "posts" || tab === "activities" || tab === "feedback") return;
     setError("");
     try {
       if (tab === "users") {
@@ -155,7 +156,7 @@ export function AdminPage() {
     <section className="admin-console">
       <h1>{t("admin.title")}</h1>
       <nav className="admin-tabs" aria-label={t("admin.title")}>
-        {(["users", "requests", "posts", "activities"] as const).map((item) => (
+        {(["users", "requests", "posts", "activities", "feedback"] as const).map((item) => (
           <button key={item} type="button" className={tab === item ? "button-primary" : "button-secondary"}
             aria-pressed={tab === item} onClick={() => { setTab(item); setError(""); setAddingUser(false); setEditing(null); setApproving(null); setPassword(""); setCredentialNotice(null); }}>
             {t(`admin.${item}`)}
@@ -167,7 +168,7 @@ export function AdminPage() {
       </div>
       <div className="admin-panel">
         <div className="admin-panel-content">
-          {tab === "posts" ? <AdminPostsPage /> : tab === "activities" ? <AdminActivitiesPanel /> : tab === "users" ? (
+          {tab === "posts" ? <AdminPostsPage /> : tab === "activities" ? <AdminActivitiesPanel /> : tab === "feedback" ? <AdminFeedbackPanel /> : tab === "users" ? (
         <>
           {credentialNotice && credentialSummary(credentialNotice)}
           {!addingUser && !editing ? (
@@ -267,7 +268,7 @@ export function AdminPage() {
         </>
       )}
         </div>
-        {tab !== "posts" && tab !== "activities" && <div className="admin-pagination">
+        {tab !== "posts" && tab !== "activities" && tab !== "feedback" && <div className="admin-pagination">
           <Button variant="secondary" disabled={(tab === "users" ? userOffset : requestOffset) === 0} onClick={() => tab === "users" ? setUserOffset(Math.max(0, userOffset - 50)) : setRequestOffset(Math.max(0, requestOffset - 50))}>{t("admin.previous")}</Button>
           <Button variant="secondary" disabled={!more} onClick={() => tab === "users" ? setUserOffset(userOffset + 50) : setRequestOffset(requestOffset + 50)}>{t("admin.next")}</Button>
         </div>}

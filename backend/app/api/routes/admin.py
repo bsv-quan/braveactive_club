@@ -10,11 +10,14 @@ from sqlalchemy import delete, func, select, text
 from app.api.deps import CurrentUser, DbSession
 from app.core.errors import AppError
 from app.core.security import hash_password
-from app.models import AccountRequest, Post, User, UserSession
+from app.models import AccountRequest, Feedback, Post, User, UserSession
 from app.schemas.club import ActivityCreated
 from app.schemas.auth import CorporateEmail, Password
 from app.schemas.base import CamelModel
-from app.services import activities as activity_service, community, notifications
+from app.schemas.feedback import FeedbackOut, FeedbackPage
+from app.schemas.ai_content import AIPostPreview, AIPostPreviewRequest, AIPostPublishRequest
+from app.schemas.community import PostOut
+from app.services import activities as activity_service, ai_content, community, notifications
 from app.services import uploads
 from app.services.realtime import manager, publish, publish_to_user
 
@@ -28,6 +31,39 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 Admin = Annotated[User, Depends(require_admin)]
+
+
+@router.post("/ai-posts/preview", response_model=AIPostPreview)
+async def preview_ai_post(body: AIPostPreviewRequest, db: DbSession, _: Admin):
+    return await ai_content.preview_post(db, body.topic, body.hours, body.exclude_source_urls)
+
+
+@router.post("/ai-posts/publish", response_model=PostOut, status_code=201)
+async def publish_ai_post(body: AIPostPublishRequest, db: DbSession, user: Admin):
+    post = await ai_content.publish_preview(db, body)
+    return await community.get_post_out(db, post.id, user, include_hidden=True)
+
+
+@router.get("/feedback", response_model=FeedbackPage)
+async def list_feedback(
+    db: DbSession,
+    _: Admin,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=100),
+):
+    rows = (
+        await db.scalars(
+            select(Feedback)
+            .order_by(Feedback.created_at.desc(), Feedback.id.desc())
+            .offset(offset)
+            .limit(limit + 1)
+        )
+    ).all()
+    page = rows[:limit]
+    return FeedbackPage(
+        feedback=[FeedbackOut.model_validate(item) for item in page],
+        has_more=len(rows) > limit,
+    )
 
 
 @router.get("/activities")

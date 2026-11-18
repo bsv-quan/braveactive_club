@@ -1,4 +1,5 @@
 import { ClubFooter, ClubHeader, type NavPage } from "./site-chrome";
+import { FeedbackWidget } from "./feedback-widget";
 
 /** Standard page frame: full-width shell with header and footer. */
 export function AppShell({ currentPage, children }: { currentPage?: NavPage; children: React.ReactNode }) {
@@ -9,6 +10,7 @@ export function AppShell({ currentPage, children }: { currentPage?: NavPage; chi
         {children}
         <ClubFooter />
       </div>
+      <FeedbackWidget />
     </main>
   );
 }

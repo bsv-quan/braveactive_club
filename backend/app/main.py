@@ -16,11 +16,9 @@ from app.core.logging_config import configure_logging
 from app.core.middleware import BodySizeLimitMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware
 from app.db.session import SessionFactory
 from app.services.activities import run_recurrence_job
-from app.services.external_news import crawl_wired
 
 logger = logging.getLogger("app")
 RECURRENCE_INTERVAL_SECONDS = 6 * 3600
-WIRED_NEWS_INTERVAL_SECONDS = 60 * 60
 
 
 async def _recurrence_loop() -> None:
@@ -37,22 +35,6 @@ async def _recurrence_loop() -> None:
         await asyncio.sleep(RECURRENCE_INTERVAL_SECONDS)
 
 
-async def _wired_news_loop() -> None:
-    """Refresh Wired on startup and keep subsequent crawl starts one hour apart."""
-    loop = asyncio.get_running_loop()
-    while True:
-        started_at = loop.time()
-        try:
-            async with SessionFactory() as db:
-                result = await crawl_wired(db)
-            logger.info("Wired news crawl: %s", result)
-        except asyncio.CancelledError:
-            raise
-        except Exception:  # noqa: BLE001
-            logger.exception("Wired news crawl failed")
-        await asyncio.sleep(max(0, WIRED_NEWS_INTERVAL_SECONDS - (loop.time() - started_at)))
-
-
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
@@ -60,7 +42,6 @@ async def lifespan(_: FastAPI):
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     tasks = [
         asyncio.create_task(_recurrence_loop()),
-        asyncio.create_task(_wired_news_loop()),
     ]
     try:
         yield

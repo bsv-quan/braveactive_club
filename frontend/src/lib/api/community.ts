@@ -34,6 +34,26 @@ export type PostComment = {
 };
 
 export type PostPage = { posts: CommunityPost[]; nextCursor: string | null };
+export type FeedbackItem = {
+  id: string;
+  authorName: string | null;
+  title: string;
+  content: string;
+  createdAt: string;
+};
+export type FeedbackPage = { feedback: FeedbackItem[]; hasMore: boolean };
+export type AIPostTopic = "all" | "health" | "sports" | "travel" | "technology" | "entertainment";
+export type AIPostHours = 1 | 4 | 12 | 24;
+export type AIPostPreview = {
+  topic: AIPostTopic;
+  hours: AIPostHours;
+  title: string;
+  content: string;
+  sourceUrl: string;
+  sourceTitle: string;
+  sourceDescription: string;
+  sourcePublishedAt: string;
+};
 export type UserNotification = {
   id: string;
   actorName: string;
@@ -74,6 +94,10 @@ export type NewPostInput = {
 };
 
 export const communityApi = {
+  submitFeedback: (input: { title: string; content: string }) =>
+    apiJson<FeedbackItem>("/api/feedback", { method: "POST", json: input }),
+  listAdminFeedback: (offset = 0, limit = 50) =>
+    apiJson<FeedbackPage>(`/api/admin/feedback?limit=${limit}&offset=${offset}`, { cache: "no-store" }),
   getPresence: (userIds: string[]) => {
     const query = new URLSearchParams();
     userIds.slice(0, 100).forEach((id) => query.append("userIds", id));
@@ -94,6 +118,13 @@ export const communityApi = {
     apiJson<PostPage>(`/api/admin/posts?limit=20${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
       cache: "no-store",
     }),
+  previewAiPost: (topic: AIPostTopic, hours: AIPostHours, excludeSourceUrls: string[] = []) =>
+    apiJson<AIPostPreview>("/api/admin/ai-posts/preview", {
+      method: "POST",
+      json: { topic, hours, excludeSourceUrls },
+    }),
+  publishAiPost: (input: Pick<AIPostPreview, "topic" | "hours" | "title" | "content" | "sourceUrl">) =>
+    apiJson<CommunityPost>("/api/admin/ai-posts/publish", { method: "POST", json: input }),
 
   /** Multipart upload: the image (if any) is validated and re-encoded server side. */
   async createPost(input: NewPostInput): Promise<CommunityPost> {

@@ -87,14 +87,20 @@ def to_post_out(row, viewer: User | None) -> PostOut:
     )
 
 
-def _encode_cursor(post: Post) -> str:
-    return f"{post.created_at.isoformat()}|{post.id}"
+def _encode_cursor(post: Post, pending_first: bool = False) -> str:
+    prefix = f"{int(post.approved)}|" if pending_first else ""
+    return f"{prefix}{post.created_at.isoformat()}|{post.id}"
 
 
-def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
+def _decode_cursor(cursor: str, pending_first: bool = False) -> tuple[bool | None, datetime, uuid.UUID]:
     try:
+        if pending_first:
+            approved, created, post_id = cursor.split("|", 2)
+            if approved not in {"0", "1"}:
+                raise ValueError
+            return approved == "1", datetime.fromisoformat(created), uuid.UUID(post_id)
         created, post_id = cursor.split("|", 1)
-        return datetime.fromisoformat(created), uuid.UUID(post_id)
+        return None, datetime.fromisoformat(created), uuid.UUID(post_id)
     except ValueError:
         raise AppError("Con trỏ phân trang không hợp lệ.", 400) from None
 
@@ -106,19 +112,37 @@ async def list_posts(
     limit: int,
     include_hidden: bool = False,
     include_unapproved: bool = False,
+    pending_first: bool = False,
 ) -> PostPage:
     limit = max(1, min(limit, PAGE_SIZE_MAX))
-    query = _select_posts(viewer).order_by(Post.created_at.desc(), Post.id.desc()).limit(limit + 1)
+    query = _select_posts(viewer)
     if not include_hidden:
         query = query.where(Post.hidden.is_(False))
     if not include_unapproved:
         query = query.where(Post.approved.is_(True))
     if cursor:
-        created_at, post_id = _decode_cursor(cursor)
-        query = query.where(or_(Post.created_at < created_at, and_(Post.created_at == created_at, Post.id < post_id)))
+        approved, created_at, post_id = _decode_cursor(cursor, pending_first)
+        after_cursor = or_(Post.created_at < created_at, and_(Post.created_at == created_at, Post.id < post_id))
+        if pending_first and approved is not None:
+            if approved:
+                query = query.where(and_(Post.approved.is_(True), after_cursor))
+            else:
+                query = query.where(
+                    or_(
+                        Post.approved.is_(True),
+                        and_(Post.approved.is_(False), after_cursor),
+                    )
+                )
+        else:
+            query = query.where(after_cursor)
+    if pending_first:
+        query = query.order_by(Post.approved.asc(), Post.created_at.desc(), Post.id.desc())
+    else:
+        query = query.order_by(Post.created_at.desc(), Post.id.desc())
+    query = query.limit(limit + 1)
     rows = (await db.execute(query)).all()
     page = rows[:limit]
-    next_cursor = _encode_cursor(page[-1][0]) if len(rows) > limit else None
+    next_cursor = _encode_cursor(page[-1][0], pending_first) if len(rows) > limit else None
     return PostPage(posts=[to_post_out(row, viewer) for row in page], next_cursor=next_cursor)
 
 
@@ -207,7 +231,7 @@ async def update_post(db: AsyncSession, user: User, post_id: uuid.UUID, content:
     post = await db.get(Post, post_id)
     if not post or post.hidden:
         raise AppError("Không tìm thấy bài đăng.", 404)
-    if not can_manage(user, post.author_id):
+    if user.id != post.author_id:
         raise AppError("Bạn không có quyền sửa bài đăng này.", 403)
     content = content.strip()
     if len(content) > MAX_POST_LENGTH:

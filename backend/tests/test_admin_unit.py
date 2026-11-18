@@ -21,6 +21,9 @@ def test_admin_user_input_validates_domain_role_and_name():
     valid = AdminUserCreate(email="member@bravesoft.com.vn", displayName="  Test   User ",
                             password="SafePass123", role="user")
     assert valid.display_name == "Test User"
+    new_domain = AdminUserCreate(email="member@bravesoft.vn", displayName="New Domain User",
+                                 password="TestPass123")
+    assert new_domain.email == "member@bravesoft.vn"
     with pytest.raises(ValidationError):
         AdminUserCreate(email="member@example.com", displayName="User", password="SafePass123")
     with pytest.raises(ValidationError):
