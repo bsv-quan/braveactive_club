@@ -115,7 +115,7 @@ Deployment refuses to overwrite locally modified tracked files and requires a fa
 
 ## Authentication and administration
 
-- Only `@bravesoft.com.vn` addresses can register, log in or request a reset. Registration and reset create pending requests for an administrator; no email is sent.
+- Only `@bravesoft.vn` and `@bravesoft.com.vn` addresses can register, log in or request a reset. Registration and reset create pending requests for an administrator; no email is sent.
 - Admins **must verify the requester's identity through an internal channel before approval**, manually set a temporary password, and send it separately. The user must change it after signing in. A reset does not affect the account until approval; approval revokes existing sessions and authenticated WebSockets.
 - `/admin` supports user management, account-request approval/rejection, post moderation and an activity-approval queue. Member-created activities remain private until approved; activities created by admins are published immediately. Deleting a user permanently removes their posts, comments and likes; activity registrations are name-based and are not linked to user accounts.
 - The notification inbox is stored in PostgreSQL for offline delivery; authenticated WebSockets push live updates. Presence uses the in-memory WebSocket hub, so run exactly one backend worker.

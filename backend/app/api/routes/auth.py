@@ -19,6 +19,7 @@ from app.schemas.auth import (
     RegisterRequest,
     SessionOut,
     UserOut,
+    CORPORATE_EMAIL_DOMAINS,
 )
 from app.services import auth as auth_service
 from app.services.realtime import manager
@@ -32,7 +33,7 @@ def _session_payload(user, token: str) -> SessionOut:
 
 
 def _is_company_email(email: str) -> bool:
-    return email.rsplit("@", 1)[-1].lower() == "bravesoft.com.vn"
+    return email.rsplit("@", 1)[-1].lower() in CORPORATE_EMAIL_DOMAINS
 
 
 def _set_session_cookie(response: Response, token: str) -> None:

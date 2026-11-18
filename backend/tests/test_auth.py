@@ -60,11 +60,14 @@ async def test_admin_permissions_and_last_admin_protection(client):
 
 async def test_company_domain_and_deduplicated_requests(client):
     assert (await client.post("/api/auth/check-email", json={"email": "person@example.com"})).json() == {"allowed": False}
-    assert (await client.post(
-        "/api/auth/check-email",
-        json={"email": "person@bravesoft.com.vn"},
-        headers={"Origin": "http://localhost:3000"},
-    )).status_code == 200
+    for domain in ("bravesoft.vn", "bravesoft.com.vn"):
+        response = await client.post(
+            "/api/auth/check-email",
+            json={"email": f"person@{domain}"},
+            headers={"Origin": "http://localhost:3000"},
+        )
+        assert response.status_code == 200
+        assert response.json() == {"allowed": True}
     assert (await client.post(
         "/api/auth/check-email",
         json={"email": "person@bravesoft.com.vn"},
@@ -74,8 +77,11 @@ async def test_company_domain_and_deduplicated_requests(client):
     body = {"email": "a@bravesoft.com.vn", "displayName": "Alice"}
     assert (await client.post("/api/auth/register", json=body)).status_code == 202
     assert (await client.post("/api/auth/register", json=body)).status_code == 202
+    new_domain_body = {"email": "b@bravesoft.vn", "displayName": "Bob"}
+    assert (await client.post("/api/auth/register", json=new_domain_body)).status_code == 202
+    assert (await client.post("/api/auth/register", json=new_domain_body)).status_code == 202
     async with SessionFactory() as db:
-        assert len((await db.scalars(select(AccountRequest))).all()) == 1
+        assert len((await db.scalars(select(AccountRequest))).all()) == 2
 
 
 async def test_guest_session_csrf_and_origin(client):
