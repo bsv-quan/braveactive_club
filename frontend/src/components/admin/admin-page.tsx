@@ -181,7 +181,7 @@ export function AdminPage() {
                   <PasswordField label={t("admin.initialPassword")} name="initialPassword" required minLength={8} maxLength={128} value={password} onChange={(e) => { setPassword(e.target.value); setCopied(null); setCredentialNotice(null); }} autoComplete="new-password"
                     onCopy={password ? () => void copyValue("new-password", password) : undefined}
                     copyLabel={t("admin.copyPassword")} copiedLabel={t("admin.copied")} copied={copied === "new-password"} />
-                  <Button type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
+                  <Button className="admin-generate-password" type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
                 </div>
               </>
             )}
@@ -223,7 +223,7 @@ export function AdminPage() {
                   <PasswordField label={t("admin.initialPassword")} name="approvalPassword" minLength={8} maxLength={128} required value={password} onChange={(e) => { setPassword(e.target.value); setCopied(null); }} autoComplete="new-password"
                     onCopy={password ? () => void copyValue("approval-password", password) : undefined}
                     copyLabel={t("admin.copyPassword")} copiedLabel={t("admin.copied")} copied={copied === "approval-password"} />
-                  <Button type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
+                  <Button className="admin-generate-password" type="button" variant="secondary" size="sm" icon={Dices} onClick={makeTemporaryPassword}>{t("admin.generatePassword")}</Button>
                 </div>
                   <Button type="submit" loading={busy}>{t("admin.approve")}</Button>
                   <Button variant="ghost" onClick={() => { setApproving(null); setPassword(""); }}>{t("common.cancel")}</Button>
