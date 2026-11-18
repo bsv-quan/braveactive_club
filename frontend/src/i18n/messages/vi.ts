@@ -183,6 +183,8 @@ const vi = {
     admin: {
       postsTitle: "Quản lý bài viết",
       postsSubtitle: "Xem và kiểm duyệt các bài đăng trong cộng đồng.",
+      pending: "Bài viết đang chờ duyệt",
+      approve: "Duyệt bài viết",
       accessDenied: "Bạn cần quyền quản trị để xem trang này.",
       loadError: "Không thể tải bài viết quản trị.",
       empty: "Chưa có bài đăng nào.",
@@ -198,6 +200,7 @@ const vi = {
       removeImage: "Bỏ ảnh",
       post: "Đăng bài",
       posting: "Đang đăng...",
+      pendingApproval: "Bài viết đã được gửi và đang chờ quản trị viên duyệt.",
       imageType: "Chỉ hỗ trợ ảnh JPG, PNG hoặc WebP.",
       imageSize: "Ảnh quá lớn (tối đa {size} MB).",
       imageLimit: "Mỗi bài đăng chỉ được thêm tối đa {max} ảnh.",

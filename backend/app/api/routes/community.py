@@ -94,7 +94,9 @@ async def list_posts_for_admin(
 ):
     if user.role != "admin":
         raise AppError("Bạn không có quyền truy cập trang quản lý.", 403)
-    return await community.list_posts(db, user, cursor, limit, include_hidden=True)
+    return await community.list_posts(
+        db, user, cursor, limit, include_hidden=True, include_unapproved=True
+    )
 
 
 class PostVisibility(BaseModel):
@@ -112,10 +114,30 @@ async def admin_post_visibility(post_id: uuid.UUID, body: PostVisibility, db: Db
     await db.commit()
     if body.hidden:
         await publish("post.deleted", postId=str(post_id))
-    else:
+    elif post.approved:
         restored = await community.get_post_out(db, post_id, None)
         await publish("post.created", post=restored.model_dump(mode="json", by_alias=True))
     return {"hidden": body.hidden}
+
+
+@router.post("/admin/posts/{post_id}/approve", response_model=PostOut)
+async def admin_approve_post(post_id: uuid.UUID, db: DbSession, user: CurrentUser):
+    if user.role != "admin":
+        raise AppError("Bạn không có quyền duyệt bài đăng.", 403)
+    post = await db.get(Post, post_id)
+    if not post:
+        raise AppError("Không tìm thấy bài đăng.", 404)
+    newly_approved = not post.approved
+    if newly_approved:
+        post.approved = True
+        await db.commit()
+    result = await community.get_post_out(db, post_id, user, include_hidden=True)
+    if newly_approved and not post.hidden:
+        notice_recipients = await notifications.notify_post_created(db, post.author, post.id)
+        for recipient_id, unread_count in notice_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
+        await publish("post.created", post=result.model_dump(mode="json", by_alias=True))
+    return result
 
 
 @router.delete("/admin/posts/{post_id}", response_model=MessageOut)
@@ -140,10 +162,11 @@ async def create_post(
     enforce_limit(f"post:{user.id}", 20, 3600)
     uploaded_images = [*(images or []), *([image] if image else [])]
     post = await community.create_post(db, user, content, link_url, skip_preview, uploaded_images)
-    notice_recipients = await notifications.notify_post_created(db, user, post.id)
-    for recipient_id, unread_count in notice_recipients:
-        await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
-    await publish("post.created", post=post.model_dump(mode="json", by_alias=True))
+    if post.approved:
+        notice_recipients = await notifications.notify_post_created(db, user, post.id)
+        for recipient_id, unread_count in notice_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
+        await publish("post.created", post=post.model_dump(mode="json", by_alias=True))
     return post
 
 
@@ -162,7 +185,10 @@ async def delete_post(post_id: uuid.UUID, db: DbSession, user: CurrentUser):
 @router.put("/posts/{post_id}", response_model=PostOut)
 async def update_post(post_id: uuid.UUID, body: PostUpdate, db: DbSession, user: CurrentUser):
     post = await community.update_post(db, user, post_id, body.content)
-    await publish("post.updated", post=post.model_dump(mode="json", by_alias=True))
+    if post.approved:
+        await publish("post.updated", post=post.model_dump(mode="json", by_alias=True))
+    else:
+        await publish("post.deleted", postId=str(post_id))
     return post
 
 

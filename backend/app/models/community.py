@@ -18,6 +18,7 @@ class Post(Base):
     id: Mapped[uuid.UUID] = mapped_column(primary_key=True, default=uuid.uuid4)
     author_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
     content: Mapped[str] = mapped_column(Text)
+    approved: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true", nullable=False)
     hidden: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     image_name: Mapped[str | None] = mapped_column(String(80))  # file name inside UPLOAD_DIR
     image_names: Mapped[list[str]] = mapped_column(

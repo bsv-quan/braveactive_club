@@ -100,7 +100,8 @@ async def test_hidden_posts_are_admin_only(client):
     assert (await client.get(f"/api/posts/{post_id}/comments")).status_code == 404
     assert (await client.get("/api/admin/posts")).json()["posts"][0]["hidden"] is True
     assert (await client.patch(f"/api/admin/posts/{post_id}/visibility", json={"hidden": False}, headers=admin)).status_code == 200
-    assert len((await client.get("/api/posts")).json()["posts"]) == 1
+    assert (await client.get("/api/posts")).json()["posts"] == []
+    assert (await client.get("/api/admin/posts")).json()["posts"][0]["approved"] is False
 
 
 async def test_login_lockout_and_rate_limit(client):

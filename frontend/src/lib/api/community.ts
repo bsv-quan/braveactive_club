@@ -21,6 +21,7 @@ export type CommunityPost = {
   commentCount: number;
   likedByMe: boolean;
   createdAt: string;
+  approved: boolean;
   hidden: boolean;
 };
 
@@ -114,6 +115,8 @@ export const communityApi = {
     apiJson<{ message: string }>(`/api/admin/posts/${postId}`, { method: "DELETE" }),
   setPostHidden: (postId: string, hidden: boolean) =>
     apiJson<{ hidden: boolean }>(`/api/admin/posts/${postId}/visibility`, { method: "PATCH", json: { hidden } }),
+  approvePost: (postId: string) =>
+    apiJson<CommunityPost>(`/api/admin/posts/${postId}/approve`, { method: "POST" }),
 
   setLike: (postId: string, liked: boolean) =>
     apiJson<{ postId: string; likeCount: number; likedByMe: boolean }>(`/api/posts/${postId}/like`, {

@@ -308,6 +308,9 @@ function PostCardBase({
           </div>
         ) : null}
       </header>
+      {!post.approved && !isAdmin && viewerId === post.author.id ? (
+        <p className="post-pending-notice">{t("community.admin.pending")}</p>
+      ) : null}
 
       {error ? <Alert tone="error">{error}</Alert> : null}
       {shareNotice ? <Alert tone="success">{shareNotice}</Alert> : null}
@@ -459,32 +462,34 @@ function PostCardBase({
         <LinkPreviewCard preview={post.linkPreview} />
       ) : null}
 
-      {post.likeCount > 0 || post.commentCount > 0 ? (
+      {post.approved && (post.likeCount > 0 || post.commentCount > 0) ? (
         <div className="post-stats">
           <span>{post.likeCount > 0 ? t("community.post.likes", { count: post.likeCount }) : ""}</span>
           <span>{post.commentCount > 0 ? t("community.post.comments", { count: post.commentCount }) : ""}</span>
         </div>
       ) : null}
 
-      <footer className="post-actions">
-        <LikeButton
-          liked={post.likedByMe}
-          count={0}
-          label={post.likedByMe ? t("community.post.unlike") : t("community.post.like")}
-          onToggle={() => void toggleLike()}
-        />
-        <button
-          type="button"
-          className={showComments ? "post-action active" : "post-action"}
-          aria-expanded={showComments}
-          onClick={() => setShowComments((open) => !open)}
-        >
-          <MessageCircle size={18} aria-hidden />
-          <span>{t("community.post.comment")}</span>
-        </button>
-      </footer>
+      {post.approved ? (
+        <footer className="post-actions">
+          <LikeButton
+            liked={post.likedByMe}
+            count={0}
+            label={post.likedByMe ? t("community.post.unlike") : t("community.post.like")}
+            onToggle={() => void toggleLike()}
+          />
+          <button
+            type="button"
+            className={showComments ? "post-action active" : "post-action"}
+            aria-expanded={showComments}
+            onClick={() => setShowComments((open) => !open)}
+          >
+            <MessageCircle size={18} aria-hidden />
+            <span>{t("community.post.comment")}</span>
+          </button>
+        </footer>
+      ) : null}
 
-      {showComments ? (
+      {post.approved && showComments ? (
         <CommentSection
           postId={post.id}
           commentCount={post.commentCount}

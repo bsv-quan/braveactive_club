@@ -180,6 +180,8 @@ const ja: Messages = {
     admin: {
       postsTitle: "投稿管理",
       postsSubtitle: "コミュニティの投稿を確認・管理します。",
+      pending: "投稿は承認待ちです",
+      approve: "投稿を承認",
       accessDenied: "このページを表示するには管理者権限が必要です。",
       loadError: "管理者向け投稿を読み込めませんでした。",
       empty: "まだ投稿がありません。",
@@ -195,6 +197,7 @@ const ja: Messages = {
       removeImage: "写真を削除",
       post: "投稿",
       posting: "投稿中...",
+      pendingApproval: "投稿を送信しました。管理者の承認をお待ちください。",
       imageType: "JPG、PNG、WebPのみ対応しています。",
       imageSize: "画像が大きすぎます（最大{size}MB）。",
       imageLimit: "1つの投稿に追加できる写真は最大{max}枚です。",

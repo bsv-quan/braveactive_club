@@ -1,6 +1,6 @@
 "use client";
 
-import { Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
+import { Check, Eye, EyeOff, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -79,6 +79,25 @@ export function AdminPostsPage() {
       {posts.map((post) => (
         <div className="admin-post-item" key={post.id}>
         <div className="admin-post-actions">
+          {!post.approved ? (
+            <button
+              className="admin-post-action approve"
+              type="button"
+              title={t("community.admin.approve")}
+              aria-label={t("community.admin.approve")}
+              disabled={actionPostId === post.id}
+              onClick={() => {
+                setActionPostId(post.id);
+                setError("");
+                void communityApi.approvePost(post.id)
+                  .then((approvedPost) => patchPost(post.id, approvedPost))
+                  .catch((reason) => setError(errorMessage(reason, t("admin.error"))))
+                  .finally(() => setActionPostId(null));
+              }}
+            >
+              <Check size={17} aria-hidden />
+            </button>
+          ) : null}
           <button
             className="admin-post-action"
             type="button"
@@ -115,6 +134,7 @@ export function AdminPostsPage() {
             <Trash2 size={17} aria-hidden />
           </button>
         </div>
+        {!post.approved ? <p className="admin-post-pending">{t("community.admin.pending")}</p> : null}
         <PostCard
           post={post}
           viewerId={user.id}

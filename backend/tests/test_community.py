@@ -11,6 +11,13 @@ from app.services.link_preview import LinkPreview
 from tests.conftest import register
 
 
+async def promote_to_admin(email="a@bravesoft.com.vn"):
+    async with SessionFactory() as db:
+        user = await db.scalar(select(User).where(User.email == email))
+        user.role = "admin"
+        await db.commit()
+
+
 def png_bytes(size=(40, 30)) -> bytes:
     buffer = io.BytesIO()
     Image.new("RGB", size, (200, 30, 30)).save(buffer, "PNG")
@@ -24,6 +31,7 @@ async def test_guest_can_read_but_not_write(client):
 
 async def test_guest_can_open_shared_post_and_comments(client):
     csrf = await register(client)
+    await promote_to_admin()
     post = await client.post("/api/posts", data={"content": "Shared post"}, headers=csrf)
     post_id = post.json()["id"]
     await client.post(
@@ -43,6 +51,7 @@ async def test_guest_can_open_shared_post_and_comments(client):
 
 async def test_post_like_comment_flow(client):
     csrf = await register(client)
+    await promote_to_admin()
     created = await client.post("/api/posts", data={"content": "Hello club"}, headers=csrf)
     assert created.status_code == 201
     post_id = created.json()["id"]
@@ -126,6 +135,7 @@ async def test_owner_can_edit_post_text_without_replacing_attachment(client):
 
 async def test_only_owner_can_edit_post_and_comment(client):
     owner = await register(client, "owner@bravesoft.com.vn", "Owner")
+    await promote_to_admin("owner@bravesoft.com.vn")
     post_id = (await client.post("/api/posts", data={"content": "original"}, headers=owner)).json()["id"]
     comment = await client.post(
         f"/api/posts/{post_id}/comments",
@@ -148,6 +158,7 @@ async def test_only_owner_can_edit_post_and_comment(client):
 
 async def test_owner_can_edit_comment(client):
     csrf = await register(client)
+    await promote_to_admin()
     post_id = (await client.post("/api/posts", data={"content": "post"}, headers=csrf)).json()["id"]
     created = await client.post(
         f"/api/posts/{post_id}/comments",
@@ -187,6 +198,7 @@ async def test_profile_avatar_upload_and_profile_update(client):
 
 async def test_notifications_are_persisted_for_post_audience_and_mark_read(client):
     owner_csrf = await register(client, "owner@bravesoft.com.vn", "Owner")
+    await promote_to_admin("owner@bravesoft.com.vn")
     post = await client.post("/api/posts", data={"content": "My post"}, headers=owner_csrf)
     post_id = post.json()["id"]
     assert (await client.get("/api/notifications")).json()["notifications"] == []
@@ -242,6 +254,7 @@ async def test_new_post_notifies_existing_members(client):
     await client.post("/api/auth/logout", headers=existing_csrf)
 
     author_csrf = await register(client, "author@bravesoft.com.vn", "Author")
+    await promote_to_admin("author@bravesoft.com.vn")
     await client.post("/api/posts", data={"content": "Hello everyone"}, headers=author_csrf)
     await client.post("/api/auth/logout", headers=author_csrf)
     await client.post(
@@ -255,6 +268,7 @@ async def test_new_post_notifies_existing_members(client):
 
 async def test_pagination(client):
     csrf = await register(client)
+    await promote_to_admin()
     for i in range(5):
         await client.post("/api/posts", data={"content": f"post {i}"}, headers=csrf)
     first = (await client.get("/api/posts", params={"limit": 3})).json()
@@ -278,6 +292,43 @@ async def test_admin_post_management_requires_admin_role(client):
     deleted = await client.delete(f"/api/admin/posts/{post_id}", headers=csrf)
     assert deleted.status_code == 200
     assert (await client.get(f"/api/posts/{post_id}")).status_code == 404
+
+
+async def test_member_posts_require_admin_approval(client):
+    member_csrf = await register(client)
+    created = await client.post("/api/posts", data={"content": "Waiting for review"}, headers=member_csrf)
+    assert created.status_code == 201
+    post_id = created.json()["id"]
+    assert created.json()["approved"] is False
+    assert (await client.get("/api/posts")).json()["posts"] == []
+    assert (await client.get(f"/api/posts/{post_id}")).status_code == 200
+    assert (await client.get(f"/api/posts/{post_id}/comments")).status_code == 404
+
+    await client.post("/api/auth/logout", headers=member_csrf)
+    assert (await client.get(f"/api/posts/{post_id}")).status_code == 404
+    admin_csrf = await register(client, "admin@bravesoft.com.vn", "Admin")
+    assert (await client.post(f"/api/admin/posts/{post_id}/approve", headers=admin_csrf)).status_code == 403
+    await promote_to_admin("admin@bravesoft.com.vn")
+
+    admin_posts = await client.get("/api/admin/posts")
+    assert admin_posts.status_code == 200
+    assert admin_posts.json()["posts"][0]["approved"] is False
+    approved = await client.post(f"/api/admin/posts/{post_id}/approve", headers=admin_csrf)
+    assert approved.status_code == 200
+    assert approved.json()["approved"] is True
+    assert (await client.get("/api/posts")).json()["posts"][0]["id"] == post_id
+    assert (await client.get(f"/api/posts/{post_id}")).status_code == 200
+
+
+async def test_admin_posts_are_automatically_approved(client):
+    csrf = await register(client)
+    await promote_to_admin()
+
+    created = await client.post("/api/posts", data={"content": "Published immediately"}, headers=csrf)
+
+    assert created.status_code == 201
+    assert created.json()["approved"] is True
+    assert (await client.get("/api/posts")).json()["posts"][0]["id"] == created.json()["id"]
 
 
 async def test_image_upload_and_served_via_media(client):

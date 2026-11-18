@@ -82,6 +82,7 @@ def to_post_out(row, viewer: User | None) -> PostOut:
         comment_count=row.comment_count,
         liked_by_me=bool(row.liked_by_me) if viewer else False,
         created_at=post.created_at,
+        approved=post.approved,
         hidden=post.hidden,
     )
 
@@ -98,11 +99,20 @@ def _decode_cursor(cursor: str) -> tuple[datetime, uuid.UUID]:
         raise AppError("Con trỏ phân trang không hợp lệ.", 400) from None
 
 
-async def list_posts(db: AsyncSession, viewer: User | None, cursor: str | None, limit: int, include_hidden: bool = False) -> PostPage:
+async def list_posts(
+    db: AsyncSession,
+    viewer: User | None,
+    cursor: str | None,
+    limit: int,
+    include_hidden: bool = False,
+    include_unapproved: bool = False,
+) -> PostPage:
     limit = max(1, min(limit, PAGE_SIZE_MAX))
     query = _select_posts(viewer).order_by(Post.created_at.desc(), Post.id.desc()).limit(limit + 1)
     if not include_hidden:
         query = query.where(Post.hidden.is_(False))
+    if not include_unapproved:
+        query = query.where(Post.approved.is_(True))
     if cursor:
         created_at, post_id = _decode_cursor(cursor)
         query = query.where(or_(Post.created_at < created_at, and_(Post.created_at == created_at, Post.id < post_id)))
@@ -112,9 +122,22 @@ async def list_posts(db: AsyncSession, viewer: User | None, cursor: str | None, 
     return PostPage(posts=[to_post_out(row, viewer) for row in page], next_cursor=next_cursor)
 
 
-async def get_post_out(db: AsyncSession, post_id: uuid.UUID, viewer: User | None) -> PostOut:
-    row = (await db.execute(_select_posts(viewer).where(Post.id == post_id, Post.hidden.is_(False)))).first()
+async def get_post_out(
+    db: AsyncSession,
+    post_id: uuid.UUID,
+    viewer: User | None,
+    include_hidden: bool = False,
+) -> PostOut:
+    query = _select_posts(viewer).where(Post.id == post_id)
+    if not include_hidden:
+        query = query.where(Post.hidden.is_(False))
+    row = (await db.execute(query)).first()
     if not row:
+        raise AppError("Không tìm thấy bài đăng.", 404)
+    post: Post = row[0]
+    if not post.approved and not (
+        viewer and (viewer.role == "admin" or viewer.id == post.author_id)
+    ):
         raise AppError("Không tìm thấy bài đăng.", 404)
     return to_post_out(row, viewer)
 
@@ -136,7 +159,7 @@ async def create_post(
     if not content and not image_uploads:
         raise AppError("Hãy nhập nội dung hoặc chọn một ảnh.", 400)
 
-    post = Post(author_id=user.id, content=content)
+    post = Post(author_id=user.id, content=content, approved=user.role == "admin")
 
     # Link preview is skipped when the user dismissed it or attached an image.
     if not image_uploads and not skip_preview:
@@ -194,6 +217,8 @@ async def update_post(db: AsyncSession, user: User, post_id: uuid.UUID, content:
         raise AppError("Bài đăng cần có nội dung hoặc ảnh.", 400)
 
     post.content = content
+    if user.role != "admin":
+        post.approved = False
     post.link_url = None
     post.link_title = None
     post.link_description = None
@@ -227,7 +252,9 @@ async def set_like(
     liked: bool,
 ) -> tuple[int, bool, bool]:
     """Idempotently like/unlike a post; returns count, current state, and whether it was newly liked."""
-    if not await db.scalar(select(Post.id).where(Post.id == post_id, Post.hidden.is_(False))):
+    if not await db.scalar(
+        select(Post.id).where(Post.id == post_id, Post.hidden.is_(False), Post.approved.is_(True))
+    ):
         raise AppError("Không tìm thấy bài đăng.", 404)
     if liked:
         result = await db.execute(
@@ -259,7 +286,9 @@ def to_comment_out(comment: PostComment) -> CommentOut:
 
 
 async def list_comments(db: AsyncSession, post_id: uuid.UUID) -> list[CommentOut]:
-    if not await db.scalar(select(Post.id).where(Post.id == post_id, Post.hidden.is_(False))):
+    if not await db.scalar(
+        select(Post.id).where(Post.id == post_id, Post.hidden.is_(False), Post.approved.is_(True))
+    ):
         raise AppError("Không tìm thấy bài đăng.", 404)
     rows = await db.scalars(
         select(PostComment).where(PostComment.post_id == post_id).order_by(PostComment.created_at).limit(500)
@@ -268,7 +297,9 @@ async def list_comments(db: AsyncSession, post_id: uuid.UUID) -> list[CommentOut
 
 
 async def add_comment(db: AsyncSession, user: User, post_id: uuid.UUID, content: str) -> tuple[CommentOut, int]:
-    if not await db.scalar(select(Post.id).where(Post.id == post_id, Post.hidden.is_(False))):
+    if not await db.scalar(
+        select(Post.id).where(Post.id == post_id, Post.hidden.is_(False), Post.approved.is_(True))
+    ):
         raise AppError("Không tìm thấy bài đăng.", 404)
     comment = PostComment(post_id=post_id, author_id=user.id, content=content)
     db.add(comment)

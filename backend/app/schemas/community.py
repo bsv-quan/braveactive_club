@@ -33,6 +33,7 @@ class PostOut(CamelModel):
     comment_count: int = 0
     liked_by_me: bool = False
     created_at: datetime
+    approved: bool = True
     hidden: bool = False
 
 

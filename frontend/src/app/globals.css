@@ -890,8 +890,11 @@ h1, h2, h3, p { margin-top: 0; }
 .admin-post-actions { display: flex; justify-content: flex-end; gap: 7px; padding: 0 2px; }
 .admin-post-action { display: inline-grid; place-items: center; width: 34px; height: 32px; border: 1px solid var(--line); border-radius: 7px; background: var(--bg-card); color: var(--text-muted); cursor: pointer; transition: background .15s, color .15s, border-color .15s; }
 .admin-post-action:hover:not(:disabled) { border-color: var(--primary-color); background: var(--bg-hover); color: var(--primary-color); }
+.admin-post-action.approve:hover:not(:disabled) { border-color: #3a8b50; color: #3a8b50; }
 .admin-post-action.danger:hover:not(:disabled) { border-color: var(--danger-color); color: var(--danger-color); }
 .admin-post-action:disabled { opacity: .55; cursor: wait; }
+.admin-post-pending { margin: 0; color: var(--primary-color); font-size: 13px; font-weight: 600; }
+.post-pending-notice { margin: 0 0 10px 46px; color: var(--primary-color); font-size: 12px; font-weight: 600; }
 .admin-pending-activities { display: grid; gap: 8px; margin-bottom: 20px; padding-bottom: 18px; border-bottom: 1px solid var(--line); }
 .admin-pending-activities h2 { margin: 0; font-size: 17px; }
 .admin-pending-activities > p { margin: 0; color: var(--muted); font-size: 13px; }
