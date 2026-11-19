@@ -43,6 +43,24 @@ def candidate(url=SOURCE_URL, published_at=None):
     )
 
 
+async def test_detect_activity_location_uses_structured_ai_output(monkeypatch):
+    location = "Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh"
+    request = AsyncMock(return_value=article_response({"location": location}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+
+    detected = await ai_content.detect_activity_location(
+        "Giao lưu cầu lông",
+        "Gặp nhau tại Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh.",
+    )
+
+    assert detected == location
+    request.assert_awaited_once()
+    request_args = request.await_args.kwargs
+    assert request_args["schema_name"] == "activity_location"
+    assert request_args["json_schema"]["required"] == ["location"]
+    assert request_args["json_schema"]["additionalProperties"] is False
+
+
 async def configure_preview(monkeypatch, candidates=None):
     monkeypatch.setattr(
         ai_content,

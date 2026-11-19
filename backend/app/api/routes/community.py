@@ -157,7 +157,7 @@ async def admin_approve_post(post_id: uuid.UUID, db: DbSession, user: CurrentUse
 async def admin_delete_post(post_id: uuid.UUID, db: DbSession, user: CurrentUser):
     if user.role != "admin":
         raise AppError("Bạn không có quyền xóa bài viết này.", 403)
-    await community.delete_post(db, user, post_id)
+    await community.delete_post(db, user, post_id, allow_admin=True)
     await publish("post.deleted", postId=str(post_id))
     return MessageOut(message="Đã xóa bài đăng.")
 

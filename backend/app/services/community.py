@@ -214,11 +214,17 @@ async def create_post(
     return await get_post_out(db, post.id, user)
 
 
-async def delete_post(db: AsyncSession, user: User, post_id: uuid.UUID) -> None:
+async def delete_post(
+    db: AsyncSession,
+    user: User,
+    post_id: uuid.UUID,
+    *,
+    allow_admin: bool = False,
+) -> None:
     post = await db.get(Post, post_id)
     if not post or (post.hidden and user.role != "admin"):
         raise AppError("Không tìm thấy bài đăng.", 404)
-    if not can_manage(user, post.author_id):
+    if post.author_id != user.id and not (allow_admin and user.role == "admin"):
         raise AppError("Bạn không có quyền xóa bài đăng này.", 403)
     image_names = list(dict.fromkeys([*(post.image_names or []), post.image_name]))
     await db.delete(post)

@@ -96,6 +96,12 @@
   color: var(--text-main);
 }
 
+:is(.dark, :root[data-theme="dark"]) .activity-social-about > .section-kicker,
+:is(.dark, :root[data-theme="dark"]) .social-join-card .section-kicker,
+:is(.dark, :root[data-theme="dark"]) .activity-chat-card .section-kicker {
+  color: #a3d977;
+}
+
 :is(.dark, :root[data-theme="dark"]) .repeat-date-option {
   border-color: var(--border-color);
   background: var(--bg-hover);
@@ -183,6 +189,9 @@
   :root:not([data-theme]) .repeat-participant-day > strong,
   :root:not([data-theme]) .repeat-participant-day > .repeat-participant-names,
   :root:not([data-theme]) .activity-chat-message p { color: var(--text-main); }
+  :root:not([data-theme]) .activity-social-about > .section-kicker,
+  :root:not([data-theme]) .social-join-card .section-kicker,
+  :root:not([data-theme]) .activity-chat-card .section-kicker { color: #a3d977; }
   :root:not([data-theme]) .repeat-date-option {
     border-color: var(--border-color);
     background: var(--bg-hover);
@@ -790,6 +799,10 @@ a.button:is(:hover, :focus, :active) { color: #FFFFFF !important; }
 .activity-delete-button { flex: 0 0 auto; }
 .activity-social-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; align-items: start; gap: 18px; margin-top: 18px; }
 .activity-refresh-error { margin: 0; color: #a34432; font-size: 11px; }
+.activity-map-card { margin-top: 0; }
+.activity-map-card h2 { margin: 0 0 6px; font: 700 16px/1.35 Manrope, sans-serif; }
+.activity-map-card p { margin: 0 0 10px; color: var(--text-muted); font-size: 11px; line-height: 1.5; }
+.activity-map-card iframe { display: block; width: 100%; height: 190px; border: 0; border-radius: 6px; }
 .activity-social-main, .activity-social-sidebar { display: grid; gap: 16px; min-width: 0; }
 .social-card { min-width: 0; padding: 20px; border: 1px solid #e8ede6; border-radius: 7px; background: white; }
 .activity-login-action { margin-left: 6px; }
@@ -1033,6 +1046,7 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .auth-card h1 { margin: 0 0 6px; font: 800 28px/1.2 Manrope, sans-serif; letter-spacing: -.5px; }
 .auth-subtitle { margin-bottom: 22px; color: var(--muted); font-size: 14px; }
 .auth-form { display: grid; gap: 16px; }
+.auth-form .ui-field label { color: var(--text-primary); }
 .auth-link { justify-self: end; font-size: 13px; color: var(--green); font-weight: 600; }
 .auth-step-actions { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
 .auth-footer { margin-top: 20px; text-align: center; font-size: 13px; color: var(--muted); }
@@ -1136,8 +1150,8 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .post-text { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.6; font-size: 15px; }
 .post-text a { color: var(--primary-color); text-decoration: underline; }
 .post-text-wrap { position: relative; min-width: 0; }
-.post-text-measurement { position: absolute; inset: 0 auto auto 0; width: 100%; max-height: 4.8em; overflow: hidden; visibility: hidden; pointer-events: none; }
-.post-text-measurement-suffix { color: var(--green); font-size: 13px; font-weight: 700; }
+.post-text-measurement { position: absolute; inset: 0 auto auto 0; width: 100%; visibility: hidden; pointer-events: none; }
+.post-text-more { white-space: nowrap; }
 .post-text-toggle { padding: 0; border: 0; background: transparent; color: var(--green); font: inherit; font-size: 13px; font-weight: 700; cursor: pointer; }
 .post-text-collapse { justify-self: start; padding: 0; }
 .comment-owner-actions { display: flex; align-items: center; gap: 1px; }

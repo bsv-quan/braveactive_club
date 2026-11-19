@@ -25,6 +25,7 @@ class ActivityOut(CamelModel):
     repeat: dict[str, Any] | None = None
     title: str
     description: str
+    location: str | None = None
     category: str
     schedule_type: str
     date: datetime | None
