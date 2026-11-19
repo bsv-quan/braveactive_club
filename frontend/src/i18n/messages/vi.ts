@@ -507,6 +507,7 @@ const vi = {
       loading: "Đang tải hoạt động...",
       backToList: "Về danh sách hoạt động",
       defaultDescription: "Cùng tham gia và kết nối với câu lạc bộ.",
+      locationMap: "Bản đồ địa điểm",
       scheduleUndecided: "Chưa chốt lịch",
       createdBy: "Khởi tạo bởi {name}",
       deleteSeries: "Xóa cả chuỗi lặp",

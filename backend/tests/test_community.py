@@ -112,6 +112,21 @@ async def test_only_owner_can_delete(client):
     assert (await client.delete(f"/api/posts/{post_id}", headers=other)).status_code == 403
 
 
+async def test_admin_can_delete_other_posts_only_from_admin_endpoint(client):
+    owner = await register(client, "owner@bravesoft.com.vn", "Owner")
+    post_id = (await client.post("/api/posts", data={"content": "owner post"}, headers=owner)).json()["id"]
+    await client.post("/api/auth/logout", headers=owner)
+
+    admin = await register(client, "admin@bravesoft.com.vn", "Admin")
+    await promote_to_admin("admin@bravesoft.com.vn")
+
+    community_delete = await client.delete(f"/api/posts/{post_id}", headers=admin)
+    assert community_delete.status_code == 403
+
+    admin_delete = await client.delete(f"/api/admin/posts/{post_id}", headers=admin)
+    assert admin_delete.status_code == 200
+
+
 async def test_owner_can_edit_post_text_without_replacing_attachment(client):
     csrf = await register(client)
     created = await client.post(

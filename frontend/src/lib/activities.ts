@@ -34,6 +34,7 @@ export type ActivityRecurrence = ActivityRepeatConfig & {
     | "kind"
     | "title"
     | "description"
+    | "location"
     | "category"
     | "scheduleType"
     | "creator"
@@ -50,6 +51,7 @@ export type ClubActivity = {
   repeat?: ActivityRepeatConfig | null;
   title: string;
   description: string;
+  location?: string | null;
   category: ActivityCategory;
   scheduleType: "scheduled" | "poll";
   date: string | null;

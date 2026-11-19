@@ -503,6 +503,7 @@ const en: Messages = {
       loading: "Loading activity...",
       backToList: "Back to activities",
       defaultDescription: "Join in and connect with the club.",
+      locationMap: "Location map",
       scheduleUndecided: "Schedule not set",
       createdBy: "Created by {name}",
       deleteSeries: "Delete the whole series",

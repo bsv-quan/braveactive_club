@@ -41,6 +41,8 @@ class Activity(Base):
     title: Mapped[str] = mapped_column(String(120))
     title_key: Mapped[str] = mapped_column(String(400))
     description: Mapped[str] = mapped_column(Text)
+    location: Mapped[str | None] = mapped_column(Text)
+    location_checked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     category: Mapped[str] = mapped_column(String(32))
     schedule_type: Mapped[str] = mapped_column(String(16))  # Legacy poll values are retained as read-only data.
     date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

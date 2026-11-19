@@ -16,9 +16,11 @@ from app.core.logging_config import configure_logging
 from app.core.middleware import BodySizeLimitMiddleware, OriginCheckMiddleware, SecurityHeadersMiddleware
 from app.db.session import SessionFactory
 from app.services.activities import run_recurrence_job
+from app.services.ai_post_scheduler import run_due_ai_post_slots
 
 logger = logging.getLogger("app")
 RECURRENCE_INTERVAL_SECONDS = 6 * 3600
+AI_POST_SCHEDULE_INTERVAL_SECONDS = 30
 
 
 async def _recurrence_loop() -> None:
@@ -35,6 +37,19 @@ async def _recurrence_loop() -> None:
         await asyncio.sleep(RECURRENCE_INTERVAL_SECONDS)
 
 
+async def _ai_post_schedule_loop() -> None:
+    """Run scheduled AI posts shortly after their configured Vietnam-time slots."""
+    logger.info("AI post scheduler started: timezone=Asia/Ho_Chi_Minh")
+    while True:
+        try:
+            await run_due_ai_post_slots()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("AI post scheduler tick failed")
+        await asyncio.sleep(AI_POST_SCHEDULE_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
@@ -42,6 +57,7 @@ async def lifespan(_: FastAPI):
     settings.upload_dir.mkdir(parents=True, exist_ok=True)
     tasks = [
         asyncio.create_task(_recurrence_loop()),
+        asyncio.create_task(_ai_post_schedule_loop()),
     ]
     try:
         yield

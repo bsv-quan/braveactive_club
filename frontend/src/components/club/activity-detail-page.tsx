@@ -620,6 +620,18 @@ export default function ActivityDetailPage({
                     </div>
                     <div><strong>{activity.comments?.length ?? 0}</strong> {t("club.detail.about.messages")}</div>
                   </section>
+                  {activity.location ? (
+                    <section className="social-card activity-map-card" aria-labelledby="activity-map-title">
+                      <h2 id="activity-map-title">{t("club.detail.locationMap")}</h2>
+                      <p>{activity.location}</p>
+                      <iframe
+                        title={t("club.detail.locationMap")}
+                        src={`https://maps.google.com/maps?q=${encodeURIComponent(activity.location)}&output=embed`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
+                    </section>
+                  ) : null}
                 </aside>
               </div>
             </>

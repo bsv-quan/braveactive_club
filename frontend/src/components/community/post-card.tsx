@@ -55,32 +55,37 @@ function PostText({
     if (showFullContent || !wrapper || !measurement) return;
 
     const measure = () => {
-      const suffix = document.createElement("span");
-      suffix.className = "post-text-measurement-suffix";
-      suffix.textContent = `… ${t("community.post.seeMore")}`;
+      const lineHeight = Number.parseFloat(getComputedStyle(measurement).lineHeight);
+      if (!Number.isFinite(lineHeight) || lineHeight <= 0) return;
 
-      const fits = (length: number) => {
-        measurement.replaceChildren(
-          document.createTextNode(content.slice(0, length).trimEnd()),
-          suffix.cloneNode(true),
-        );
-        return measurement.scrollHeight <= measurement.clientHeight + 1;
-      };
-
-      if (fits(content.length)) {
+      const characters = Array.from(content);
+      const lineCount = () => Math.ceil(measurement.getBoundingClientRect().height / lineHeight);
+      measurement.textContent = content;
+      if (lineCount() <= 5) {
         setVisibleLength(content.length);
         setCanExpand(false);
         return;
       }
 
+      const suffix = document.createElement("span");
+      suffix.className = "post-text-measurement-suffix";
+      suffix.textContent = `…\u00a0${t("community.post.seeMore")}`;
+
+      const fits = (length: number) => {
+        const text = characters.slice(0, length).join("").trimEnd();
+        measurement.replaceChildren(document.createTextNode(text), suffix.cloneNode(true));
+        return lineCount() <= 5;
+      };
+
       let low = 0;
-      let high = content.length;
+      let high = characters.length;
       while (low < high) {
         const middle = Math.ceil((low + high) / 2);
         if (fits(middle)) low = middle;
         else high = middle - 1;
       }
-      setVisibleLength(low);
+
+      setVisibleLength(characters.slice(0, low).join("").trimEnd().length);
       setCanExpand(true);
     };
 
@@ -91,7 +96,8 @@ function PostText({
   }, [content, showFullContent, t]);
 
   const isExpanded = expanded || showFullContent;
-  const visibleContent = isExpanded ? content : content.slice(0, visibleLength).trimEnd();
+  const isClamped = canExpand && !isExpanded;
+  const visibleContent = isClamped ? content.slice(0, visibleLength).trimEnd() : content;
   const parts = useMemo(() => splitLinks(visibleContent), [visibleContent]);
 
   return (
@@ -106,13 +112,13 @@ function PostText({
             <span key={index}>{part.text}</span>
           ),
         )}
-        {!isExpanded && canExpand ? (
-          <>
-            {"… "}
+        {isClamped ? (
+          <span className="post-text-more">
+            {"…\u00a0"}
             <button type="button" className="post-text-toggle" onClick={() => onExpandedChange(true)}>
               {t("community.post.seeMore")}
             </button>
-          </>
+          </span>
         ) : null}
       </p>
       <p ref={measurementRef} className="post-text post-text-measurement" aria-hidden="true" />
@@ -249,7 +255,7 @@ function PostCardBase({
     }
   }
 
-  const canManage = viewerId !== null && (viewerId === post.author.id || isAdmin);
+  const canDelete = viewerId !== null && viewerId === post.author.id;
   const canEdit = viewerId !== null && viewerId === post.author.id;
 
   return (
@@ -284,7 +290,7 @@ function PostCardBase({
                     <Pencil size={16} aria-hidden /> {t("community.post.edit")}
                   </button>
                 ) : null}
-                {canManage ? (
+                {canDelete ? (
                   <button type="button" role="menuitem" onClick={() => { setShowPostMenu(false); void handleDelete(); }}>
                     <Trash2 size={16} aria-hidden /> {t("community.post.delete")}
                   </button>

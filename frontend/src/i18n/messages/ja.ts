@@ -501,6 +501,7 @@ const ja: Messages = {
       loading: "活動を読み込み中...",
       backToList: "活動一覧へ",
       defaultDescription: "参加して、クラブとつながりましょう。",
+      locationMap: "場所の地図",
       scheduleUndecided: "日程未定",
       createdBy: "作成者: {name}",
       deleteSeries: "繰り返しをすべて削除",

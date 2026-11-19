@@ -14,6 +14,7 @@ const contentSecurityPolicy = [
   // Link-preview thumbnails come from arbitrary https sites.
   "img-src 'self' data: blob: https:",
   `connect-src 'self' ${wsOrigin}${isDev ? " ws://localhost:3000" : ""}`,
+  "frame-src 'self' https://maps.google.com https://www.google.com",
   "object-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",

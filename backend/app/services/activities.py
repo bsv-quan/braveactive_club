@@ -24,6 +24,7 @@ from app.models import (
     User,
 )
 from app.schemas.club import ActivityCommentOut, ActivityCreate, ActivityOut
+from app.services.ai_content import detect_activity_location
 
 logger = logging.getLogger("app.activities")
 
@@ -103,6 +104,7 @@ def to_activity_out(activity: Activity, repeat_by_series: dict[uuid.UUID, dict])
         repeat=repeat or activity.repeat,
         title=activity.title,
         description=activity.description,
+        location=activity.location,
         category=activity.category,
         schedule_type=activity.schedule_type,
         date=activity.date,
@@ -267,6 +269,12 @@ async def _activate_activity(
                 "kind": activity.kind,
                 "title": activity.title,
                 "description": activity.description,
+                "location": activity.location,
+                "locationCheckedAt": (
+                    activity.location_checked_at.isoformat()
+                    if activity.location_checked_at
+                    else None
+                ),
                 "category": activity.category,
                 "creator": activity.creator,
                 "createdBy": str(activity.created_by) if activity.created_by else None,
@@ -350,6 +358,7 @@ async def create_activity(
         title=title,
         title_key=name_key(title),
         description=description,
+        location=None,
         category=category,
         schedule_type=schedule_type,
         date=when,
@@ -365,6 +374,9 @@ async def create_activity(
     except IntegrityError:
         await db.rollback()
         raise AppError("Đã có hoạt động cùng tên trong ngày này.", 409) from None
+
+    activity.location = await detect_activity_location(title, description)
+    activity.location_checked_at = datetime.now(timezone.utc)
 
     if not activity.approved:
         await db.commit()
@@ -411,6 +423,12 @@ async def expand_series(db: AsyncSession, rec: ActivityRecurrence, horizon: date
                 title=template["title"],
                 title_key=name_key(template["title"]),
                 description=template["description"],
+                location=template.get("location"),
+                location_checked_at=(
+                    datetime.fromisoformat(template["locationCheckedAt"])
+                    if template.get("locationCheckedAt")
+                    else None
+                ),
                 category=template["category"],
                 schedule_type="scheduled",
                 date=datetime(day.year, day.month, day.day, hour, minute, second, tzinfo=timezone.utc),

@@ -1,7 +1,15 @@
+import uuid
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
+from sqlalchemy import select
+
 from tests.conftest import register
 from app.core.security import hash_password
 from app.db.session import SessionFactory
-from app.models import User
+from app.models import Activity, User
+from app.services import activities as activities_service
+from app.services import activity_location_migration
 
 ACTIVITY = {
     "title": "Cầu lông tối thứ Ba",
@@ -12,6 +20,14 @@ ACTIVITY = {
     "date": "2026-11-03T12:00:00.000Z",
     "creator": "An",
 }
+
+
+@pytest.fixture(autouse=True)
+def mock_activity_location_detection(monkeypatch):
+    async def no_location(_title, _description):
+        return None
+
+    monkeypatch.setattr(activities_service, "detect_activity_location", no_location)
 
 
 async def login_as_admin(client):
@@ -139,6 +155,118 @@ async def test_activity_sharing_and_creator_use_account_name(client):
     assert not_shared.json()["communityPost"] is None
     posts = await client.get("/api/posts")
     assert [post["id"] for post in posts.json()["posts"]] == [result["communityPost"]["id"]]
+
+
+async def test_activity_location_is_detected_once_and_reused_for_recurrences(client, monkeypatch):
+    csrf = await register(client)
+    detected = []
+
+    async def detect_location(title, description):
+        detected.append((title, description))
+        return "Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh"
+
+    monkeypatch.setattr(activities_service, "detect_activity_location", detect_location)
+    created = await client.post(
+        "/api/activities",
+        json={
+            **ACTIVITY,
+            "title": "Giao lưu cầu lông tại Nhà văn hóa Thanh Niên",
+            "description": "Gặp nhau tại Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh.",
+            "repeat": {"interval": "weekly", "endType": "count", "count": 2},
+        },
+        headers=csrf,
+    )
+    assert created.status_code == 201, created.text
+    activity_id = created.json()["activity"]["id"]
+    assert created.json()["activity"]["location"] == "Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh"
+    assert len(detected) == 1
+
+    admin_csrf = await login_as_admin(client)
+    approved = await client.post(f"/api/admin/activities/{activity_id}/approve", headers=admin_csrf)
+    assert approved.status_code == 200, approved.text
+
+    activities = (await client.get("/api/activities")).json()["activities"]
+    assert len(activities) == 2
+    assert all(
+        activity["location"] == "Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh"
+        for activity in activities
+    )
+    detail = await client.get(f"/api/activities/{activity_id}")
+    assert detail.status_code == 200
+    assert detail.json()["activity"]["location"] == "Nhà văn hóa Thanh Niên, TP. Hồ Chí Minh"
+    assert len(detected) == 1
+
+
+async def test_location_backfill_checks_series_once_and_marks_empty_results(monkeypatch):
+    recurrence_id = uuid.uuid4()
+    today = date.today()
+    async with SessionFactory() as db:
+        db.add_all(
+            [
+                Activity(
+                    recurrence_series_id=recurrence_id,
+                    title="Cầu lông hàng tuần",
+                    title_key="cau long hang tuan",
+                    description="Tập tại Nhà văn hóa Thanh Niên.",
+                    category="CẦU LÔNG",
+                    schedule_type="scheduled",
+                    date=datetime.now(timezone.utc),
+                    day=today - timedelta(days=2),
+                    creator="Alice",
+                ),
+                Activity(
+                    recurrence_series_id=recurrence_id,
+                    title="Cầu lông hàng tuần",
+                    title_key="cau long hang tuan",
+                    description="Tập tại Nhà văn hóa Thanh Niên.",
+                    category="CẦU LÔNG",
+                    schedule_type="scheduled",
+                    date=datetime.now(timezone.utc),
+                    day=today - timedelta(days=1),
+                    creator="Alice",
+                ),
+                Activity(
+                    title="Chạy bộ",
+                    title_key="chay bo",
+                    description="Chạy bộ cuối tuần.",
+                    category="THỂ THAO",
+                    schedule_type="scheduled",
+                    date=datetime.now(timezone.utc),
+                    day=today,
+                    creator="Alice",
+                ),
+            ]
+        )
+        await db.commit()
+
+        calls = []
+
+        async def detect_location(title, description):
+            calls.append((title, description))
+            return "Nhà văn hóa Thanh Niên" if "Cầu lông" in title else None
+
+        monkeypatch.setattr(
+            activity_location_migration,
+            "detect_activity_location",
+            detect_location,
+        )
+        processed, with_location = await activity_location_migration.backfill_activity_locations(db)
+
+        assert (processed, with_location) == (3, 2)
+        assert len(calls) == 2
+        rows = list((await db.scalars(select(Activity).order_by(Activity.day))).all())
+        assert [row.location for row in rows] == [
+            "Nhà văn hóa Thanh Niên",
+            "Nhà văn hóa Thanh Niên",
+            None,
+        ]
+        assert all(row.location_checked_at is not None for row in rows)
+
+        processed_again, with_location_again = (
+            await activity_location_migration.backfill_activity_locations(db)
+        )
+        assert (processed_again, with_location_again) == (0, 0)
+        assert len(calls) == 2
 
 
 async def test_entertainment_activity_category_is_supported(client):
