@@ -505,8 +505,8 @@ button, a { -webkit-tap-highlight-color: transparent; }
 button { color: inherit; }
 a { color: var(--primary-color); text-decoration: none; }
 a:hover { color: var(--primary-hover); }
-.page-shell { width: 100%; max-width: none; margin: 0; padding: 0 clamp(16px, 3.5vw, 64px); }
-.topbar { position: sticky; top: 0; z-index: 100; height: 70px; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; border-bottom: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-app) 82%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.page-shell { --page-gutter: clamp(16px, 3.5vw, 64px); width: 100%; max-width: none; margin: 0; padding: 0 var(--page-gutter); }
+.topbar { position: sticky; top: 0; z-index: 100; width: calc(100% + var(--page-gutter) + var(--page-gutter)); height: 70px; margin-inline: calc(0px - var(--page-gutter)); padding-inline: var(--page-gutter); box-sizing: border-box; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; border-bottom: 1px solid var(--border-color); background: color-mix(in srgb, var(--bg-app) 82%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
 .brand { display: inline-flex; align-items: center; gap: 10px; }
 .topbar > .brand { grid-column: 1; grid-row: 1; justify-self: start; }
 .topbar > .auth-menu { grid-column: 3; grid-row: 1; justify-self: end; }
@@ -1458,4 +1458,149 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   .page-shell .topbar > .brand { grid-column: 1; grid-row: 1; }
   .page-shell .topbar > .auth-menu { grid-column: 2; grid-row: 1; }
   .page-shell .community-hub-switcher { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
+}
+
+.training-page { padding: 32px 0 64px; }
+.training-hero { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 38px; border-radius: 24px; background: var(--primary-gradient); color: #fff; }
+.training-hero > div:first-child { max-width: 670px; }
+.training-kicker { margin: 0 0 10px; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
+.training-hero h1 { margin: 0 0 12px; font-size: clamp(28px, 4vw, 42px); line-height: 1.15; }
+.training-hero p:last-child { margin: 0; line-height: 1.6; color: #eff6ff; }
+.training-hero-icon { display: grid; place-items: center; flex-shrink: 0; width: 130px; height: 130px; border: 1px solid #ffffff55; border-radius: 32px; background: #ffffff1c; }
+.training-safety { display: flex; align-items: flex-start; gap: 12px; margin: 20px 0 30px; padding: 16px 18px; border: 1px solid var(--border-color); border-radius: 14px; background: var(--bg-card); color: var(--text-secondary); }
+.training-safety svg { flex-shrink: 0; color: var(--accent-color); }
+.training-safety p { margin: 0; font-size: 14px; line-height: 1.6; }
+.training-group + .training-group { margin-top: 32px; }
+.training-group > h2 { margin: 0 0 14px; color: var(--text-main); font-size: 21px; line-height: 1.35; }
+.training-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: start; gap: 16px; }
+.training-card { padding: 22px; border: 1px solid var(--border-color); border-radius: 18px; background: var(--bg-card); }
+.training-card-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.training-card-icon { display: grid; place-items: center; width: 52px; height: 52px; border-radius: 15px; background: color-mix(in srgb, var(--accent-color) 15%, var(--bg-card)); color: var(--accent-color); }
+.training-level { color: var(--text-secondary); font-size: 12px; font-weight: 700; text-align: right; }
+.training-card h3 { margin: 18px 0 12px; font-size: 19px; line-height: 1.35; }
+.training-meta { display: flex; flex-wrap: wrap; gap: 14px; color: var(--text-secondary); font-size: 13px; }
+.training-meta span { display: inline-flex; align-items: center; gap: 5px; }
+.training-guide-button { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-top: 20px; padding: 16px 0 0; border: 0; border-top: 1px solid var(--border-color); background: transparent; color: var(--accent-color); cursor: pointer; font: inherit; font-size: 14px; font-weight: 700; text-align: left; }
+.training-animation-toggle { position: absolute; top: 12px; left: 12px; display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 1px solid var(--border-color); border-radius: 9px; background: var(--bg-card); color: var(--text-main); cursor: pointer; }
+.training-dialog { width: min(520px, calc(100% - 32px)); max-height: min(90vh, 800px); margin: auto; padding: 24px; overflow-y: auto; border: 1px solid var(--border-color); border-radius: 20px; background: var(--bg-card); color: var(--text-main); }
+.training-dialog::backdrop { background: #020617b3; }
+.training-dialog-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.training-dialog-header h2 { margin: 0; font-size: 21px; }
+.training-dialog > p, .training-dialog-steps { color: var(--text-secondary); font-size: 14px; line-height: 1.6; }
+.training-illustration { position: relative; display: grid; place-items: center; margin: 16px 0; border-radius: 16px; background: color-mix(in srgb, var(--accent-color) 12%, var(--bg-input)); }
+.training-illustration > svg { width: min(100%, 280px); height: 230px; }
+.training-illustration.paused :is(.training-stretch-arm, .training-neck-tilt, .training-neck-tuck, .training-neck-tuck-neck, .training-shoulder-lift, .training-shoulder-left-back, .training-shoulder-right-back, .training-wrist, .training-wrist-clockwise, .training-wrist-counterclockwise, .training-seated-calf, .training-seated-heel, .training-knee-far, .training-knee-near, .training-standing-lift, .training-standing-shoe, .training-standing-arm, .training-march-thigh, .training-march-shin, .sit-stand-shin, .sit-stand-thigh, .sit-stand-upper) { animation-play-state: paused; }
+.training-illustration.paused :is(.training-elbow-bend, .training-toe-raise) { animation-play-state: paused; }
+.training-illustration.paused :is(.training-lateral-arm, .training-side-leg, .training-side-shoe, .training-side-arm) { animation-play-state: paused; }
+.training-illustration :is(.sit-stand-illustration, .training-drawing) { width: min(100%, 340px); height: 245px; }
+.training-shoulder-lift, .training-shoulder-left-back, .training-shoulder-right-back, .training-wrist, .training-seated-calf, .training-seated-heel, .training-knee-far, .training-knee-near, .training-standing-lift, .training-standing-shoe, .training-march-thigh, .training-march-shin { transform-box: view-box; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.training-shoulder-lift { animation-name: training-shoulder-lift; animation-duration: 4s; }
+.training-shoulder-left-back { animation: training-shoulder-left-back 5s ease-in-out infinite; }
+.training-shoulder-right-back { animation: training-shoulder-right-back 5s ease-in-out infinite; }
+.training-neck-tilt { transform-box: view-box; transform-origin: 151px 71px; animation: training-neck-tilt 12s ease-in-out infinite; }
+.training-neck-tuck { transform-box: view-box; animation: training-neck-tuck 8s ease-in-out infinite; }
+.training-neck-tuck-neck { transform-box: view-box; transform-origin: 0 79px; animation: training-neck-tuck-neck 8s ease-in-out infinite; }
+.training-stretch-arm { transform-box: view-box; animation-duration: 6s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.training-stretch-arm-left { transform-origin: 124px 84px; animation-name: training-stretch-arm-left; }
+.training-stretch-arm-right { transform-origin: 178px 84px; animation-name: training-stretch-arm-right; }
+.training-elbow-bend, .training-toe-raise { transform-box: view-box; animation-duration: 4s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.training-elbow-bend-left { transform-origin: 106px 123px; animation-name: training-elbow-bend-left; }
+.training-elbow-bend-right { transform-origin: 197px 123px; animation-name: training-elbow-bend-right; }
+.training-toe-raise-far { transform-origin: 135px 227px; animation-name: training-toe-raise; }
+.training-toe-raise-near { transform-origin: 149px 227px; animation-name: training-toe-raise; }
+.training-lateral-arm { transform-box: view-box; animation-duration: 5s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.training-lateral-arm-left { transform-origin: 124px 84px; animation-name: training-lateral-left; }
+.training-lateral-arm-right { transform-origin: 178px 84px; animation-name: training-lateral-right; }
+.training-side-leg, .training-side-shoe, .training-side-arm { transform-box: view-box; animation-duration: 8s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.training-side-leg { transform-origin: 0 140px; }
+.training-side-leg-left { animation-name: training-side-leg-left; }
+.training-side-leg-right { animation-name: training-side-leg-right; }
+.training-side-shoe-left { animation-name: training-side-shoe-left; }
+.training-side-shoe-right { animation-name: training-side-shoe-right; }
+.training-side-supported .training-side-leg-left { animation-name: training-supported-leg-left; }
+.training-side-supported .training-side-leg-right { animation-name: training-supported-leg-right; }
+.training-side-supported .training-side-shoe-left { animation-name: training-supported-shoe-left; }
+.training-side-supported .training-side-shoe-right { animation-name: training-supported-shoe-right; }
+.training-side-arm-left { transform-origin: 124px 84px; animation-name: training-side-arm-left; }
+.training-side-arm-right { transform-origin: 178px 84px; animation-name: training-side-arm-right; }
+.training-wrist { animation: training-wrist-circle 40s linear infinite; }
+.training-wrist-clockwise { animation: training-wrist-clockwise 40s steps(1, end) infinite; }
+.training-wrist-counterclockwise { opacity: 0; animation: training-wrist-counterclockwise 40s steps(1, end) infinite; }
+.training-seated-heel { transform-origin: 182px 227px; animation-name: training-heel; animation-duration: 4s; }
+.training-seated-heel-far { transform-origin: 168px 227px; }
+.training-seated-calf { transform-origin: 150px 145px; animation-name: training-calf-lift; animation-duration: 4s; }
+.training-knee-far { transform-origin: 141px 145px; animation-name: training-knee-far; animation-duration: 8s; }
+.training-knee-near { transform-origin: 154px 149px; animation-name: training-knee-near; animation-duration: 8s; }
+.training-standing-lift { animation-name: training-body-lift; animation-duration: 4s; }
+.training-standing-shoe { transform-origin: 178px 228px; animation-name: training-heel; animation-duration: 4s; }
+.training-standing-shoe-far { transform-origin: 158px 228px; }
+.training-standing-arm { transform-box: view-box; transform-origin: 214px 112px; animation: training-standing-arm 4s ease-in-out infinite; }
+.training-march-thigh-far { transform-origin: 139px 141px; animation: training-march-thigh-far 4s ease-in-out infinite; }
+.training-march-thigh-near { transform-origin: 147px 141px; animation: training-march-thigh-near 4s ease-in-out infinite; }
+.training-march-shin-far { transform-origin: 139px 182px; animation: training-march-shin-far 4s ease-in-out infinite; }
+.training-march-shin-near { transform-origin: 147px 182px; animation: training-march-shin-near 4s ease-in-out infinite; }
+@keyframes training-shoulder-lift { 0%, 10%, 90%, 100% { transform: translateY(0); } 40%, 55% { transform: translateY(-8px); } }
+@keyframes training-shoulder-left-back { 0%, 100% { transform: translateX(0); } 30%, 70% { transform: translateX(6px); } }
+@keyframes training-shoulder-right-back { 0%, 100% { transform: translateX(0); } 30%, 70% { transform: translateX(-6px); } }
+@keyframes training-neck-tilt { 0%, 46%, 54%, 100% { transform: rotate(0deg); } 16%, 32% { transform: rotate(-15deg); } 70%, 86% { transform: rotate(15deg); } }
+@keyframes training-neck-tuck { 0%, 100% { transform: translateX(0); } 35%, 60% { transform: translateX(-10px); } }
+@keyframes training-neck-tuck-neck { 0%, 100% { transform: skewX(0deg); } 35%, 60% { transform: skewX(26.565deg); } }
+@keyframes training-stretch-arm-left { 0%, 100% { transform: rotate(0deg); } 40%, 55% { transform: rotate(155deg); } }
+@keyframes training-stretch-arm-right { 0%, 100% { transform: rotate(0deg); } 40%, 55% { transform: rotate(-155deg); } }
+@keyframes training-elbow-bend-left { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(155deg); } }
+@keyframes training-elbow-bend-right { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(-155deg); } }
+@keyframes training-toe-raise { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(-18deg); } }
+@keyframes training-lateral-left { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(75deg); } }
+@keyframes training-lateral-right { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(-75deg); } }
+@keyframes training-side-leg-left { 0%, 45%, 100% { transform: skewX(0deg); } 22%, 30% { transform: skewX(-15deg); } }
+@keyframes training-side-leg-right { 0%, 50%, 100% { transform: skewX(0deg); } 72%, 80% { transform: skewX(15deg); } }
+@keyframes training-side-shoe-left { 0%, 45%, 100% { transform: translate(0, 0); } 11%, 38% { transform: translate(-11px, -3px); } 22%, 30% { transform: translate(-22px, 0); } }
+@keyframes training-side-shoe-right { 0%, 50%, 100% { transform: translate(0, 0); } 61%, 90% { transform: translate(11px, -3px); } 72%, 80% { transform: translate(22px, 0); } }
+@keyframes training-supported-leg-left { 0%, 45%, 100% { transform: skewX(0deg); } 22%, 30% { transform: skewX(-15deg); } }
+@keyframes training-supported-leg-right { 0%, 50%, 100% { transform: skewX(0deg); } 72%, 80% { transform: skewX(15deg); } }
+@keyframes training-supported-shoe-left { 0%, 45%, 100% { transform: translate(0, 0); } 22%, 30% { transform: translate(-22px, -4px); } }
+@keyframes training-supported-shoe-right { 0%, 50%, 100% { transform: translate(0, 0); } 72%, 80% { transform: translate(22px, -4px); } }
+@keyframes training-side-arm-left { 0%, 45%, 50%, 95%, 100% { transform: rotate(0deg); } 22%, 30%, 72%, 80% { transform: rotate(75deg); } }
+@keyframes training-side-arm-right { 0%, 45%, 50%, 95%, 100% { transform: rotate(0deg); } 22%, 30%, 72%, 80% { transform: rotate(-75deg); } }
+/* Five small circles in each direction, with the palms remaining oriented forward. */
+@keyframes training-wrist-circle { 0%, 100% { transform: rotate(0deg) translateX(6px) rotate(0deg); } 50% { transform: rotate(1800deg) translateX(6px) rotate(-1800deg); } }
+@keyframes training-wrist-clockwise { 0% { opacity: 1; } 50% { opacity: 0; } }
+@keyframes training-wrist-counterclockwise { 0% { opacity: 0; } 50% { opacity: 1; } }
+@keyframes training-heel { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(15deg); } }
+@keyframes training-calf-lift { 0%, 100% { transform: scaleY(1); } 50% { transform: scaleY(.91); } }
+@keyframes training-body-lift { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-8px); } }
+@keyframes training-standing-arm { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(7deg); } }
+@keyframes training-knee-far { 0%, 12%, 45%, 100% { transform: rotate(0deg); } 25%, 32% { transform: rotate(-65deg); } }
+@keyframes training-knee-near { 0%, 50%, 95%, 100% { transform: rotate(0deg); } 65%, 72% { transform: rotate(-65deg); } }
+@keyframes training-march-thigh-far { 0%, 45%, 100% { transform: rotate(0deg); } 22% { transform: rotate(-50deg); } }
+@keyframes training-march-thigh-near { 0%, 50%, 100% { transform: rotate(0deg); } 72% { transform: rotate(-50deg); } }
+@keyframes training-march-shin-far { 0%, 45%, 100% { transform: rotate(0deg); } 22% { transform: rotate(50deg); } }
+@keyframes training-march-shin-near { 0%, 50%, 100% { transform: rotate(0deg); } 72% { transform: rotate(50deg); } }
+.sit-stand-shin, .sit-stand-thigh, .sit-stand-upper { transform-box: view-box; animation-duration: 6s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
+.sit-stand-shin { transform-origin: 188px 217px; animation-name: sit-stand-shin; }
+.sit-stand-thigh { transform-origin: 177px 165px; animation-name: sit-stand-thigh; }
+.sit-stand-upper { transform-origin: 120px 165px; animation-name: sit-stand-upper; }
+@keyframes sit-stand-shin { 0%, 12%, 100% { transform: rotate(0deg); } 42%, 58% { transform: rotate(12deg); } 88% { transform: rotate(0deg); } }
+@keyframes sit-stand-thigh { 0%, 12%, 100% { transform: rotate(0deg); } 42%, 58% { transform: rotate(78deg); } 88% { transform: rotate(0deg); } }
+@keyframes sit-stand-upper { 0%, 12%, 100% { transform: rotate(0deg); } 42%, 58% { transform: rotate(-90deg); } 88% { transform: rotate(0deg); } }
+.training-dialog-steps h3, .training-dialog-steps strong { color: var(--text-main); }
+.training-dialog-steps h3 { margin: 20px 0 6px; font-size: 15px; }
+.training-dialog-steps ol { margin: 0; padding-left: 20px; }
+.training-dialog-steps li + li { margin-top: 7px; }
+.training-dialog-steps p { margin-bottom: 0; }
+@media (prefers-reduced-motion: reduce) {
+  :is(.training-lateral-arm, .training-side-leg, .training-side-shoe, .training-side-arm) { animation: none; }
+  :is(.training-elbow-bend, .training-toe-raise) { animation: none; }
+  :is(.training-stretch-arm, .training-neck-tilt, .training-neck-tuck, .training-neck-tuck-neck, .training-shoulder-lift, .training-shoulder-left-back, .training-shoulder-right-back, .training-wrist, .training-wrist-clockwise, .training-wrist-counterclockwise, .training-seated-calf, .training-seated-heel, .training-knee-far, .training-knee-near, .training-standing-lift, .training-standing-shoe, .training-standing-arm, .training-march-thigh, .training-march-shin, .sit-stand-shin, .sit-stand-thigh, .sit-stand-upper) { animation: none; }
+  .training-animation-toggle { display: none; }
+}
+@media (max-width: 900px) {
+  .training-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 650px) {
+  .training-page { padding-top: 20px; }
+  .training-hero { padding: 26px; }
+  .training-hero-icon { display: none; }
+  .training-grid { grid-template-columns: 1fr; }
+  .page-shell .community-hub-link { padding: 0 9px; }
 }

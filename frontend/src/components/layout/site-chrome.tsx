@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, LogIn, LogOut, UserPlus, UserRoundStar, Users } from "lucide-react";
+import { CalendarDays, Dumbbell, LogIn, LogOut, UserPlus, UserRoundStar, Users } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
@@ -11,7 +11,7 @@ import { NotificationBell } from "@/components/layout/notification-bell";
 import { useI18n } from "@/i18n/i18n-provider";
 import { useFeedEvents } from "@/lib/use-feed-events";
 
-export type NavPage = "overview" | "activities" | "community" | "admin";
+export type NavPage = "overview" | "activities" | "community" | "training" | "admin";
 const COMMUNITY_RELOAD_TO_TOP_KEY = "ba:community-reload-to-top";
 
 /** Top bar: logo, compact community links, language switcher and the account menu. */
@@ -126,6 +126,14 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
         >
           <CalendarDays size={16} aria-hidden />
           <span>{t("nav.activities")}</span>
+        </Link>
+        <Link
+          className={currentPage === "training" ? "community-hub-link active" : "community-hub-link"}
+          href="/training"
+          aria-current={currentPage === "training" ? "page" : undefined}
+        >
+          <Dumbbell size={16} aria-hidden />
+          <span>{t("nav.training")}</span>
         </Link>
       </nav>
       <div className="auth-menu">
