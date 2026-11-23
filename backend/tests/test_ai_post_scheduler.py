@@ -70,6 +70,61 @@ async def test_ai_scheduler_publishes_the_1730_ai_slot_once(monkeypatch):
     assert author.display_name == "braveActive AI"
 
 
+async def test_ai_scheduler_publishes_when_ai_account_is_admin(monkeypatch):
+    monkeypatch.setattr(ai_content, "_rss_candidates", AsyncMock(return_value=[technology_candidate()]))
+    monkeypatch.setattr(
+        ai_content,
+        "_generate_article",
+        AsyncMock(
+            return_value=ai_content.ArticleDraft(
+                title="Bài AI đã được tự động đăng",
+                content="Nội dung bài đăng do tài khoản braveActive AI tạo và công khai trực tiếp. " * 2,
+            )
+        ),
+    )
+    async with SessionFactory() as db:
+        ai_user = await ai_content._get_ai_user(db)
+        ai_user.role = "admin"
+        await db.commit()
+
+    now = datetime(2026, 11, 23, 17, 31, tzinfo=VIETNAM_TZ)
+    assert await ai_post_scheduler.run_due_ai_post_slots(now) == 1
+
+    async with SessionFactory() as db:
+        post = await db.scalar(select(Post))
+        author = await db.scalar(select(User).where(User.id == post.author_id))
+
+    assert post.approved is True
+    assert post.hidden is False
+    assert author.role == "admin"
+
+
+async def test_ai_scheduler_holds_post_for_review_when_ai_account_is_member(monkeypatch):
+    monkeypatch.setattr(ai_content, "_rss_candidates", AsyncMock(return_value=[technology_candidate()]))
+    monkeypatch.setattr(
+        ai_content,
+        "_generate_article",
+        AsyncMock(
+            return_value=ai_content.ArticleDraft(
+                title="Bài AI chờ duyệt",
+                content="Bài này được giữ ở trạng thái chờ duyệt do tài khoản AI là thành viên. " * 2,
+            )
+        ),
+    )
+    async with SessionFactory() as db:
+        ai_user = await ai_content._get_ai_user(db)
+        ai_user.role = "user"
+        await db.commit()
+
+    now = datetime(2026, 11, 23, 17, 31, tzinfo=VIETNAM_TZ)
+    assert await ai_post_scheduler.run_due_ai_post_slots(now) == 1
+
+    async with SessionFactory() as db:
+        post = await db.scalar(select(Post))
+
+    assert post.approved is False
+
+
 async def test_ai_scheduler_does_not_run_before_a_slot(monkeypatch):
     fetch = AsyncMock()
     monkeypatch.setattr(ai_content, "_rss_candidates", fetch)

@@ -449,8 +449,10 @@ async def preview_post(
 async def _get_ai_user(db: AsyncSession) -> User:
     user = await db.scalar(select(User).where(User.email == AI_EMAIL))
     if user is not None:
-        if user.display_name != AI_DISPLAY_NAME or user.role != "user":
+        if user.display_name != AI_DISPLAY_NAME:
             raise AppError("Email dành riêng cho tài khoản braveActive AI đang được dùng.", 409)
+        if user.role not in {"user", "admin"}:
+            raise AppError("Vai trò của tài khoản braveActive AI không hợp lệ.", 409)
         return user
     statement = (
         pg_insert(User)
@@ -490,7 +492,7 @@ async def publish_preview(db: AsyncSession, preview: AIPostPublishRequest) -> Po
     post = Post(
         author_id=author.id,
         content=f"{preview.title.strip()}\n\n{preview.content.strip()}",
-        approved=False,
+        approved=author.role == "admin",
         link_url=candidate.url,
         link_title=candidate.title[:300],
         link_description=candidate.description[:600] or "Bản tóm tắt có AI hỗ trợ. Xem bài viết gốc tại nguồn.",

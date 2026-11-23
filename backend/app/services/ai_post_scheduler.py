@@ -167,7 +167,7 @@ async def _post_scheduled_article(
     post = Post(
         author_id=author.id,
         content=f"{draft.title.strip()}\n\n{draft.content.strip()}",
-        approved=False,
+        approved=author.role == "admin",
         link_url=candidate.url,
         link_title=candidate.title[:300],
         link_description=candidate.description[:600]
