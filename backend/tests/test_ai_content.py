@@ -136,6 +136,67 @@ async def test_admin_can_preview_edit_and_publish_pending_ai_post(client, monkey
     assert (await client.get("/api/posts")).json()["posts"] == []
 
 
+async def test_manual_ai_publish_respects_ai_account_role(client, monkeypatch):
+    admin_csrf = await register(client)
+    await promote_admin()
+
+    async with SessionFactory() as db:
+        ai_user = await ai_content._get_ai_user(db)
+        ai_user.role = "admin"
+        await db.commit()
+
+    await configure_preview(monkeypatch)
+    preview = await client.post(
+        "/api/admin/ai-posts/preview",
+        json={"topic": "health", "hours": 4},
+        headers=admin_csrf,
+    )
+    data = preview.json()
+    published = await client.post(
+        "/api/admin/ai-posts/publish",
+        json={
+            "topic": data["topic"],
+            "hours": data["hours"],
+            "sourceUrl": data["sourceUrl"],
+            "title": data["title"],
+            "content": data["content"],
+        },
+        headers=admin_csrf,
+    )
+
+    assert published.status_code == 201, published.text
+    assert published.json()["approved"] is True
+    assert (await client.get("/api/posts")).json()["posts"][0]["id"] == published.json()["id"]
+
+    async with SessionFactory() as db:
+        ai_user = await ai_content._get_ai_user(db)
+        ai_user.role = "user"
+        await db.commit()
+
+    second_url = "https://www.who.int/news/item/2026-01-02-health-information"
+    await configure_preview(monkeypatch, [candidate(second_url)])
+    preview = await client.post(
+        "/api/admin/ai-posts/preview",
+        json={"topic": "health", "hours": 4},
+        headers=admin_csrf,
+    )
+    data = preview.json()
+    published = await client.post(
+        "/api/admin/ai-posts/publish",
+        json={
+            "topic": data["topic"],
+            "hours": data["hours"],
+            "sourceUrl": data["sourceUrl"],
+            "title": "Bài AI chờ duyệt",
+            "content": data["content"],
+        },
+        headers=admin_csrf,
+    )
+
+    assert published.status_code == 201, published.text
+    assert published.json()["approved"] is False
+
+
 async def test_ai_preview_requires_admin_and_openai_key(client, monkeypatch):
     member_csrf = await register(client)
     denied = await client.post(
