@@ -5,6 +5,7 @@ import { useCommunityFeed } from "@/lib/use-community-feed";
 import { GuestPrompt } from "./guest-prompt";
 import { PostComposer } from "./post-composer";
 import { PostList } from "./post-list";
+import { CommunitySideRail } from "./community-side-rail";
 
 /** Community screen: composer (or login prompt) above a live, paginated feed. */
 export function CommunityPage() {
@@ -12,7 +13,8 @@ export function CommunityPage() {
   const feed = useCommunityFeed();
 
   return (
-    <section className="community">
+    <section className="community-layout">
+      <div className="community">
       {authLoading ? null : user ? (
         <PostComposer
           displayName={user.displayName}
@@ -34,6 +36,8 @@ export function CommunityPage() {
         onPatch={feed.patchPost}
         onRemove={feed.removePost}
       />
+      </div>
+      <CommunitySideRail />
     </section>
   );
 }

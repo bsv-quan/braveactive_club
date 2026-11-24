@@ -151,7 +151,7 @@ const vi = {
       checkingEmail: "Đang kiểm tra email...",
       invalidEmail: "Vui lòng dùng email @bravesoft.vn hoặc @bravesoft.com.vn.",
       done: "Nếu tài khoản có thể tạo, yêu cầu đã được gửi. Quản trị viên sẽ liên hệ sau khi duyệt.",
-      submit: "Gửi yêu cầu đăng ký",
+      submit: "Đăng ký",
       hasAccount: "Đã có tài khoản?",
       goLogin: "Đăng nhập",
     },
@@ -212,6 +212,14 @@ const vi = {
       back: "Quay lại cộng đồng",
       loadError: "Không thể tải bài viết này.",
       notFound: "Không tìm thấy bài viết hoặc bài viết đã bị gỡ.",
+    },
+    sideRail: {
+      label: "Công cụ cộng đồng",
+      calendarAria: "Mở lịch hoạt động",
+      prevMonth: "Tháng trước",
+      nextMonth: "Tháng sau",
+      openCalendar: "Mở lịch hoạt động",
+      quickLinks: "Lối tắt hoạt động và rèn luyện",
     },
     upcoming: {
       title: "SẮP DIỄN RA TRONG TUẦN",

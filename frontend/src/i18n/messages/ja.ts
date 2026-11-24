@@ -210,6 +210,14 @@ const ja: Messages = {
       loadError: "この投稿を読み込めませんでした。",
       notFound: "投稿が見つからないか、削除されています。",
     },
+    sideRail: {
+      label: "コミュニティツール",
+      calendarAria: "活動カレンダーを開く",
+      prevMonth: "前の月",
+      nextMonth: "次の月",
+      openCalendar: "活動カレンダーを開く",
+      quickLinks: "活動・トレーニングのショートカット",
+    },
     upcoming: {
       title: "今週の予定",
       view: "活動を見る",

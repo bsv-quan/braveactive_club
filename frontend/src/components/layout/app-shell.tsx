@@ -5,7 +5,7 @@ import { FeedbackWidget } from "./feedback-widget";
 export function AppShell({ currentPage, children }: { currentPage?: NavPage; children: React.ReactNode }) {
   return (
     <main className="app-main">
-      <div className="page-shell app-shell">
+      <div className={`page-shell app-shell${currentPage === "community" ? " community-page-shell" : ""}`}>
         <ClubHeader currentPage={currentPage} />
         {children}
         <ClubFooter />
