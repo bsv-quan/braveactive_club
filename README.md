@@ -8,16 +8,15 @@ The public `/training` page provides short office-friendly exercises in Vietname
 
 - `TrainingLibrary` in `frontend/src/components/training/training-library.tsx` renders the catalogue and exercise instructions using the current language.
 - `ExerciseAnimation` in `frontend/src/components/training/exercise-animation.tsx` displays the accessible modal and selects the exercise illustration. Its illustration overlay provides a pause/play control and honors reduced-motion preferences.
-- `ExerciseIllustration` in `frontend/src/components/training/exercise-illustration.tsx` renders exercise-specific 2D artwork with directional movement cues. `SitToStandIllustration` in `frontend/src/components/training/sit-to-stand-illustration.tsx` provides the articulated side-view sit-to-stand illustration. Their CSS animations are in `frontend/src/app/globals.css`.
-- `NeckIllustration` in `frontend/src/components/training/exercise-illustration.tsx` illustrates gentle side neck tilts and chin tucks; the chin tuck moves the head horizontally without tilting and pauses briefly before returning to neutral.
-- `StandingArmStretchIllustration` in the same file illustrates a standing arm stretch, with both feet planted while the arms rise and lower.
-- `ElbowBendsIllustration` and `SeatedToeRaisesIllustration` in the same file illustrate elbow bends and seated toe raises, keeping the upper arms or heels in place.
-- `MarchIllustration` in `frontend/src/components/training/march-illustration.tsx` shows a simplified side view with alternating knee lifts and a planted supporting foot.
+- `ExerciseIllustration` in `frontend/src/components/training/exercise-illustration.tsx` selects the illustration and applies its SVG framing. Each exercise has its own React SVG component named after its ID in `frontend/src/components/training/illustrations/`; `shared.tsx` contains reusable head, chair and shoe shapes. Inline SVG preserves the CSS animation and pause controls. Animation rules remain in `frontend/src/app/globals.css`.
+- `NeckSideTiltIllustration` shows a faint neutral head as a reference and holds each side tilt for two seconds. `ChinTuckIllustration` moves the head horizontally without tilting and pauses briefly before returning to neutral. `StandingArmStretchIllustration` keeps both feet planted as the arms rise and lower. `ElbowBendsIllustration` and `SeatedToeRaisesIllustration` keep the upper arms or heels in place.
+- `MarchIllustration` shows a side view with alternating knee lifts and a planted supporting foot; `SitToStandIllustration` uses articulated joints for the side-view sit-to-stand movement.
+- Illustrations use translucent resting poses to clarify movement. Their SVG joint origins and animations are defined in `globals.css`; shared head, chair and shoe geometry also appears in other exercises. Wrist circles show five small circles in each direction.
 - `filterExercises` in `frontend/src/lib/training.ts` combines selected filters; the filter interface is temporarily hidden. The short-duration option includes exercises of at most one minute.
 - `sortExercisesByLevel` in `frontend/src/lib/training.ts` returns a difficulty-ordered copy without mutating the catalogue.
-- The typed `exercises` catalogue in the same file contains exercise metadata, its display group and translations. Add all three language variants and a corresponding illustration, and review instructions and safety guidance when adding or changing an exercise.
+- The typed `exercises` catalogue in the same file contains exercise metadata, its display group and translations. To add an exercise, add all three language variants, create its illustration file, register it in `ExerciseIllustration`, add any animation rules, and review the instructions and safety guidance.
 
-Run the catalogue tests with `node --test frontend/tests/training.test.mjs` (Node.js 22.18+).
+Run the catalogue tests in Docker with `docker run --rm --entrypoint node -v "$PWD/frontend:/workspace:ro" -w /workspace braveactive-local-frontend --test tests/training.test.mjs`.
 
 The library is general guidance, not medical advice. People with injuries or health conditions should consult a healthcare professional before exercising.
 

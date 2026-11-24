@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { exerciseGroups, exercises, filterExercises, initialExerciseFilters, sortExercisesByLevel } from "../src/lib/training.ts";
 
@@ -16,6 +17,55 @@ test("the public catalogue has complete, uniquely identified translations", () =
       }
     }
   }
+});
+
+test("each exercise has a dedicated illustration file", () => {
+  const files = readdirSync(new URL("../src/components/training/illustrations/", import.meta.url))
+    .filter((name) => name.endsWith(".tsx") && name !== "shared.tsx")
+    .sort();
+  assert.deepEqual(files, exercises.map((exercise) => `${exercise.id}.tsx`).sort());
+});
+
+test("exercise joint origins and stretch holds match the artwork", () => {
+  const css = readFileSync(new URL("../src/app/globals.css", import.meta.url), "utf8");
+  const origins = {
+    "training-neck-tilt": "151px 75px",
+    "training-neck-tuck": "151px 75px",
+    "training-neck-tuck-neck": "151px 75px",
+    "training-elbow-bend-left": "112px 125px",
+    "training-elbow-bend-right": "191px 125px",
+    "training-lateral-arm-left": "124px 84px",
+    "training-lateral-arm-right": "178px 84px",
+    "training-knee-far": "141px 145px",
+    "training-knee-near": "154px 149px",
+    "training-seated-heel-far": "168px 227px",
+    "training-seated-heel": "182px 227px",
+    "training-toe-raise-far": "135px 227px",
+    "training-toe-raise-near": "149px 227px",
+    "training-march-thigh-far": "139px 141px",
+    "training-march-thigh-near": "147px 141px",
+    "training-march-shin-far": "139px 182px",
+    "training-march-shin-near": "147px 182px",
+    "sit-stand-shin": "180px 220px",
+    "sit-stand-thigh": "176px 165px",
+    "sit-stand-upper": "115px 165px",
+    "training-standing-lift": "140px 228px",
+    "training-side-leg-left": "140px 140px",
+    "training-side-leg-right": "162px 140px",
+    "training-side-arm-left": "124px 84px",
+    "training-side-arm-right": "178px 84px",
+    "training-wrist-left": "146px 69px",
+    "training-wrist-right": "154px 69px",
+  };
+  for (const [name, origin] of Object.entries(origins)) {
+    const rule = css.match(new RegExp(`^\\.${name} \\{([^}]*)\\}`, "m"));
+    assert.ok(rule, `missing CSS for ${name}`);
+    assert.ok(rule[1].includes(`transform-origin: ${origin};`), `${name} pivot`);
+  }
+  assert.match(css, /\.training-neck-tilt\s*\{[^}]*animation:\s*neckStretch 8s ease-in-out infinite/);
+  assert.match(css, /12\.5%, 37\.5%\s*\{\s*transform:\s*rotate\(20deg\)/);
+  assert.match(css, /62\.5%, 87\.5%\s*\{\s*transform:\s*rotate\(-20deg\)/);
+  assert.match(css, /35%, 60%\s*\{\s*transform:\s*translateX\(-10px\)/);
 });
 
 test("exercises belong to exactly one ordered group", () => {

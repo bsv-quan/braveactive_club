@@ -92,24 +92,12 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img className="brand-logo" src="/logos/braveactive.png" alt="Brave Active" />
       </Link>
+      {currentPage !== "community" ? (
       <nav className="community-hub-switcher" aria-label={t("nav.ariaLabel")}>
         <Link
-          className={currentPage === "community" ? "community-hub-link active" : "community-hub-link"}
+          className="community-hub-link"
           href="/community"
-          aria-current={currentPage === "community" ? "page" : undefined}
-          onClick={(event) => {
-            clearUnreadPosts();
-            if (currentPage === "community") {
-              event.preventDefault();
-              window.history.scrollRestoration = "manual";
-              try {
-                sessionStorage.setItem(COMMUNITY_RELOAD_TO_TOP_KEY, "1");
-              } catch {
-                window.scrollTo({ top: 0, behavior: "auto" });
-              }
-              window.location.reload();
-            }
-          }}
+          onClick={clearUnreadPosts}
         >
           <Users size={16} aria-hidden />
           <span>{t("nav.community")}</span>
@@ -136,6 +124,7 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
           <span>{t("nav.training")}</span>
         </Link>
       </nav>
+      ) : null}
       <div className="auth-menu">
         <LanguageSwitcher />
         <ThemeSwitcher />

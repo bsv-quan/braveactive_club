@@ -673,7 +673,7 @@ a.button:is(:hover, :focus, :active) { color: #FFFFFF !important; }
 .remove-member-button:disabled { opacity: .5; cursor: wait; }
 .empty-members { display: flex; flex-direction: column; align-items: center; padding: 16px 5px 12px; text-align: center; }.empty-members > span { color: #e6a16c; font-size: 21px; }.empty-members p { max-width: 220px; margin: 6px 0 4px; color: #68756c; font-size: 11px; line-height: 1.5; }.empty-members small { color: #9aa29c; font-size: 10px; }
 .signup-footnote { margin-top: 12px; padding: 11px 9px; border-radius: 3px; background: #f2f6ee; color: #71816f; font-size: 10px; }.signup-footnote span { margin-right: 5px; color: #e88969; }
-.activities-page { min-height: 650px; padding: 49px 0 62px; }
+.activities-page { width: min(90%, 1400px); min-height: 650px; margin: 0 auto; padding: 49px 0 62px; }
 .activities-page-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 30px; border-bottom: 1px solid var(--line); }
 .activities-page-heading h1 { margin: 15px 0 9px; font: 800 45px/1.15 Manrope, sans-serif; letter-spacing: -2.5px; }
 .activities-page-heading p { margin: 0; color: #79837c; font-size: 14px; }
@@ -1075,7 +1075,10 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .avatar-crop-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
 
 /* ---------- Community ---------- */
+.community-layout { position: relative; flex: 1; width: min(60vw, 920px); margin: 0 auto; padding: 24px 0 40px; }
+.community-layout > .community { width: 100%; }
 .community { flex: 1; width: min(100%, 920px); max-width: 920px; margin: 0 auto; padding: 24px 0 40px; display: grid; align-content: start; gap: 18px; }
+.community-layout .community { padding-top: 0; }
 .community-head h1 { margin: 0 0 4px; font: 800 32px/1.2 Manrope, sans-serif; letter-spacing: -1px; }
 .community .feed { padding-bottom: 12px; }
 .community-upcoming-sticky { position: sticky; z-index: 15; top: 10px; margin-bottom: 1px; }
@@ -1087,6 +1090,25 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .community-upcoming-copy strong { overflow: hidden; color: #263a2e; font: 700 14px/1.35 Manrope, sans-serif; text-overflow: ellipsis; white-space: nowrap; }
 .community-upcoming-meta { color: #758078; font-size: 11px; }
 .community-upcoming-cta { display: inline-flex; flex: none; align-items: center; gap: 3px; color: var(--green); font-size: 11px; font-weight: 700; }
+.community-side-rail { position: fixed; z-index: 20; top: 88px; left: calc(50% + 30vw + 24px); width: min(15vw, 220px); display: grid; gap: 12px; }
+.community-calendar-banner { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border-color); border-radius: 16px; background: var(--bg-card); box-shadow: 0 10px 30px #17231e10; }
+.community-calendar-banner-head { display: grid; grid-template-columns: 28px minmax(0, 1fr) 28px; align-items: center; text-align: center; }
+.community-calendar-banner-head strong { overflow: hidden; text-overflow: ellipsis; text-transform: capitalize; font-size: 12px; white-space: nowrap; }
+.calendar-mini-nav { display: grid; width: 28px; height: 28px; place-items: center; border: 0; border-radius: 8px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.calendar-mini-nav:hover { background: var(--bg-hover); color: var(--primary-solid); }
+.community-mini-calendar { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; color: var(--text-main); }
+.community-mini-calendar a { display: grid; aspect-ratio: 1; place-items: center; border-radius: 50%; color: var(--text-main); font-size: 9px; }
+.community-mini-calendar a.outside { opacity: .28; }
+.community-mini-calendar a:hover { background: var(--bg-hover); color: var(--primary-solid); }
+.community-mini-calendar a.has-event { background: var(--primary-solid); color: #fff; font-weight: 800; box-shadow: 0 3px 8px #314f3f24; }
+.community-calendar-open { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 34px; border-radius: 9px; background: var(--bg-hover); color: var(--primary-solid); font-size: 11px; font-weight: 800; }
+:is(.dark, :root[data-theme="dark"]) .community-calendar-open { background: color-mix(in srgb, var(--primary-solid) 18%, var(--bg-card)); color: #d7e7a8; }
+.community-accordion-rail { display: grid; justify-items: start; gap: 8px; }
+.community-accordion-tab { display: flex; align-items: center; width: 52px; height: 52px; overflow: hidden; border: 1px solid var(--border-color); border-radius: 50%; background: var(--bg-card); color: var(--primary-solid); box-shadow: 0 8px 20px #17231e12; transition: width .22s ease, transform .18s ease, border-color .18s ease, background .18s ease, color .18s ease; }
+.community-accordion-tab:hover, .community-accordion-tab:focus-visible { width: 150px; border-radius: 26px; border-color: var(--primary-solid); background: var(--primary-solid); color: #fff; transform: translateX(2px); }
+.community-accordion-symbol { flex: 0 0 52px; width: 52px; height: 52px; box-sizing: border-box; padding: 14px; }
+.community-accordion-label { min-width: 98px; padding-right: 12px; opacity: 0; font-size: 12px; font-weight: 800; white-space: nowrap; transform: translateX(8px); transition: opacity .16s ease, transform .22s ease; }
+.community-accordion-tab:hover .community-accordion-label, .community-accordion-tab:focus-visible .community-accordion-label { opacity: 1; transform: translateX(0); }
 .latest-community-section { padding: 36px 0 42px; border-top: 1px solid var(--line); }
 .latest-community-heading { display: flex; align-items: end; justify-content: space-between; gap: 12px; margin-bottom: 18px; }
 .latest-community-heading h2 { margin: 7px 0 0; font: 700 25px/1.2 Manrope, sans-serif; letter-spacing: -.5px; }
@@ -1453,6 +1475,21 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   }
 }
 
+@media (min-width: 901px) and (max-width: 1120px) {
+  .community-layout { width: min(60vw, 820px); }
+  .community-side-rail { top: 92px; left: calc(50% + 30vw + 24px); width: 52px; }
+  .community-calendar-banner { width: 52px; height: 52px; padding: 0; border-radius: 50%; overflow: hidden; }
+  .community-calendar-banner-head, .community-mini-calendar { display: none; }
+  .community-calendar-open { width: 52px; height: 52px; min-height: 52px; gap: 0; border-radius: 50%; font-size: 0; background: var(--bg-card); color: var(--primary-solid); }
+  .community-calendar-open svg { width: 21px; height: 21px; }
+  .community-calendar-open:hover, .community-calendar-open:focus-visible { background: var(--primary-solid); color: #fff; }
+}
+@media (max-width: 900px) {
+  .community-layout { width: calc(100% - 32px); }
+  .community-side-rail { position: static; width: 100%; grid-template-columns: minmax(0, 1fr) auto; align-items: start; }
+  .community-calendar-banner { max-width: 280px; }
+  .community-accordion-rail { grid-auto-flow: column; justify-items: start; }
+}
 @media (min-width: 651px) and (max-width: 900px) {
   .page-shell .topbar { grid-template-columns: minmax(0, 1fr) auto; height: auto; min-height: 70px; gap: 8px; padding: 8px 0; }
   .page-shell .topbar > .brand { grid-column: 1; grid-row: 1; }
@@ -1460,7 +1497,7 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
   .page-shell .community-hub-switcher { grid-column: 1 / -1; grid-row: 2; justify-self: center; }
 }
 
-.training-page { padding: 32px 0 64px; }
+.training-page { width: min(90%, 1400px); margin: 0 auto; padding: 32px 0 64px; }
 .training-hero { display: flex; justify-content: space-between; align-items: center; gap: 24px; padding: 38px; border-radius: 24px; background: var(--primary-gradient); color: #fff; }
 .training-hero > div:first-child { max-width: 670px; }
 .training-kicker { margin: 0 0 10px; font-size: 12px; font-weight: 800; letter-spacing: .12em; }
@@ -1497,24 +1534,23 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .training-shoulder-lift { animation-name: training-shoulder-lift; animation-duration: 4s; }
 .training-shoulder-left-back { animation: training-shoulder-left-back 5s ease-in-out infinite; }
 .training-shoulder-right-back { animation: training-shoulder-right-back 5s ease-in-out infinite; }
-.training-neck-tilt { transform-box: view-box; transform-origin: 151px 71px; animation: training-neck-tilt 12s ease-in-out infinite; }
-.training-neck-tuck { transform-box: view-box; animation: training-neck-tuck 8s ease-in-out infinite; }
-.training-neck-tuck-neck { transform-box: view-box; transform-origin: 0 79px; animation: training-neck-tuck-neck 8s ease-in-out infinite; }
+.training-neck-tilt { transform-box: view-box; transform-origin: 151px 75px; animation: neckStretch 8s ease-in-out infinite; }
+.training-neck-tuck { transform-box: view-box; transform-origin: 151px 75px; animation: training-neck-tuck 8s ease-in-out infinite; }
+.training-neck-tuck-neck { transform-box: view-box; transform-origin: 151px 75px; animation: training-neck-tuck-neck 8s ease-in-out infinite; }
 .training-stretch-arm { transform-box: view-box; animation-duration: 6s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
 .training-stretch-arm-left { transform-origin: 124px 84px; animation-name: training-stretch-arm-left; }
 .training-stretch-arm-right { transform-origin: 178px 84px; animation-name: training-stretch-arm-right; }
 .training-elbow-bend, .training-toe-raise { transform-box: view-box; animation-duration: 4s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.training-elbow-bend-left { transform-origin: 106px 123px; animation-name: training-elbow-bend-left; }
-.training-elbow-bend-right { transform-origin: 197px 123px; animation-name: training-elbow-bend-right; }
+.training-elbow-bend-left { transform-origin: 112px 125px; animation-name: training-elbow-bend-left; }
+.training-elbow-bend-right { transform-origin: 191px 125px; animation-name: training-elbow-bend-right; }
 .training-toe-raise-far { transform-origin: 135px 227px; animation-name: training-toe-raise; }
 .training-toe-raise-near { transform-origin: 149px 227px; animation-name: training-toe-raise; }
 .training-lateral-arm { transform-box: view-box; animation-duration: 5s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
 .training-lateral-arm-left { transform-origin: 124px 84px; animation-name: training-lateral-left; }
 .training-lateral-arm-right { transform-origin: 178px 84px; animation-name: training-lateral-right; }
 .training-side-leg, .training-side-shoe, .training-side-arm { transform-box: view-box; animation-duration: 8s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.training-side-leg { transform-origin: 0 140px; }
-.training-side-leg-left { animation-name: training-side-leg-left; }
-.training-side-leg-right { animation-name: training-side-leg-right; }
+.training-side-leg-left { transform-origin: 140px 140px; animation-name: training-side-leg-left; }
+.training-side-leg-right { transform-origin: 162px 140px; animation-name: training-side-leg-right; }
 .training-side-shoe-left { animation-name: training-side-shoe-left; }
 .training-side-shoe-right { animation-name: training-side-shoe-right; }
 .training-side-supported .training-side-leg-left { animation-name: training-supported-leg-left; }
@@ -1524,6 +1560,8 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .training-side-arm-left { transform-origin: 124px 84px; animation-name: training-side-arm-left; }
 .training-side-arm-right { transform-origin: 178px 84px; animation-name: training-side-arm-right; }
 .training-wrist { animation: training-wrist-circle 40s linear infinite; }
+.training-wrist-left { transform-origin: 146px 69px; }
+.training-wrist-right { transform-origin: 154px 69px; }
 .training-wrist-clockwise { animation: training-wrist-clockwise 40s steps(1, end) infinite; }
 .training-wrist-counterclockwise { opacity: 0; animation: training-wrist-counterclockwise 40s steps(1, end) infinite; }
 .training-seated-heel { transform-origin: 182px 227px; animation-name: training-heel; animation-duration: 4s; }
@@ -1531,7 +1569,7 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .training-seated-calf { transform-origin: 150px 145px; animation-name: training-calf-lift; animation-duration: 4s; }
 .training-knee-far { transform-origin: 141px 145px; animation-name: training-knee-far; animation-duration: 8s; }
 .training-knee-near { transform-origin: 154px 149px; animation-name: training-knee-near; animation-duration: 8s; }
-.training-standing-lift { animation-name: training-body-lift; animation-duration: 4s; }
+.training-standing-lift { transform-origin: 140px 228px; animation-name: training-body-lift; animation-duration: 4s; }
 .training-standing-shoe { transform-origin: 178px 228px; animation-name: training-heel; animation-duration: 4s; }
 .training-standing-shoe-far { transform-origin: 158px 228px; }
 .training-standing-arm { transform-box: view-box; transform-origin: 214px 112px; animation: training-standing-arm 4s ease-in-out infinite; }
@@ -1542,9 +1580,9 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 @keyframes training-shoulder-lift { 0%, 10%, 90%, 100% { transform: translateY(0); } 40%, 55% { transform: translateY(-8px); } }
 @keyframes training-shoulder-left-back { 0%, 100% { transform: translateX(0); } 30%, 70% { transform: translateX(6px); } }
 @keyframes training-shoulder-right-back { 0%, 100% { transform: translateX(0); } 30%, 70% { transform: translateX(-6px); } }
-@keyframes training-neck-tilt { 0%, 46%, 54%, 100% { transform: rotate(0deg); } 16%, 32% { transform: rotate(-15deg); } 70%, 86% { transform: rotate(15deg); } }
+@keyframes neckStretch { 0%, 50%, 100% { transform: rotate(0deg); } 12.5%, 37.5% { transform: rotate(20deg); } 62.5%, 87.5% { transform: rotate(-20deg); } }
 @keyframes training-neck-tuck { 0%, 100% { transform: translateX(0); } 35%, 60% { transform: translateX(-10px); } }
-@keyframes training-neck-tuck-neck { 0%, 100% { transform: skewX(0deg); } 35%, 60% { transform: skewX(26.565deg); } }
+@keyframes training-neck-tuck-neck { 0%, 100% { transform: skewX(0deg); } 35%, 60% { transform: skewX(33.69deg); } }
 @keyframes training-stretch-arm-left { 0%, 100% { transform: rotate(0deg); } 40%, 55% { transform: rotate(155deg); } }
 @keyframes training-stretch-arm-right { 0%, 100% { transform: rotate(0deg); } 40%, 55% { transform: rotate(-155deg); } }
 @keyframes training-elbow-bend-left { 0%, 100% { transform: rotate(0deg); } 40%, 60% { transform: rotate(155deg); } }
@@ -1563,7 +1601,7 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 @keyframes training-side-arm-left { 0%, 45%, 50%, 95%, 100% { transform: rotate(0deg); } 22%, 30%, 72%, 80% { transform: rotate(75deg); } }
 @keyframes training-side-arm-right { 0%, 45%, 50%, 95%, 100% { transform: rotate(0deg); } 22%, 30%, 72%, 80% { transform: rotate(-75deg); } }
 /* Five small circles in each direction, with the palms remaining oriented forward. */
-@keyframes training-wrist-circle { 0%, 100% { transform: rotate(0deg) translateX(6px) rotate(0deg); } 50% { transform: rotate(1800deg) translateX(6px) rotate(-1800deg); } }
+@keyframes training-wrist-circle { 0%, 100% { transform: rotate(0deg) translateX(6px) rotate(0deg); } 10% { transform: rotate(360deg) translateX(6px) rotate(-360deg); } 50% { transform: rotate(1800deg) translateX(6px) rotate(-1800deg); } 90% { transform: rotate(360deg) translateX(6px) rotate(-360deg); } }
 @keyframes training-wrist-clockwise { 0% { opacity: 1; } 50% { opacity: 0; } }
 @keyframes training-wrist-counterclockwise { 0% { opacity: 0; } 50% { opacity: 1; } }
 @keyframes training-heel { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(15deg); } }
@@ -1577,9 +1615,9 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 @keyframes training-march-shin-far { 0%, 45%, 100% { transform: rotate(0deg); } 22% { transform: rotate(50deg); } }
 @keyframes training-march-shin-near { 0%, 50%, 100% { transform: rotate(0deg); } 72% { transform: rotate(50deg); } }
 .sit-stand-shin, .sit-stand-thigh, .sit-stand-upper { transform-box: view-box; animation-duration: 6s; animation-timing-function: ease-in-out; animation-iteration-count: infinite; }
-.sit-stand-shin { transform-origin: 188px 217px; animation-name: sit-stand-shin; }
-.sit-stand-thigh { transform-origin: 177px 165px; animation-name: sit-stand-thigh; }
-.sit-stand-upper { transform-origin: 120px 165px; animation-name: sit-stand-upper; }
+.sit-stand-shin { transform-origin: 180px 220px; animation-name: sit-stand-shin; }
+.sit-stand-thigh { transform-origin: 176px 165px; animation-name: sit-stand-thigh; }
+.sit-stand-upper { transform-origin: 115px 165px; animation-name: sit-stand-upper; }
 @keyframes sit-stand-shin { 0%, 12%, 100% { transform: rotate(0deg); } 42%, 58% { transform: rotate(12deg); } 88% { transform: rotate(0deg); } }
 @keyframes sit-stand-thigh { 0%, 12%, 100% { transform: rotate(0deg); } 42%, 58% { transform: rotate(78deg); } 88% { transform: rotate(0deg); } }
 @keyframes sit-stand-upper { 0%, 12%, 100% { transform: rotate(0deg); } 42%, 58% { transform: rotate(-90deg); } 88% { transform: rotate(0deg); } }

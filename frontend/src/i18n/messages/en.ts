@@ -210,6 +210,14 @@ const en: Messages = {
       loadError: "Could not load this post.",
       notFound: "This post could not be found or has been removed.",
     },
+    sideRail: {
+      label: "Community tools",
+      calendarAria: "Open activity calendar",
+      prevMonth: "Previous month",
+      nextMonth: "Next month",
+      openCalendar: "Open activity calendar",
+      quickLinks: "Activity and training shortcuts",
+    },
     upcoming: {
       title: "COMING UP THIS WEEK",
       view: "View activity",
