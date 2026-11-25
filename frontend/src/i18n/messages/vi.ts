@@ -128,6 +128,7 @@ const vi = {
   },
   auth: {
     logout: "Đăng xuất",
+    logoutConfirm: "Bạn có chắc chắn muốn đăng xuất không?",
     login: {
       title: "Đăng nhập",
       subtitle: "Chào mừng bạn quay lại Brave Active.",

@@ -125,6 +125,7 @@ const en: Messages = {
   },
   auth: {
     logout: "Log out",
+    logoutConfirm: "Are you sure you want to log out?",
     login: {
       title: "Log in",
       subtitle: "Welcome back to Brave Active.",

@@ -125,6 +125,7 @@ const ja: Messages = {
   },
   auth: {
     logout: "ログアウト",
+    logoutConfirm: "ログアウトしてもよろしいですか？",
     login: {
       title: "ログイン",
       subtitle: "Brave Activeへおかえりなさい。",
