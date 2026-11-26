@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight, Dumbbell } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Dumbbell, Gamepad2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ClubActivity } from "@/lib/activities";
@@ -8,10 +8,12 @@ import { activityDay } from "@/lib/activities";
 import { apiJson } from "@/lib/api/client";
 import { useI18n } from "@/i18n/i18n-provider";
 import { dateKey } from "@/lib/club-ui";
+import { CommunityGamesDialog } from "./community-games-dialog";
 
 export function CommunitySideRail() {
   const { t, intlLocale } = useI18n();
   const [activities, setActivities] = useState<ClubActivity[]>([]);
+  const [gamesOpen, setGamesOpen] = useState(false);
   const [month, setMonth] = useState(() => {
     const now = new Date();
     return new Date(now.getFullYear(), now.getMonth(), 1);
@@ -89,7 +91,17 @@ export function CommunitySideRail() {
           <Dumbbell className="community-accordion-symbol" size={21} />
           <span className="community-accordion-label">{t("nav.training")}</span>
         </Link>
+        <button
+          type="button"
+          className="community-accordion-tab"
+          aria-label={t("community.games.open")}
+          onClick={() => setGamesOpen(true)}
+        >
+          <Gamepad2 className="community-accordion-symbol" size={21} />
+          <span className="community-accordion-label">{t("community.games.tab")}</span>
+        </button>
       </nav>
+      {gamesOpen && <CommunityGamesDialog onClose={() => setGamesOpen(false)} />}
     </aside>
   );
 }

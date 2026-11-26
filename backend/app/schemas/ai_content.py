@@ -2,6 +2,7 @@
 
 from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import Field
 
@@ -9,6 +10,26 @@ from app.schemas.base import CamelModel
 
 AIPostTopic = Literal["all", "health", "sports", "travel", "technology", "entertainment"]
 AIPostHours = Literal[1, 4, 12, 24]
+GameLocale = Literal["vi", "en", "ja"]
+WordSearchDifficulty = Literal["easy", "medium", "hard"]
+
+
+class WordSearchRequest(CamelModel):
+    difficulty: WordSearchDifficulty
+    locale: GameLocale
+
+
+class WordSearchWord(CamelModel):
+    answer: str
+    display_answer: str = Field(min_length=1, max_length=80)
+    clue: str = Field(min_length=4, max_length=180)
+
+
+class WordSearchPuzzle(CamelModel):
+    grid: list[list[str]]
+    words: list[WordSearchWord]
+    size: int
+    round_id: UUID | None = None
 
 
 class AIPostPreviewRequest(CamelModel):

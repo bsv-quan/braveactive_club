@@ -54,6 +54,48 @@ export type AIPostPreview = {
   sourceDescription: string;
   sourcePublishedAt: string;
 };
+export type WordSearchPuzzle = {
+  grid: string[][];
+  words: { answer: string; displayAnswer: string; clue: string }[];
+  size: number;
+  roundId: string | null;
+};
+export type WordSearchDifficulty = "easy" | "medium" | "hard";
+export type GameLeaderboardPeriod = "week" | "month";
+export type GameType = "word_search" | "chess" | "xiangqi" | "go";
+export type GameDifficulty = "easy" | "medium" | "hard";
+export type GameLeaderboard = {
+  period: GameLeaderboardPeriod;
+  gameType: GameType;
+  entries: { rank: number; userId: string; displayName: string; score: number }[];
+  updatedAt: string;
+};
+export type GameStatus = {
+  streakDays: number;
+  playedToday: boolean;
+  freeHintsRemaining: number;
+  wordSearchPoints: number;
+};
+export type BoardGameState = {
+  board: string[][];
+  turn: string;
+  result: "ongoing" | "white_win" | "black_win" | "red_win" | "draw";
+  last_move?: Record<string, unknown> | null;
+  [key: string]: unknown;
+};
+export type BoardMove = {
+  from?: [number, number];
+  to?: [number, number];
+  at?: [number, number];
+  pass?: boolean;
+  promotion?: "q" | "r" | "b" | "n";
+};
+export type BoardGameResponse = {
+  roundId: string | null;
+  state: BoardGameState;
+  score: number;
+  scoreAwarded: number;
+};
 export type UserNotification = {
   id: string;
   actorName: string;
@@ -123,6 +165,85 @@ export const communityApi = {
       method: "POST",
       json: { topic, hours, excludeSourceUrls },
     }),
+  generateWordSearch: (input: {
+    difficulty: WordSearchDifficulty;
+    locale: "vi" | "en" | "ja";
+  }) =>
+    apiJson<WordSearchPuzzle>("/api/games/word-search", {
+      method: "POST",
+      json: input,
+    }),
+  submitWordSearchGuess: (roundId: string, cells: number[]) =>
+    apiJson<{ correct: boolean; foundWords: number[]; scoreAwarded: number; score: number; complete: boolean }>(
+      `/api/games/word-search/${encodeURIComponent(roundId)}/guess`,
+      { method: "POST", json: { cells } },
+    ),
+  useWordSearchHint: (roundId: string) =>
+    apiJson<{
+      cell: number | null;
+      scoreAwarded: number;
+      score: number;
+      freeHintsRemaining: number;
+      wordSearchPoints: number;
+    }>(
+      `/api/games/word-search/${encodeURIComponent(roundId)}/hint`,
+      { method: "POST" },
+    ),
+  getGameStatus: () => apiJson<GameStatus>("/api/games/status", { cache: "no-store" }),
+  startBoardGame: (
+    gameType: Exclude<GameType, "word_search">,
+    difficulty: GameDifficulty,
+  ) =>
+    apiJson<BoardGameResponse>(`/api/games/board/${gameType}/start`, {
+      method: "POST",
+      json: { difficulty },
+    }),
+  getActiveBoardGame: (gameType: Exclude<GameType, "word_search">) =>
+    apiJson<BoardGameResponse | null>(`/api/games/board/${gameType}/active`, { cache: "no-store" }),
+  abandonActiveBoardGame: (gameType: Exclude<GameType, "word_search">) =>
+    apiJson<{ ok: boolean }>(`/api/games/board/${gameType}/active`, { method: "DELETE" }),
+  forfeitBoardGame: (
+    gameType: Exclude<GameType, "word_search">,
+    roundId: string | null,
+    state: BoardGameState,
+  ) =>
+    apiJson<BoardGameResponse>(`/api/games/board/${gameType}/forfeit`, {
+      method: "POST",
+      json: { roundId, state: roundId ? undefined : state },
+    }),
+  submitBoardMove: (
+    gameType: Exclude<GameType, "word_search">,
+    difficulty: GameDifficulty,
+    move: BoardMove,
+    roundId: string | null,
+    state: BoardGameState,
+  ) =>
+    apiJson<BoardGameResponse>(`/api/games/board/${gameType}/move`, {
+      method: "POST",
+      json: { difficulty, move, roundId, state: roundId ? undefined : state },
+    }),
+  submitBoardBotTurn: (
+    gameType: Exclude<GameType, "word_search">,
+    difficulty: GameDifficulty,
+    roundId: string | null,
+    state: BoardGameState,
+  ) =>
+    apiJson<BoardGameResponse>(`/api/games/board/${gameType}/bot-turn`, {
+      method: "POST",
+      json: { difficulty, roundId, state: roundId ? undefined : state },
+    }),
+  startStrategyRound: () =>
+    apiJson<{ roundId: string }>("/api/games/strategy/start", { method: "POST" }),
+  submitStrategyAnswer: (roundId: string, questionIndex: number, answerIndex: number) =>
+    apiJson<{ correct: boolean; scoreAwarded: number; score: number; complete: boolean }>(
+      `/api/games/strategy/${encodeURIComponent(roundId)}/answer`,
+      { method: "POST", json: { questionIndex, answerIndex } },
+    ),
+  getGameLeaderboard: (period: GameLeaderboardPeriod, gameType: GameType) =>
+    apiJson<GameLeaderboard>(
+      `/api/games/leaderboard?period=${period}&gameType=${gameType}`,
+      { cache: "no-store" },
+    ),
   publishAiPost: (input: Pick<AIPostPreview, "topic" | "hours" | "title" | "content" | "sourceUrl">) =>
     apiJson<CommunityPost>("/api/admin/ai-posts/publish", { method: "POST", json: input }),
 

@@ -4,11 +4,15 @@ import asyncio
 import email.utils
 import json
 import logging
+import math
+import random
 import secrets
 import uuid
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from string import ascii_uppercase
+from unicodedata import category, normalize
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 
 from bs4 import BeautifulSoup
@@ -23,12 +27,19 @@ from app.core.errors import AppError
 from app.core.rate_limit import limiter
 from app.core.security import hash_password
 from app.models import Post, PostComment, User
-from app.schemas.ai_content import AIPostHours, AIPostPreview, AIPostPublishRequest, AIPostTopic
+from app.schemas.ai_content import (
+    AIPostHours,
+    AIPostPreview,
+    AIPostPublishRequest,
+    AIPostTopic,
+    WordSearchPuzzle,
+    WordSearchRequest,
+    WordSearchWord,
+)
 from app.schemas.community import CommentOut
 from app.services import community
 
 logger = logging.getLogger("app.ai_content")
-
 AI_EMAIL = "braveactive-ai@bravesoft.com.vn"
 AI_DISPLAY_NAME = "braveActive AI"
 AI_TOPICS = ("health", "sports", "travel", "technology", "entertainment")
@@ -154,6 +165,244 @@ async def _request_response(
     if not isinstance(payload, dict):
         raise AppError("OpenAI trả về dữ liệu không hợp lệ.", 502)
     return payload
+
+
+async def generate_word_search(request: WordSearchRequest) -> WordSearchPuzzle:
+    """Generate an AI word set, then place each answer on a validated straight path."""
+    word_count = random.randint(3, 5)
+    locale_names = {"vi": "Vietnamese", "en": "English", "ja": "Japanese"}
+    difficulty_guidance = {
+        "vi": {
+            "easy": "Chọn từ quen thuộc, dễ nhận biết trong đời sống và kiến thức phổ thông. Câu hỏi ngắn, trực tiếp, không đánh đố.",
+            "medium": "Chọn từ thông dụng trong các câu hỏi kiến thức tổng quát. Câu hỏi cần hiểu nội dung mô tả nhưng không đòi hỏi kiến thức chuyên môn.",
+            "hard": "Chọn từ vựng cần hiểu nghĩa, sắc thái hoặc cách dùng. Câu hỏi kiểm tra khả năng hiểu từ trong ngữ cảnh, nhưng vẫn phải rõ ràng và có một đáp án hợp lý.",
+        },
+        "en": {
+            "easy": "Use familiar, recognizable everyday and general-knowledge words. Keep questions direct and avoid trick questions.",
+            "medium": "Use common general-knowledge vocabulary. Questions should require understanding the description but no specialist knowledge.",
+            "hard": "Use vocabulary that requires understanding meaning, nuance, or usage. Test comprehension in context while keeping each question clear and answerable.",
+        },
+        "ja": {
+            "easy": "日常や一般常識でよく知られた、見分けやすい言葉を使う。ひっかけを避け、質問は直接的にする。",
+            "medium": "一般的な知識で使われる言葉を選ぶ。専門知識は不要だが、説明を理解する必要がある質問にする。",
+            "hard": "意味、ニュアンス、使い方の理解が必要な語彙を選ぶ。文脈で理解を問いつつ、質問は明確で答えられるものにする。",
+        },
+    }
+    prompt = (
+        "Create a high-quality educational word-search round. "
+        "Include a balanced mix of useful vocabulary from sports, society, culture, and daily life. "
+        f"Difficulty: {request.difficulty}. {difficulty_guidance[request.locale][request.difficulty]} "
+        "Every answer must be a familiar, meaningful term that is relevant to its clue; "
+        "never misspell, truncate, abbreviate, or alter a word to satisfy the length. "
+        "Prefer one natural, complete word. Use a two- or three-word phrase only when it is commonly "
+        "used and its words clearly belong together; never combine unrelated words to reach the length. "
+        "Write one clear, concise question as the clue. The question must describe the answer "
+        "directly and specifically, so a learner can understand why that exact answer is correct. "
+        "Each question must have one unambiguous answer and teach a useful, accurate, familiar fact. "
+        "Match the vocabulary and clue complexity to the selected difficulty. Easy uses familiar "
+        "words and direct clues; medium uses ordinary vocabulary and clues requiring some "
+        "interpretation; hard uses less familiar vocabulary, nuance, or more challenging clues. "
+        "Even hard clues must be fair, clear, and have one unambiguous answer. Avoid vague prompts, "
+        "misleading premises, obscure trivia, or questions whose wording suggests a different answer. "
+        f"Return exactly {word_count} distinct question-and-answer pairs in {locale_names[request.locale]}. "
+        "Do not switch languages, invent facts, truncate answers, or repeat an answer. "
+        "For the displayed answer, use the same answer correctly written in the requested language "
+        "with its normal spelling, spaces between words, and diacritics. Use normal capitalization "
+        "rather than capitalizing every word, and do not concatenate separate words. "
+        "Each answer must contain 4 to 16 letters after removing spaces. Let each answer's natural, "
+        "correct spelling determine its length; do not make all answers the same length. "
+        "Use normal standalone words or familiar phrases, never invent a shortened form. "
+        "Before returning, check every pair: read the question alone, verify the displayed answer "
+        "is the direct and commonly accepted answer, then verify its normalized spelling is a valid grid answer. "
+        "The clue should be a question ending with a question mark in the requested language."
+    )
+    if request.locale == "ja":
+        prompt += (
+            " For the grid, also provide answer as uppercase ASCII A-Z romaji with spaces "
+            "separating words; display_answer must be the same Japanese term."
+        )
+    else:
+        prompt += (
+            " The grid answer will be generated from display_answer by removing spaces and "
+            "diacritics, so do not provide a separate grid spelling."
+        )
+    answer_patterns = [f"[A-Z]{{{length}}}" for length in range(4, 17)]
+    answer_patterns.extend(
+        f"[A-Z]{{{first_length}}} [A-Z]{{{total_length - first_length}}}"
+        for total_length in range(4, 17)
+        for first_length in range(2, total_length - 1)
+    )
+    answer_patterns.extend(
+        f"[A-Z]{{{first_length}}} [A-Z]{{{second_length}}} "
+        f"[A-Z]{{{total_length - first_length - second_length}}}"
+        for total_length in range(6, 17)
+        for first_length in range(2, total_length - 3)
+        for second_length in range(2, total_length - first_length - 1)
+    )
+    answer_pattern = "^(?:" + "|".join(answer_patterns) + ")$"
+    word_properties = {
+        "display_answer": {"type": "string", "minLength": 1, "maxLength": 80},
+        "clue": {"type": "string", "minLength": 4, "maxLength": 180},
+    }
+    required_fields = ["display_answer", "clue"]
+    if request.locale == "ja":
+        word_properties["answer"] = {"type": "string", "pattern": answer_pattern}
+        required_fields.insert(0, "answer")
+    json_schema = {
+        "type": "object",
+        "properties": {
+            "words": {
+                "type": "array",
+                "minItems": word_count,
+                "maxItems": word_count,
+                "items": {
+                    "type": "object",
+                    "properties": word_properties,
+                    "required": required_fields,
+                    "additionalProperties": False,
+                },
+            },
+        },
+        "required": ["words"],
+        "additionalProperties": False,
+    }
+
+    words: list[WordSearchWord] = []
+    retry_feedback = ""
+    for attempt in range(2):
+        retry_prompt = prompt
+        if attempt:
+            retry_prompt += f" Your previous response did not pass validation. {retry_feedback}"
+        payload = await _request_response(
+            retry_prompt,
+            max_output_tokens=1400,
+            json_schema=json_schema,
+            schema_name="word_search",
+        )
+        try:
+            output = json.loads(_response_text(payload))
+            raw_words = output["words"]
+            if not isinstance(raw_words, list) or len(raw_words) != word_count:
+                raise ValueError("word_count")
+            words = []
+            seen: set[str] = set()
+            for item in raw_words:
+                display_answer = " ".join(normalize("NFC", item["display_answer"]).split())
+                normalized_display = "".join(
+                    character
+                    for character in normalize("NFD", display_answer.upper())
+                    if category(character) != "Mn" and not character.isspace()
+                ).replace("Đ", "D")
+                if request.locale == "ja":
+                    raw_answer = normalize("NFC", item["answer"]).strip().upper()
+                    answer_parts = raw_answer.split()
+                    answer = "".join(answer_parts)
+                else:
+                    answer = normalized_display
+                    answer_parts = display_answer.split()
+                clue = item["clue"].strip()
+                if not 4 <= len(answer) <= 16:
+                    raise ValueError("answer_length")
+                if not answer.isascii() or not answer.isalpha():
+                    raise ValueError("answer_charset")
+                if request.locale == "ja" and not normalized_display:
+                    raise ValueError("display_answer_empty")
+                if not clue.endswith(("?", "？")):
+                    raise ValueError("clue_question_mark")
+                if len(answer_parts) > 3 or any(len(part) < 2 for part in answer_parts):
+                    raise ValueError("answer_phrase_format")
+                if answer in seen:
+                    raise ValueError("duplicate_answer")
+                seen.add(answer)
+                words.append(WordSearchWord(answer=answer, display_answer=display_answer, clue=clue))
+            break
+        except (AttributeError, KeyError, TypeError, ValueError, ValidationError) as error:
+            failure = str(error) if isinstance(error, ValueError) else type(error).__name__
+            if attempt == 0:
+                retry_feedback = {
+                    "answer_length": (
+                        "Correct every answer to contain 4 to 16 letters after removing spaces, "
+                        "using its complete natural spelling."
+                    ),
+                    "answer_charset": "Use only A-Z letters in each grid answer.",
+                    "clue_question_mark": "Make every clue a complete question ending with a question mark.",
+                    "duplicate_answer": "Ensure every answer is distinct.",
+                    "answer_phrase_format": "Use at most three words and keep each word at least two letters long.",
+                }.get(
+                    failure,
+                    "Recheck the answer spelling, clue wording, and output constraints.",
+                )
+                logger.warning("AI returned an invalid word-search puzzle; retrying: failure=%s", failure)
+                continue
+            logger.warning("AI returned an invalid word-search puzzle: failure=%s", failure)
+            raise AppError("AI chưa tạo được bộ ô chữ phù hợp. Vui lòng thử lại.", 502) from None
+
+    size = _word_search_grid_size([len(word.answer) for word in words])
+    grid = _place_word_search_words([word.answer for word in words], size)
+    try:
+        return WordSearchPuzzle(grid=grid, words=words, size=size)
+    except ValidationError:
+        logger.warning("AI generated a word-search puzzle that failed response validation")
+        raise AppError("AI chưa tạo được bộ ô chữ phù hợp. Vui lòng thử lại.", 502) from None
+
+
+def _word_search_grid_size(word_lengths: list[int]) -> int:
+    return max(max(word_lengths), math.ceil(math.sqrt(sum(word_lengths) * 3)))
+
+
+def _place_word_search_words(words: list[str], size: int) -> list[list[str]]:
+    grid: list[list[str | None]] = [[None] * size for _ in range(size)]
+    direction_groups = [
+        [(0, 1)],
+        [(1, 0)],
+        [(1, 1), (1, -1)],
+    ]
+    fallback_directions = [direction for group in direction_groups for direction in group]
+
+    for word_index, word in enumerate(words):
+        preferred = direction_groups[word_index % len(direction_groups)]
+        placement = _find_word_placement(grid, word, preferred, size)
+        if placement is None:
+            placement = _find_word_placement(grid, word, fallback_directions, size)
+        if placement is None:
+            raise AppError("Không thể sắp xếp bộ chữ này. Vui lòng tạo màn chơi khác.", 502)
+        row, column, row_step, column_step = placement
+        for letter in word:
+            grid[row][column] = letter
+            row += row_step
+            column += column_step
+
+    letters = ascii_uppercase
+    return [
+        [letter if letter is not None else secrets.choice(letters) for letter in row]
+        for row in grid
+    ]
+
+
+def _find_word_placement(
+    grid: list[list[str | None]],
+    word: str,
+    directions: list[tuple[int, int]],
+    size: int,
+) -> tuple[int, int, int, int] | None:
+    candidates = [
+        (row, column, row_step, column_step)
+        for row_step, column_step in directions
+        for row in range(size)
+        for column in range(size)
+    ]
+    random.SystemRandom().shuffle(candidates)
+    for row, column, row_step, column_step in candidates:
+        end_row = row + (len(word) - 1) * row_step
+        end_column = column + (len(word) - 1) * column_step
+        if not (0 <= end_row < size and 0 <= end_column < size):
+            continue
+        if all(
+            grid[row + index * row_step][column + index * column_step] in (None, letter)
+            for index, letter in enumerate(word)
+        ):
+            return row, column, row_step, column_step
+    return None
 
 
 def _response_text(payload: dict) -> str:
