@@ -25,8 +25,27 @@ from app.schemas.community import (
 )
 from app.schemas.feedback import FeedbackCreate, FeedbackOut
 from app.schemas.notifications import MarkNotificationsRead, NotificationPage
+from app.schemas.ai_content import WordSearchPuzzle, WordSearchRequest
+from app.schemas.game_score import (
+    BoardGameBotTurnRequest,
+    BoardGameForfeitRequest,
+    BoardGameMoveRequest,
+    BoardGameResponse,
+    BoardGameStartRequest,
+    BoardGameType,
+    GameStatus,
+    GameType,
+    GameRoundStarted,
+    LeaderboardOut,
+    LeaderboardPeriod,
+    StrategyAnswerRequest,
+    StrategyAnswerResult,
+    WordSearchGuessRequest,
+    WordSearchGuessResult,
+    WordSearchHintResult,
+)
 from app.schemas.auth import MessageOut
-from app.services import ai_content, community, notifications, uploads
+from app.services import ai_content, community, game_scores, notifications, uploads
 from app.services.link_preview import get_link_preview, normalize_url
 from app.services.realtime import manager, publish, publish_to_user
 from app.db.session import SessionFactory
@@ -51,6 +70,170 @@ async def list_posts(
 ):
     """Public feed (guests can read everything)."""
     return await community.list_posts(db, viewer, cursor, limit)
+
+
+@router.post(
+    "/games/word-search",
+    response_model=WordSearchPuzzle,
+    dependencies=[Depends(rate_limit("word-search-generation", 5, 3600))],
+)
+async def create_word_search(body: WordSearchRequest, db: DbSession, user: OptionalUser):
+    puzzle = await ai_content.generate_word_search(body)
+    if user is not None:
+        game_round = await game_scores.start_word_search_round(
+            db,
+            user,
+            puzzle.grid,
+            [word.answer for word in puzzle.words],
+            body.difficulty,
+        )
+        puzzle.round_id = game_round.id
+    return puzzle
+
+
+@router.post(
+    "/games/word-search/{round_id}/guess",
+    response_model=WordSearchGuessResult,
+)
+async def guess_word_search_word(
+    round_id: uuid.UUID,
+    body: WordSearchGuessRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    return await game_scores.submit_word_search_guess(db, user, round_id, body.cells)
+
+
+@router.post(
+    "/games/word-search/{round_id}/hint",
+    response_model=WordSearchHintResult,
+)
+async def hint_word_search_word(
+    round_id: uuid.UUID,
+    db: DbSession,
+    user: CurrentUser,
+):
+    return await game_scores.use_word_search_hint(db, user, round_id)
+
+
+@router.post(
+    "/games/board/{game_type}/start",
+    response_model=BoardGameResponse,
+    dependencies=[Depends(rate_limit("board-game-start", 30, 3600))],
+)
+async def start_board_game(
+    game_type: BoardGameType,
+    body: BoardGameStartRequest,
+    db: DbSession,
+    user: OptionalUser,
+):
+    return await game_scores.start_board_game(db, user, game_type, body.difficulty)
+
+
+@router.get(
+    "/games/board/{game_type}/active",
+    response_model=BoardGameResponse | None,
+)
+async def get_active_board_game(game_type: BoardGameType, db: DbSession, user: CurrentUser):
+    return await game_scores.get_active_board_game(db, user, game_type)
+
+
+@router.delete("/games/board/{game_type}/active")
+async def abandon_active_board_game(game_type: BoardGameType, db: DbSession, user: CurrentUser):
+    await game_scores.abandon_active_board_game(db, user, game_type)
+    return {"ok": True}
+
+
+@router.post("/games/board/{game_type}/forfeit", response_model=BoardGameResponse)
+async def forfeit_board_game(
+    game_type: BoardGameType,
+    body: BoardGameForfeitRequest,
+    db: DbSession,
+    user: OptionalUser,
+):
+    return await game_scores.forfeit_board_game(db, user, game_type, body.round_id, body.state)
+
+
+@router.post(
+    "/games/board/{game_type}/move",
+    response_model=BoardGameResponse,
+    dependencies=[Depends(rate_limit("board-game-move", 120, 3600))],
+)
+async def submit_board_game_move(
+    game_type: BoardGameType,
+    body: BoardGameMoveRequest,
+    db: DbSession,
+    user: OptionalUser,
+):
+    return await game_scores.submit_board_game_move(
+        db,
+        user,
+        game_type,
+        body.difficulty,
+        body.move.as_engine_move(),
+        body.round_id,
+        body.state,
+    )
+
+
+@router.post(
+    "/games/board/{game_type}/bot-turn",
+    response_model=BoardGameResponse,
+    dependencies=[Depends(rate_limit("board-game-move", 120, 3600))],
+)
+async def submit_board_game_bot_turn(
+    game_type: BoardGameType,
+    body: BoardGameBotTurnRequest,
+    db: DbSession,
+    user: OptionalUser,
+):
+    return await game_scores.submit_board_game_bot_turn(
+        db,
+        user,
+        game_type,
+        body.difficulty,
+        body.round_id,
+        body.state,
+    )
+
+
+@router.post("/games/strategy/start", response_model=GameRoundStarted)
+async def start_strategy_round(db: DbSession, user: CurrentUser):
+    game_round = await game_scores.start_strategy_round(db, user)
+    return {"round_id": game_round.id}
+
+
+@router.get("/games/status", response_model=GameStatus)
+async def get_games_status(db: DbSession, user: CurrentUser):
+    return await game_scores.get_game_status(db, user)
+
+
+@router.post(
+    "/games/strategy/{round_id}/answer",
+    response_model=StrategyAnswerResult,
+)
+async def answer_strategy_question(
+    round_id: uuid.UUID,
+    body: StrategyAnswerRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    return await game_scores.submit_strategy_answer(
+        db,
+        user,
+        round_id,
+        body.question_index,
+        body.answer_index,
+    )
+
+
+@router.get("/games/leaderboard", response_model=LeaderboardOut)
+async def list_game_leaderboard(
+    db: DbSession,
+    period: LeaderboardPeriod = Query(default="week"),
+    game_type: GameType = Query(default="word_search", alias="gameType"),
+):
+    return await game_scores.get_leaderboard(db, period, game_type)
 
 
 @router.post(

@@ -1,12 +1,16 @@
 import json
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
+import pytest
+from pydantic import ValidationError
 from sqlalchemy import select
 
+from app.core.errors import AppError
 from app.core.config import get_settings
 from app.db.session import SessionFactory
 from app.models import User
+from app.schemas.ai_content import WordSearchPuzzle, WordSearchRequest
 from app.services import ai_content
 from tests.conftest import register
 
@@ -59,6 +63,323 @@ async def test_detect_activity_location_uses_structured_ai_output(monkeypatch):
     assert request_args["schema_name"] == "activity_location"
     assert request_args["json_schema"]["required"] == ["location"]
     assert request_args["json_schema"]["additionalProperties"] is False
+
+
+async def test_word_search_generation_validates_and_places_words_in_multiple_directions(monkeypatch):
+    generated_words = [
+        {"answer": "WARM UP", "display_answer": "Warm up", "clue": "What gentle movements prepare the body for exercise?"},
+        {"answer": "SIT UPS", "display_answer": "Sit ups", "clue": "Which exercise strengthens the abdominal muscles?"},
+        {"answer": "GYM DAY", "display_answer": "Gym day", "clue": "What is a scheduled day for exercise called?"},
+        {"answer": "GO FAST", "display_answer": "Go fast", "clue": "What should a sprinter do to increase speed?"},
+        {"answer": "BOX OUT", "display_answer": "Box out", "clue": "What basketball move helps secure a rebound?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 5)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty="hard", locale="en")
+    )
+
+    assert puzzle.size == ai_content._word_search_grid_size([len(word["answer"].replace(" ", "")) for word in generated_words])
+    assert len(puzzle.grid) == puzzle.size
+    assert all(len(row) == puzzle.size for row in puzzle.grid)
+    assert [word.answer for word in puzzle.words] == [
+        word["answer"].replace(" ", "") for word in generated_words
+    ]
+    assert [word.display_answer for word in puzzle.words] == [
+        word["display_answer"] for word in generated_words
+    ]
+    request.assert_awaited_once()
+    assert request.await_args.kwargs["schema_name"] == "word_search"
+    assert request.await_args.kwargs["json_schema"]["properties"]["words"]["minItems"] == 5
+    assert request.await_args.kwargs["json_schema"]["properties"]["words"]["maxItems"] == 5
+
+    found_orientations = set()
+    directions = ((0, 1, "horizontal"), (1, 0, "vertical"), (1, 1, "diagonal"), (1, -1, "diagonal"))
+    for word in puzzle.words:
+        found = False
+        for row in range(puzzle.size):
+            for column in range(puzzle.size):
+                for row_step, column_step, orientation in directions:
+                    end_row = row + (len(word.answer) - 1) * row_step
+                    end_column = column + (len(word.answer) - 1) * column_step
+                    if not (0 <= end_row < puzzle.size and 0 <= end_column < puzzle.size):
+                        continue
+                    selected = "".join(
+                        puzzle.grid[row + index * row_step][column + index * column_step]
+                        for index in range(len(word.answer))
+                    )
+                    if selected == word.answer:
+                        found_orientations.add(orientation)
+                        found = True
+                        break
+                if found:
+                    break
+            if found:
+                break
+        assert found, f"{word.answer} was not placed on the board"
+    assert {"horizontal", "vertical", "diagonal"} <= found_orientations
+
+
+async def test_word_search_generation_rejects_model_output_that_does_not_match_request(monkeypatch):
+    request = AsyncMock(return_value=article_response({
+        "words": [{
+            "answer": "HEALTH",
+            "display_answer": "Health",
+            "clue": "What describes a complete answer as one word?",
+        }]
+        * 5,
+    }))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 5)
+
+    with pytest.raises(AppError) as error:
+        await ai_content.generate_word_search(
+            WordSearchRequest(difficulty="hard", locale="en")
+        )
+    assert error.value.status_code == 502
+
+
+async def test_word_search_generation_uses_random_count_and_natural_answer_lengths(monkeypatch):
+    generated_words = [
+        {"answer": "BONG", "display_answer": "Bóng", "clue": "Vật hình cầu được ném vào rổ trong môn bóng rổ là gì?"},
+        {"answer": "CHAY", "display_answer": "Chạy", "clue": "Hoạt động di chuyển nhanh bằng chân được gọi là gì?"},
+        {"answer": "CHAY BO", "display_answer": "Chạy bộ", "clue": "Hoạt động nào giúp rèn luyện sức bền bằng cách di chuyển nhanh bằng chân?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+    puzzle = await ai_content.generate_word_search(WordSearchRequest(difficulty="easy", locale="vi"))
+
+    assert len(puzzle.words) == 3
+    assert puzzle.size == ai_content._word_search_grid_size([4, 4, 6])
+    assert request.await_args.kwargs["json_schema"]["properties"]["words"]["minItems"] == 3
+    assert request.await_args.kwargs["json_schema"]["properties"]["words"]["maxItems"] == 3
+    assert "exactly 3 distinct" in request.await_args.args[0]
+    assert "one clear, concise question as the clue" in request.await_args.args[0]
+    assert "never misspell, truncate, abbreviate" in request.await_args.args[0]
+    assert "Avoid vague prompts" in request.await_args.args[0]
+    assert "easy" in request.await_args.args[0]
+    assert "do not make all answers the same length" in request.await_args.args[0]
+
+
+@pytest.mark.parametrize(
+    ("difficulty", "question_count"),
+    [("easy", 5), ("medium", 3), ("hard", 4)],
+)
+async def test_word_search_question_count_is_random_independent_of_difficulty(
+    monkeypatch, difficulty, question_count
+):
+    generated_words = [
+        {
+            "answer": f"WORD{chr(65 + index)}",
+            "display_answer": f"Word{chr(65 + index)}",
+            "clue": f"What is the name of word number {index + 1}?",
+        }
+        for index in range(question_count)
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    random_count = Mock(return_value=question_count)
+    monkeypatch.setattr(ai_content.random, "randint", random_count)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty=difficulty, locale="en")
+    )
+
+    assert len(puzzle.words) == question_count
+    random_count.assert_called_once_with(3, 5)
+    words_schema = request.await_args.kwargs["json_schema"]["properties"]["words"]
+    assert words_schema["minItems"] == question_count
+    assert words_schema["maxItems"] == question_count
+    assert f"exactly {question_count} distinct" in request.await_args.args[0]
+
+
+async def test_word_search_retries_once_when_ai_output_fails_validation(monkeypatch):
+    invalid_words = [
+        {"answer": "BOI", "display_answer": "Bơi", "clue": "Hoạt động di chuyển trong nước là gì?"},
+        {"answer": "CHAY", "display_answer": "Chạy", "clue": "Hoạt động di chuyển nhanh bằng chân?"},
+        {"answer": "NHAY", "display_answer": "Nhảy", "clue": "Động tác bật người rời khỏi mặt đất?"},
+    ]
+    valid_words = [
+        {"answer": "BONG", "display_answer": "Bóng", "clue": "Vật hình cầu được ném vào rổ trong môn bóng rổ là gì?"},
+        {"answer": "CHAY", "display_answer": "Chạy", "clue": "Hoạt động di chuyển nhanh bằng chân được gọi là gì?"},
+        {"answer": "NHAY", "display_answer": "Nhảy", "clue": "Động tác bật người rời khỏi mặt đất được gọi là gì?"},
+    ]
+    request = AsyncMock(side_effect=[
+        article_response({"words": invalid_words}),
+        article_response({"words": valid_words}),
+    ])
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty="easy", locale="vi")
+    )
+
+    assert len(puzzle.words) == 3
+    assert request.await_count == 2
+    assert "previous response did not pass validation" in request.await_args.args[0]
+    assert "4 to 16 letters" in request.await_args.args[0]
+
+
+async def test_word_search_generation_rejects_answer_shorter_than_four_letters(monkeypatch):
+    generated_words = [
+        {"answer": "RUN", "display_answer": "Run", "clue": "What is the English word for moving quickly on foot?"},
+        {"answer": "CHAY", "display_answer": "Chạy", "clue": "Hoạt động di chuyển nhanh bằng chân được gọi là gì?"},
+        {"answer": "BONG", "display_answer": "Bóng", "clue": "Vật hình cầu được ném vào rổ trong môn bóng rổ là gì?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    with pytest.raises(AppError) as error:
+        await ai_content.generate_word_search(WordSearchRequest(difficulty="easy", locale="vi"))
+    assert error.value.status_code == 502
+
+
+async def test_word_search_allows_natural_single_word_answers(monkeypatch):
+    generated_words = [
+        {"display_answer": "Bóng", "clue": "Vật hình cầu được ném vào rổ trong môn bóng rổ là gì?"},
+        {"display_answer": "Chạy", "clue": "Hoạt động di chuyển nhanh bằng chân được gọi là gì?"},
+        {"display_answer": "Nhảy", "clue": "Động tác bật người rời khỏi mặt đất được gọi là gì?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty="easy", locale="vi")
+    )
+
+    assert [word.answer for word in puzzle.words] == ["BONG", "CHAY", "NHAY"]
+    assert [word.display_answer for word in puzzle.words] == ["Bóng", "Chạy", "Nhảy"]
+    word_schema = request.await_args.kwargs["json_schema"]["properties"]["words"]["items"]
+    assert set(word_schema["properties"]) == {"display_answer", "clue"}
+    assert word_schema["required"] == ["display_answer", "clue"]
+
+
+async def test_word_search_generation_preserves_accented_display_answer(monkeypatch):
+    generated_words = [
+        {"display_answer": "Chạy bộ", "clue": "Hoạt động nào giúp rèn luyện sức bền bằng cách di chuyển nhanh bằng chân?"},
+        {"display_answer": "Bóng đá", "clue": "Môn thể thao đồng đội nào sử dụng chân để đưa bóng vào khung thành?"},
+        {"display_answer": "Thể dục", "clue": "Hoạt động vận động nào giúp rèn luyện sức khỏe toàn thân?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty="easy", locale="vi")
+    )
+
+    assert [word.answer for word in puzzle.words] == ["CHAYBO", "BONGDA", "THEDUC"]
+    assert [word.display_answer for word in puzzle.words] == ["Chạy bộ", "Bóng đá", "Thể dục"]
+    assert puzzle.size == ai_content._word_search_grid_size([6, 6, 6])
+    assert "normal spelling, spaces between words, and diacritics" in request.await_args.args[0]
+
+
+async def test_word_search_allows_natural_answers_longer_than_ten_letters(monkeypatch):
+    generated_words = [
+        {"display_answer": "Tiêu dùng xanh", "clue": "Cách mua sắm giảm tác động xấu đến môi trường được gọi là gì?"},
+        {"display_answer": "Bóng đá", "clue": "Môn thể thao đồng đội nào sử dụng chân để đưa bóng vào khung thành?"},
+        {"display_answer": "Thể dục", "clue": "Hoạt động vận động nào giúp rèn luyện sức khỏe toàn thân?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty="hard", locale="vi")
+    )
+
+    assert puzzle.words[0].answer == "TIEUDUNGXANH"
+    assert puzzle.words[0].display_answer == "Tiêu dùng xanh"
+    assert puzzle.size >= len("TIEUDUNGXANH")
+
+
+async def test_japanese_word_search_uses_ascii_grid_answer_and_japanese_display_answer(monkeypatch):
+    generated_words = [
+        {"answer": "UNDO", "display_answer": "運動", "clue": "体を動かして健康を保つ活動は何ですか？"},
+        {"answer": "KENKO", "display_answer": "健康", "clue": "病気がなく、体の調子がよい状態を何といいますか？"},
+        {"answer": "BUNKA", "display_answer": "文化", "clue": "社会に受け継がれる習慣や芸術などを何といいますか？"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    puzzle = await ai_content.generate_word_search(
+        WordSearchRequest(difficulty="medium", locale="ja")
+    )
+
+    assert [word.answer for word in puzzle.words] == ["UNDO", "KENKO", "BUNKA"]
+    assert [word.display_answer for word in puzzle.words] == ["運動", "健康", "文化"]
+    item_schema = request.await_args.kwargs["json_schema"]["properties"]["words"]["items"]
+    assert "answer" in item_schema["required"]
+
+
+async def test_word_search_rejects_display_answer_without_grid_letters(monkeypatch):
+    generated_words = [
+        {"display_answer": "!!!", "clue": "What does this clue describe?"},
+        {"display_answer": "Bóng", "clue": "Vật hình cầu được ném vào rổ trong môn bóng rổ là gì?"},
+        {"display_answer": "Chạy", "clue": "Hoạt động di chuyển nhanh bằng chân được gọi là gì?"},
+    ]
+    request = AsyncMock(return_value=article_response({"words": generated_words}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+    monkeypatch.setattr(ai_content.random, "randint", lambda minimum, maximum: 3)
+
+    with pytest.raises(AppError) as error:
+        await ai_content.generate_word_search(
+            WordSearchRequest(difficulty="easy", locale="vi")
+        )
+    assert error.value.status_code == 502
+
+
+def test_word_search_board_scales_with_answer_letters():
+    short_answers_board = ai_content._word_search_grid_size([4, 4, 4])
+    more_answers_board = ai_content._word_search_grid_size([4, 4, 4, 4, 4])
+    longer_answers_board = ai_content._word_search_grid_size([10, 10, 10])
+    largest_board = ai_content._word_search_grid_size([10, 10, 10, 10, 10])
+
+    assert short_answers_board < more_answers_board < largest_board
+    assert short_answers_board < longer_answers_board < largest_board
+
+
+def test_word_search_request_rejects_unlisted_difficulty():
+    with pytest.raises(ValidationError):
+        WordSearchRequest(difficulty="expert", locale="en")
+
+
+async def test_guest_can_generate_a_word_search_round(client, monkeypatch):
+    puzzle = WordSearchPuzzle(
+        grid=[["A"] * 12 for _ in range(12)],
+        words=[{"answer": "ACTIVE", "displayAnswer": "Active", "clue": "A movement clue"}],
+        size=12,
+    )
+    generate = AsyncMock(return_value=puzzle)
+    monkeypatch.setattr(ai_content, "generate_word_search", generate)
+
+    response = await client.post(
+        "/api/games/word-search",
+        json={"difficulty": "hard", "locale": "en"},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["words"][0]["answer"] == "ACTIVE"
+    assert response.json()["words"][0]["displayAnswer"] == "Active"
+    generate.assert_awaited_once()
+    assert generate.await_args.args[0].difficulty == "hard"
+    assert generate.await_args.args[0].locale == "en"
+
+
+async def test_guest_cannot_request_unlisted_word_search_difficulty(client):
+    response = await client.post(
+        "/api/games/word-search",
+        json={"difficulty": "expert", "locale": "vi"},
+    )
+
+    assert response.status_code == 400
 
 
 async def configure_preview(monkeypatch, candidates=None):

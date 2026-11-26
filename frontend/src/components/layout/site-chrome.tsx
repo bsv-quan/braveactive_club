@@ -151,7 +151,9 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
               className="ui-icon-button"
               aria-label={t("auth.logout")}
               title={t("auth.logout")}
-              onClick={() => void logout()}
+              onClick={() => {
+                if (window.confirm(t("auth.logoutConfirm"))) void logout();
+              }}
             >
               <LogOut size={18} aria-hidden />
             </button>
