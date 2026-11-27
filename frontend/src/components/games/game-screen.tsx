@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Lottie } from "lottie-react";
 import { ArrowLeft, CircleAlert, CircleHelp, Crown, Flag, Gamepad2, Grid3X3, LoaderCircle, RotateCcw, Search, Shield, Sparkles, WandSparkles, X } from "lucide-react";
-import { ApiError } from "@/lib/api/client";
+import { ApiError, errorMessage } from "@/lib/api/client";
 import {
   communityApi,
   type BoardGameResponse,
@@ -912,9 +912,10 @@ function BoardGameScreen({
         setGuestScore(result.scoreAwarded);
         onCompletedRef.current();
       }
-    } catch {
+    } catch (err) {
+      if (!mountedRef.current) return;
       setBotTurnError(true);
-      setError(t("community.games.board.botTurnError"));
+      setError(errorMessage(err, t("community.games.board.botTurnError")));
     } finally {
       botTurnInFlight.current = false;
       setBotThinking(false);

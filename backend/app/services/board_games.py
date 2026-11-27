@@ -2219,6 +2219,12 @@ def apply_ai_move(game_type,state,difficulty):
         m=_x_ai(out,difficulty)
         _x_make(out,m[0],m[1])
     else:
-        m=_go_ai(out,difficulty)
-        _go_play_legal(out,m)
+        m = _go_ai(out, difficulty)
+        try:
+            _go_play_legal(out, m)
+        except ValueError:
+            # Safe fallback: if a rare Ko/superko or legality mismatch occurs, pass cleanly instead of getting stuck
+            out = _clone(state)
+            out["difficulty"] = difficulty
+            _go_play_legal(out, {"pass": True})
     return _none_to_dot(out)

@@ -157,7 +157,7 @@ async def forfeit_board_game(
 @router.post(
     "/games/board/{game_type}/move",
     response_model=BoardGameResponse,
-    dependencies=[Depends(rate_limit("board-game-move", 120, 3600))],
+    dependencies=[Depends(rate_limit("board-game-move", 600, 3600))],
 )
 async def submit_board_game_move(
     game_type: BoardGameType,
@@ -179,7 +179,7 @@ async def submit_board_game_move(
 @router.post(
     "/games/board/{game_type}/bot-turn",
     response_model=BoardGameResponse,
-    dependencies=[Depends(rate_limit("board-game-move", 120, 3600))],
+    dependencies=[Depends(rate_limit("board-game-bot-turn", 600, 3600))],
 )
 async def submit_board_game_bot_turn(
     game_type: BoardGameType,
