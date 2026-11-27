@@ -847,7 +847,7 @@ const en: Messages = {
         monthEnd: "If the month lacks this day, send on its last day.",
         add: "Add notification schedule",
         cancel: "Cancel notification",
-        next: "Next send/attempt: {date}",
+        next: "Next send: {date}",
         monday: "Monday",
         tuesday: "Tuesday",
         wednesday: "Wednesday",

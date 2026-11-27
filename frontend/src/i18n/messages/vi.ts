@@ -851,7 +851,7 @@ const vi = {
         monthEnd: "Nếu tháng không có ngày này, gửi vào ngày cuối tháng.",
         add: "Thêm lịch thông báo",
         cancel: "Hủy thông báo",
-        next: "Lần gửi/thử tiếp theo: {date}",
+        next: "Lần gửi tiếp theo: {date}",
         monday: "Thứ Hai",
         tuesday: "Thứ Ba",
         wednesday: "Thứ Tư",

@@ -845,7 +845,7 @@ const ja: Messages = {
         monthEnd: "該当日がない月は月末に送信します。",
         add: "通知スケジュールを追加",
         cancel: "通知をキャンセル",
-        next: "次回の送信・再試行: {date}",
+        next: "次回の送信: {date}",
         monday: "月曜日",
         tuesday: "火曜日",
         wednesday: "水曜日",
