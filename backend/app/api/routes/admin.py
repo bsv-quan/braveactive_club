@@ -1,6 +1,7 @@
 """Administrator-only account management and manual request approval."""
 
 import uuid
+from datetime import datetime, timezone
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -10,14 +11,14 @@ from sqlalchemy import delete, func, select, text
 from app.api.deps import CurrentUser, DbSession
 from app.core.errors import AppError
 from app.core.security import hash_password
-from app.models import AccountRequest, Feedback, Post, User, UserSession
-from app.schemas.club import ActivityCreated
+from app.models import AccountRequest, ActivitySlackDelivery, ActivitySlackSchedule, Feedback, Post, User, UserSession
+from app.schemas.club import ActivityCreated, SlackScheduleOut
 from app.schemas.auth import CorporateEmail, Password
 from app.schemas.base import CamelModel
 from app.schemas.feedback import FeedbackOut, FeedbackPage
 from app.schemas.ai_content import AIPostPreview, AIPostPreviewRequest, AIPostPublishRequest
 from app.schemas.community import PostOut
-from app.services import activities as activity_service, ai_content, community, notifications
+from app.services import activities as activity_service, ai_content, community, notifications, slack_notifications
 from app.services import uploads
 from app.services.realtime import manager, publish, publish_to_user
 
@@ -31,6 +32,63 @@ async def require_admin(user: CurrentUser) -> User:
 
 
 Admin = Annotated[User, Depends(require_admin)]
+
+
+class SlackScheduleState(CamelModel):
+    paused: bool
+
+
+@router.get("/slack-schedules")
+async def list_slack_schedules(
+    db: DbSession, _: Admin, offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+):
+    rows = (await db.scalars(
+        select(ActivitySlackSchedule).order_by(ActivitySlackSchedule.id).offset(offset).limit(limit + 1)
+    )).all()
+    return {
+        "schedules": [
+            {**SlackScheduleOut.model_validate(item).model_dump(mode="json", by_alias=True),
+             "activityId": item.activity_id, "activityTitle": item.activity_title, "cancelled": item.cancelled}
+            for item in rows[:limit]
+        ],
+        "hasMore": len(rows) > limit,
+        "configured": slack_notifications.webhook_configured(),
+    }
+
+
+@router.patch("/slack-schedules/{schedule_id}")
+async def set_slack_schedule_state(schedule_id: uuid.UUID, body: SlackScheduleState, db: DbSession, _: Admin):
+    schedule = await db.scalar(select(ActivitySlackSchedule).where(ActivitySlackSchedule.id == schedule_id).with_for_update())
+    if schedule is None:
+        raise AppError("Không tìm thấy lịch thông báo.", 404)
+    if schedule.cancelled or schedule.activity_id is None:
+        raise AppError("Không thể thay đổi lịch đã hủy hoặc hoạt động đã xóa.", 409)
+    if schedule.paused != body.paused:
+        schedule.paused = body.paused
+        if not body.paused:
+            schedule.next_attempt_at = slack_notifications.next_scheduled_at(schedule, datetime.now(timezone.utc))
+            schedule.last_error = None
+        await db.commit()
+        await db.refresh(schedule)
+    return {"schedule": SlackScheduleOut.model_validate(schedule)}
+
+
+@router.get("/slack-schedules/{schedule_id}/history")
+async def slack_schedule_history(
+    schedule_id: uuid.UUID, db: DbSession, _: Admin,
+    offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=100),
+):
+    if await db.get(ActivitySlackSchedule, schedule_id) is None:
+        raise AppError("Không tìm thấy lịch thông báo.", 404)
+    rows = (await db.scalars(
+        select(ActivitySlackDelivery).where(ActivitySlackDelivery.schedule_id == schedule_id)
+        .order_by(ActivitySlackDelivery.attempted_at.desc(), ActivitySlackDelivery.id.desc())
+        .offset(offset).limit(limit + 1)
+    )).all()
+    return {"history": [
+        {"id": row.id, "attemptedAt": row.attempted_at, "status": row.status, "message": row.message, "error": row.error}
+        for row in rows[:limit]
+    ], "hasMore": len(rows) > limit}
 
 
 @router.post("/ai-posts/preview", response_model=AIPostPreview)

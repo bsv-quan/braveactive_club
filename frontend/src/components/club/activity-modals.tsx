@@ -15,7 +15,7 @@ type ModalFrameProps = {
   children: ReactNode;
 };
 
-function ModalFrame({
+export function ModalFrame({
   labelledBy,
   className = "",
   closeDisabled = false,

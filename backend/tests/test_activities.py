@@ -113,6 +113,110 @@ async def test_activity_lifecycle_and_duplicate(client):
     assert (await client.delete(f"/api/activities/{activity_id}", headers=csrf)).json()["deletedOccurrences"] == 1
 
 
+async def test_edit_activity_requires_owner_and_member_edit_is_reviewed(client, monkeypatch):
+    member_csrf = await register(client, name="Organizer")
+    created = await client.post(
+        "/api/activities", json={**ACTIVITY, "shareToCommunity": True}, headers=member_csrf
+    )
+    activity_id = created.json()["activity"]["id"]
+    member_session = client.cookies.get("ba_session")
+    admin_csrf = await login_as_admin(client)
+    approved = await client.post(f"/api/admin/activities/{activity_id}/approve", headers=admin_csrf)
+    assert approved.status_code == 200
+    assert approved.json()["communityPost"] is not None
+    assert (await client.get(f"/api/activities/{activity_id}")).json()["canManage"] is True
+    client.cookies.clear()
+    assert (await client.get(f"/api/activities/{activity_id}")).json()["canManage"] is False
+    client.cookies.set("ba_session", member_session)
+    assert (await client.get(f"/api/activities/{activity_id}")).json()["canManage"] is True
+    assert (await client.post(f"/api/activities/{activity_id}/join", headers=member_csrf)).status_code == 201
+
+    other_csrf = await register(client, email="other@bravesoft.com.vn", name="Other")
+    assert (await client.get(f"/api/activities/{activity_id}")).json()["canManage"] is False
+    edit = {
+        "title": "Cầu lông tại công viên",
+        "description": "Gặp nhau tại công viên để chơi cầu lông.",
+        "day": "2026-11-04",
+        "date": "2026-11-04T12:00:00.000Z",
+    }
+    assert (await client.patch(f"/api/activities/{activity_id}", json=edit, headers=other_csrf)).status_code == 403
+    client.cookies.clear()
+    client.cookies.set("ba_session", member_session)
+
+    calls = []
+
+    async def detect_location(title, description):
+        calls.append((title, description))
+        return "Công viên"
+
+    monkeypatch.setattr(activities_service, "detect_activity_location", detect_location)
+    edited = await client.patch(f"/api/activities/{activity_id}", json=edit, headers=member_csrf)
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["activity"]["approved"] is False
+    assert edited.json()["activity"]["location"] == "Công viên"
+    assert edited.json()["activity"]["participants"] == ["Organizer"]
+    assert calls == [(edit["title"], edit["description"])]
+    assert (await client.get(f"/api/activities/{activity_id}")).status_code == 404
+
+    client.cookies.clear()
+    admin_login = await client.post("/api/auth/login", json={"email": "admin@bravesoft.com.vn", "password": "AdminPass123"})
+    admin_csrf = {"X-CSRF-Token": admin_login.json()["csrfToken"]}
+    pending = await client.get("/api/admin/activities/pending")
+    assert activity_id in [item["id"] for item in pending.json()["activities"]]
+    reapproved = await client.post(f"/api/admin/activities/{activity_id}/approve", headers=admin_csrf)
+    assert reapproved.status_code == 200, reapproved.text
+    assert reapproved.json()["communityPost"] is None
+    assert reapproved.json()["activity"]["participants"] == ["Organizer"]
+    assert len((await client.get("/api/posts")).json()["posts"]) == 1
+
+
+async def test_admin_edits_activity_without_approval_and_rejects_duplicate(client):
+    csrf = await login_as_admin(client)
+    first = await client.post("/api/activities", json=ACTIVITY, headers=csrf)
+    other = await client.post(
+        "/api/activities",
+        json={**ACTIVITY, "title": "Hoạt động khác"},
+        headers=csrf,
+    )
+    activity_id = first.json()["activity"]["id"]
+    edit = {"title": "Tên mới", "description": "Nội dung mới cho hoạt động", "day": ACTIVITY["day"], "date": ACTIVITY["date"]}
+    result = await client.patch(f"/api/activities/{activity_id}", json=edit, headers=csrf)
+    assert result.status_code == 200, result.text
+    assert result.json()["activity"]["approved"] is True
+    duplicate = await client.patch(
+        f"/api/activities/{activity_id}", json={**edit, "title": "Hoạt động khác"}, headers=csrf
+    )
+    assert duplicate.status_code == 409
+    assert (await client.get(f"/api/activities/{activity_id}")).json()["activity"]["title"] == "Tên mới"
+    assert other.status_code == 201
+
+
+async def test_edit_validation_and_repeating_series_guard(client):
+    edit = {"title": "Tên hợp lệ", "description": "Nội dung hợp lệ", "day": ACTIVITY["day"], "date": ACTIVITY["date"]}
+    assert (await client.patch(f"/api/activities/{uuid.uuid4()}", json=edit)).status_code == 401
+    csrf = await login_as_admin(client)
+    created = await client.post("/api/activities", json=ACTIVITY, headers=csrf)
+    activity_id = created.json()["activity"]["id"]
+    for invalid in (
+        {**edit, "title": "x"},
+        {**edit, "day": "invalid"},
+        {**edit, "date": "invalid"},
+        {**edit, "approved": True},
+    ):
+        response = await client.patch(f"/api/activities/{activity_id}", json=invalid, headers=csrf)
+        assert response.status_code in (400, 422)
+    assert (await client.get(f"/api/activities/{activity_id}")).json()["activity"]["title"] == ACTIVITY["title"]
+    series = await client.post(
+        "/api/activities",
+        json={**ACTIVITY, "title": "Chuỗi định kỳ", "repeat": {"interval": "weekly", "endType": "count", "count": 2}},
+        headers=csrf,
+    )
+    series_id = series.json()["activity"]["id"]
+    response = await client.patch(f"/api/activities/{series_id}", json=edit, headers=csrf)
+    assert response.status_code == 409
+    assert len((await client.get(f"/api/activities/{series_id}")).json()["occurrences"]) == 2
+
+
 async def test_activity_sharing_and_creator_use_account_name(client):
     csrf = await register(client, name="Organizer")
     shared = await client.post(

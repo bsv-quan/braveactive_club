@@ -17,10 +17,12 @@ from app.core.middleware import BodySizeLimitMiddleware, OriginCheckMiddleware, 
 from app.db.session import SessionFactory
 from app.services.activities import run_recurrence_job
 from app.services.ai_post_scheduler import run_due_ai_post_slots
+from app.services.slack_notifications import run_due_slack_notifications
 
 logger = logging.getLogger("app")
 RECURRENCE_INTERVAL_SECONDS = 6 * 3600
 AI_POST_SCHEDULE_INTERVAL_SECONDS = 30
+SLACK_SCHEDULE_INTERVAL_SECONDS = 30
 
 
 async def _recurrence_loop() -> None:
@@ -50,6 +52,17 @@ async def _ai_post_schedule_loop() -> None:
         await asyncio.sleep(AI_POST_SCHEDULE_INTERVAL_SECONDS)
 
 
+async def _slack_schedule_loop() -> None:
+    while True:
+        try:
+            await run_due_slack_notifications()
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001
+            logger.exception("Slack notification scheduler tick failed")
+        await asyncio.sleep(SLACK_SCHEDULE_INTERVAL_SECONDS)
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
@@ -58,6 +71,7 @@ async def lifespan(_: FastAPI):
     tasks = [
         asyncio.create_task(_recurrence_loop()),
         asyncio.create_task(_ai_post_schedule_loop()),
+        asyncio.create_task(_slack_schedule_loop()),
     ]
     try:
         yield

@@ -6,6 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import type { ActivityComment, ClubActivity } from "@/lib/activities";
 import { useAuth } from "@/components/auth/auth-provider";
 import { ClubFooter, ClubHeader } from "@/components/layout/site-chrome";
+import { ModalFrame } from "@/components/club/activity-modals";
+import { ActivitySlackSettings } from "@/components/club/activity-slack-settings";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
 import {
@@ -19,7 +21,16 @@ import {
 type ActivityResponse = {
   activity: ClubActivity;
   occurrences: ClubActivity[];
+  canManage: boolean;
 };
+
+function localDateTime(value: string | null) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
 
 function isOwnParticipant(accountName: string, participantName: string) {
   const normalize = (value: string) =>
@@ -55,7 +66,12 @@ export default function ActivityDetailPage({
   const [chatLoading, setChatLoading] = useState(false);
   const [actionError, setActionError] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+  const [canManage, setCanManage] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [editError, setEditError] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const chatRef = useRef<HTMLDivElement>(null);
+  const scrollChatAfterSend = useRef(false);
 
   const loadActivity = useCallback(async () => {
     const data = await apiJson<ActivityResponse>(`/api/activities/${encodeURIComponent(activityId)}`, {
@@ -64,6 +80,7 @@ export default function ActivityDetailPage({
     if (!data.activity) throw new Error(tRef.current("club.detail.errors.notFound"));
     setActivities(data.occurrences);
     setActivity(data.activity);
+    setCanManage(data.canManage);
     if (data.activity.id !== activityId) {
       router.replace(`/activities/${encodeURIComponent(data.activity.id)}`, { scroll: false });
     }
@@ -100,8 +117,20 @@ export default function ActivityDetailPage({
   }, [loadActivity]);
 
   useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (scrollChatAfterSend.current && chatRef.current) {
+      chatRef.current.scrollTop = chatRef.current.scrollHeight;
+      scrollChatAfterSend.current = false;
+    }
   }, [activity?.comments?.length]);
+
+  useEffect(() => {
+    if (!settingsOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !editLoading && !actionLoading) setSettingsOpen(false);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [settingsOpen, editLoading, actionLoading]);
 
   async function joinActivity(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -157,6 +186,7 @@ export default function ActivityDetailPage({
       );
       const createdComment = data.comment;
       if (!createdComment) throw new Error(t("club.detail.errors.noMessage"));
+      scrollChatAfterSend.current = true;
       setActivity((current) =>
         current
           ? {
@@ -213,6 +243,42 @@ export default function ActivityDetailPage({
     } catch (error) {
       setActionError(errorMessage(error, t("club.detail.errors.deleteFailed")));
       setActionLoading(false);
+    }
+  }
+
+  async function editActivity(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!activity) return;
+    const form = new FormData(event.currentTarget);
+    const date = String(form.get("date") ?? "");
+    const parsedDate = new Date(date);
+    if (!date || Number.isNaN(parsedDate.getTime())) {
+      setEditError(t("club.detail.settings.invalidDate"));
+      return;
+    }
+    setEditError("");
+    setEditLoading(true);
+    try {
+      const data = await apiJson<{ activity: ClubActivity }>(`/api/activities/${activity.id}`, {
+        method: "PATCH",
+        json: {
+          title: String(form.get("title") ?? ""),
+          description: String(form.get("description") ?? ""),
+          date: parsedDate.toISOString(),
+          day: date.slice(0, 10),
+        },
+      });
+      if (!data.activity.approved) {
+        window.alert(t("club.detail.settings.pending"));
+        window.location.assign("/activities");
+        return;
+      }
+      await loadActivity();
+      setSettingsOpen(false);
+    } catch (error) {
+      setEditError(errorMessage(error, t("club.detail.settings.saveError")));
+    } finally {
+      setEditLoading(false);
     }
   }
 
@@ -283,19 +349,51 @@ export default function ActivityDetailPage({
                     <span>{t("club.detail.createdBy", { name: activity.creator })}</span>
                   </div>
                 </div>
-                {user ? (
+                {user && canManage ? (
                   <button
                     className="button-secondary activity-delete-button"
                     type="button"
-                    onClick={() => void deleteActivity()}
-                    disabled={actionLoading}
+                    onClick={() => {
+                      setEditError("");
+                      setActionError("");
+                      setSettingsOpen(true);
+                    }}
                   >
-                    {activity.recurrenceSeriesId
-                      ? t("club.detail.deleteSeries")
-                      : t("club.detail.deleteActivity")}
+                    {t("club.detail.settings.open")}
                   </button>
                 ) : null}
               </header>
+
+              {settingsOpen && canManage && (
+                <ModalFrame
+                  labelledBy="activity-settings-title"
+                  closeDisabled={editLoading || actionLoading}
+                  onClose={() => setSettingsOpen(false)}
+                >
+                  <h2 id="activity-settings-title">{t("club.detail.settings.title")}</h2>
+                  {activity.recurrenceSeriesId || activity.scheduleType !== "scheduled" ? (
+                    <p className="modal-intro">{t("club.detail.settings.unsupported")}</p>
+                  ) : (
+                    <form className="activity-form" onSubmit={editActivity}>
+                      <label htmlFor="edit-activity-title">{t("club.modals.create.titleLabel")}</label>
+                      <input id="edit-activity-title" name="title" defaultValue={activity.title} minLength={3} maxLength={120} required />
+                      <label htmlFor="edit-activity-description">{t("club.modals.create.descriptionLabel")}</label>
+                      <textarea id="edit-activity-description" name="description" defaultValue={activity.description} minLength={5} maxLength={1000} rows={4} required />
+                      <label htmlFor="edit-activity-date">{t("club.modals.create.dateLabel")}</label>
+                      <input id="edit-activity-date" name="date" type="datetime-local" defaultValue={localDateTime(activity.date)} required />
+                      {editError && <p className="modal-error" role="alert">{editError}</p>}
+                      <button className="button-primary modal-submit" type="submit" disabled={editLoading || actionLoading}>
+                        {editLoading ? t("club.detail.settings.saving") : t("club.detail.settings.save")}
+                      </button>
+                    </form>
+                  )}
+                  <ActivitySlackSettings activityId={activity.id} />
+                  {actionError && <p className="modal-error" role="alert">{actionError}</p>}
+                  <button className="button-secondary modal-submit" type="button" disabled={editLoading || actionLoading} onClick={() => void deleteActivity()}>
+                    {activity.recurrenceSeriesId ? t("club.detail.deleteSeries") : t("club.detail.deleteActivity")}
+                  </button>
+                </ModalFrame>
+              )}
 
               <div className="activity-social-layout">
                 <section className="activity-social-main">
@@ -461,7 +559,7 @@ export default function ActivityDetailPage({
                       </div>
                       <span className="activity-chat-live"><i /> {t("club.detail.chat.live")}</span>
                     </div>
-                    <div className="activity-chat-messages" aria-live="polite">
+                    <div className="activity-chat-messages" aria-live="polite" ref={chatRef}>
                       {activity.comments?.length ? (
                         [...activity.comments]
                           .sort((first, second) => first.createdAt.localeCompare(second.createdAt))
@@ -484,7 +582,6 @@ export default function ActivityDetailPage({
                       ) : (
                         <p className="activity-chat-empty">{t("club.detail.chat.empty")}</p>
                       )}
-                      <div ref={chatEndRef} />
                     </div>
                     {user ? (
                       <>

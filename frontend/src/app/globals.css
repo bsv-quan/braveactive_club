@@ -771,6 +771,10 @@ a.button:is(:hover, :focus, :active) { color: #FFFFFF !important; }
 .activity-form-row > div { display: grid; gap: 8px; min-width: 0; }
 .modal-submit { width: 100%; margin-top: 8px; padding-top: 13px; padding-bottom: 13px; }
 .modal-error { margin: 5px 0 0; color: #a34432; font-size: 10px; line-height: 1.5; }
+.activity-slack-settings { margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--border, #e8ece8); }
+.activity-slack-settings h3 { margin: 0 0 8px; }
+.activity-slack-schedule { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin: 12px 0; padding: 12px; border: 1px solid var(--border, #e8ece8); border-radius: 6px; overflow-wrap: anywhere; }
+.activity-slack-schedule span { font-size: 12px; }
 .activity-detail-modal > .category-label { display: inline-block; margin: 2px 35px 2px 0; }
 .activity-detail-modal > h2 { margin-top: 10px; }
 .activity-detail-description { margin: 0 0 17px; color: #748078; font-size: 12px; line-height: 1.75; white-space: pre-wrap; }
@@ -805,7 +809,7 @@ a.button:is(:hover, :focus, :active) { color: #FFFFFF !important; }
 .delete-activity-button { border: 1px solid #f0d7d0; border-radius: 4px; padding: 9px 12px; background: #fff8f5; color: #a24835; font-size: 10px; font-weight: 700; cursor: pointer; }
 .delete-activity-button:hover { border-color: #e7b5a8; background: #fff0eb; }
 .delete-activity-button:disabled { opacity: .6; cursor: wait; }
-.activity-social-page { min-height: 65vh; padding: 27px 0 52px; }
+.activity-social-page { width: min(90%, 1400px); min-height: 65vh; margin: 0 auto; padding: 27px 0 52px; }
 .activity-back-link { display: inline-flex; margin: 0 0 18px; }
 .activity-social-hero { position: relative; display: flex; align-items: flex-start; gap: 20px; padding: 27px; border: 1px solid #e8ede6; border-radius: 7px; background: linear-gradient(120deg, #f1f6ed, #fff 75%); }
 .activity-social-avatar { flex: 0 0 auto; display: grid; place-items: center; width: 58px; height: 58px; border-radius: 16px; background: #dfead7; color: var(--green); font-size: 30px; }
@@ -936,6 +940,12 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 .admin-panel { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; border: 1px solid var(--line); border-radius: 12px; padding: 16px; background: #fff; }
 .admin-panel-content { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
 .admin-panel-content > :first-child { margin-top: 0; }
+.admin-slack-item { padding: 16px 0; border-bottom: 1px solid var(--line); }
+.admin-slack-item .admin-activity-details { display: flex; flex-direction: column; gap: 5px; }
+.admin-slack-item .admin-row-actions { margin-top: 10px; flex-wrap: wrap; }
+.admin-slack-history { margin-top: 14px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; }
+.admin-slack-delivery { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.admin-slack-message { white-space: pre-wrap; overflow-wrap: anywhere; }
 .admin-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin: 20px 0; }
 .admin-form h2 { width: 100%; }
 .admin-form label { display: grid; gap: 6px; font-size: 13px; font-weight: 600; }

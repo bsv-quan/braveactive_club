@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     # --- AI-assisted community content ---
     openai_api_key: str = ""
     openai_model: str = "gpt-4.1-mini"
+    slack_webhook_url: str = ""
 
     # --- Mail (Gmail SMTP: smtp.gmail.com:587 + an app password) ---
     smtp_host: str = ""

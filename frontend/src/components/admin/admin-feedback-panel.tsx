@@ -52,22 +52,22 @@ export function AdminFeedbackPanel() {
           </small>
         </article>
       ))}
-      <div className="admin-pagination">
-        <Button
+      {(offset > 0 || hasMore) && <div className="admin-pagination">
+        {offset > 0 && <Button
           variant="secondary"
-          disabled={loading || offset === 0}
+          disabled={loading}
           onClick={() => void loadPage(Math.max(0, offset - PAGE_SIZE))}
         >
           {t("admin.previous")}
-        </Button>
-        <Button
+        </Button>}
+        {hasMore && <Button
           variant="secondary"
-          disabled={loading || !hasMore}
+          disabled={loading}
           onClick={() => void loadPage(offset + PAGE_SIZE)}
         >
           {t("admin.next")}
-        </Button>
-      </div>
+        </Button>}
+      </div>}
     </section>
   );
 }
