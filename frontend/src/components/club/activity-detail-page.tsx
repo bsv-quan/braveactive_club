@@ -3,8 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
+import { ArrowLeft, CalendarDays, Clock, MapPin, MessageCircle, Repeat, Settings, User, Users } from "lucide-react";
 import type { ActivityComment, ClubActivity } from "@/lib/activities";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { ClubFooter, ClubHeader } from "@/components/layout/site-chrome";
 import { ModalFrame } from "@/components/club/activity-modals";
 import { ActivitySlackSettings } from "@/components/club/activity-slack-settings";
@@ -15,7 +17,9 @@ import {
   categoryLabel,
   dateKey,
   formatDate,
+  mondayIndex,
   repeatIntervalKeys,
+  weekdayShortKeys,
 } from "@/lib/club-ui";
 
 type ActivityResponse = {
@@ -44,6 +48,7 @@ export default function ActivityDetailPage({
   activityId: string;
 }) {
   const { t, intlLocale } = useI18n();
+  const { confirm, alert } = useDialog();
   const { user } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
@@ -209,7 +214,12 @@ export default function ActivityDetailPage({
   ) {
     if (
       !activity ||
-      !window.confirm(t("club.detail.confirm.removeParticipant", { name }))
+      !(await confirm({
+        title: t("common.confirmTitle"),
+        message: t("club.detail.confirm.removeParticipant", { name }),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -231,7 +241,14 @@ export default function ActivityDetailPage({
   async function deleteActivity() {
     if (
       !activity ||
-      !window.confirm(t("club.detail.confirm.deleteActivity", { title: activity.title }))
+      !(await confirm({
+        title: activity.recurrenceSeriesId
+          ? t("club.detail.deleteSeries")
+          : t("club.detail.deleteActivity"),
+        message: t("club.detail.confirm.deleteActivity", { title: activity.title }),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -269,7 +286,11 @@ export default function ActivityDetailPage({
         },
       });
       if (!data.activity.approved) {
-        window.alert(t("club.detail.settings.pending"));
+        await alert({
+          title: t("common.noticeTitle"),
+          message: t("club.detail.settings.pending"),
+          tone: "info",
+        });
         window.location.assign("/activities");
         return;
       }
@@ -304,14 +325,26 @@ export default function ActivityDetailPage({
   const occurrencesWithParticipants = recurringOccurrences.filter(
     (item) => item.participants.length > 0,
   );
+  const totalRegistrations = activity
+    ? activity.recurrenceSeriesId
+      ? recurringOccurrences.reduce(
+          (total, occurrence) => total + occurrence.participants.length,
+          0,
+        )
+      : activity.participants.length
+    : 0;
+  const heroDateObj =
+    activity && !activity.recurrenceSeriesId && activity.date
+      ? new Date(activity.date)
+      : null;
 
   return (
     <main>
       <div className="page-shell">
         <ClubHeader currentPage="activities" />
-        <section className="activity-social-page">
-          <Link className="text-link activity-back-link" href="/activities">
-            {t("club.detail.back")}
+        <section className="event-detail-page">
+          <Link className="event-detail-back" href="/activities">
+            <ArrowLeft size={15} aria-hidden="true" /> {t("club.detail.back")}
           </Link>
           {loading ? (
             <div className="loading-panel">{t("club.detail.loading")}</div>
@@ -322,36 +355,79 @@ export default function ActivityDetailPage({
             </div>
           ) : activity ? (
             <>
-              <header className="activity-social-hero">
-                <div className="activity-social-avatar" aria-hidden="true">✳</div>
-                <div className="activity-social-title">
-                  <span className={`category-label ${categoryColor(activity.category)}`}>
-                    {activity.kind === "quick-signup" ? t("club.categories.quickSignup") : categoryLabel(t, activity.category)}
-                  </span>
-                  <h1>{activity.title}</h1>
-                  <p>{activity.description || t("club.detail.defaultDescription")}</p>
-                  <div className="activity-social-meta">
-                    <span>
-                      {activity.recurrenceSeriesId && activity.repeat
-                        ? t("club.repeat.label", { interval: t(repeatIntervalKeys[activity.repeat.interval]) })
-                        : activity.scheduleType === "poll" || !activity.date
-                        ? t("club.detail.scheduleUndecided")
-                        : formatDate(new Date(activity.date), intlLocale, {
-                            weekday: "long",
-                            day: "numeric",
-                            month: "long",
-                            year: "numeric",
-                            ...(activity.kind === "quick-signup"
-                              ? {}
-                              : { hour: "2-digit", minute: "2-digit" }),
-                          })}
+              <header className="event-detail-hero">
+                {heroDateObj ? (
+                  <div className="event-hero-date" aria-hidden="true">
+                    <span className="agenda-date-weekday">
+                      {t(weekdayShortKeys[mondayIndex(heroDateObj)])}
                     </span>
-                    <span>{t("club.detail.createdBy", { name: activity.creator })}</span>
+                    <strong className="agenda-date-day">
+                      {formatDate(heroDateObj, intlLocale, { day: "2-digit" })}
+                    </strong>
+                    <span className="agenda-date-month">
+                      {formatDate(heroDateObj, intlLocale, { month: "short" })}
+                    </span>
+                  </div>
+                ) : (
+                  <div
+                    className={`event-hero-icon${activity.recurrenceSeriesId ? " is-repeat" : ""}`}
+                    aria-hidden="true"
+                  >
+                    {activity.recurrenceSeriesId ? <Repeat size={26} /> : <CalendarDays size={26} />}
+                  </div>
+                )}
+
+                <div className="event-hero-copy">
+                  <div className="agenda-card-tags">
+                    <span className={`category-label ${categoryColor(activity.category)}`}>
+                      {activity.kind === "quick-signup"
+                        ? t("club.categories.quickSignup")
+                        : categoryLabel(t, activity.category)}
+                    </span>
+                    {activity.recurrenceSeriesId && activity.repeat ? (
+                      <span className="agenda-repeat-pill">
+                        <Repeat size={11} aria-hidden="true" />
+                        {t("club.repeat.label", {
+                          interval: t(repeatIntervalKeys[activity.repeat.interval]),
+                        })}
+                      </span>
+                    ) : null}
+                  </div>
+                  <h1>{activity.title}</h1>
+                  <div className="event-hero-meta">
+                    <span>
+                      <Clock size={14} aria-hidden="true" />
+                      {activity.recurrenceSeriesId && activity.repeat
+                        ? t("club.repeat.label", {
+                            interval: t(repeatIntervalKeys[activity.repeat.interval]),
+                          })
+                        : activity.scheduleType === "poll" || !activity.date
+                          ? t("club.detail.scheduleUndecided")
+                          : formatDate(new Date(activity.date), intlLocale, {
+                              weekday: "long",
+                              day: "numeric",
+                              month: "long",
+                              year: "numeric",
+                              ...(activity.kind === "quick-signup"
+                                ? {}
+                                : { hour: "2-digit", minute: "2-digit" }),
+                            })}
+                    </span>
+                    {activity.location ? (
+                      <span>
+                        <MapPin size={14} aria-hidden="true" /> {activity.location}
+                      </span>
+                    ) : null}
+                    <span>
+                      <User size={14} aria-hidden="true" />{" "}
+                      {t("club.detail.createdBy", { name: activity.creator })}
+                    </span>
                   </div>
                 </div>
+
                 {user && canManage ? (
                   <button
-                    className="button-secondary activity-delete-button"
+                    className="button-secondary event-settings-btn"
                     type="button"
                     onClick={() => {
                       setEditError("");
@@ -359,7 +435,7 @@ export default function ActivityDetailPage({
                       setSettingsOpen(true);
                     }}
                   >
-                    {t("club.detail.settings.open")}
+                    <Settings size={15} aria-hidden="true" /> {t("club.detail.settings.open")}
                   </button>
                 ) : null}
               </header>
@@ -395,161 +471,47 @@ export default function ActivityDetailPage({
                 </ModalFrame>
               )}
 
-              <div className="activity-social-layout">
-                <section className="activity-social-main">
+              <div className="event-detail-layout">
+                <section className="event-detail-main">
                   {refreshError && (
                     <p className="activity-refresh-error" role="status">
                       {t("club.detail.refreshError", { error: refreshError })}
                     </p>
                   )}
-                  {!user ? (
-                    <section className="social-card activity-login-card">
-                      <span className="section-kicker">{t("club.auth.loginRequired")}</span>
-                      <Link className="button-primary activity-login-action" href={loginHref}>
-                        {t("club.auth.login")}
-                      </Link>
+
+                  <section className="social-card event-detail-about">
+                    <span className="section-kicker">{t("club.detail.about.kicker")}</span>
+                    <p className="event-detail-description">
+                      {activity.description || t("club.detail.about.defaultDescription")}
+                    </p>
+                    <div className="event-detail-stats">
+                      <span>
+                        <Users size={14} aria-hidden="true" />
+                        <strong>{totalRegistrations}</strong> {t("club.detail.about.registrations")}
+                      </span>
+                      <span>
+                        <MessageCircle size={14} aria-hidden="true" />
+                        <strong>{activity.comments?.length ?? 0}</strong> {t("club.detail.about.messages")}
+                      </span>
+                    </div>
+                  </section>
+
+                  {activity.location ? (
+                    <section className="social-card event-detail-map" aria-labelledby="activity-map-title">
+                      <div className="event-detail-map-head">
+                        <h2 id="activity-map-title">
+                          <MapPin size={16} aria-hidden="true" /> {t("club.detail.locationMap")}
+                        </h2>
+                        <p>{activity.location}</p>
+                      </div>
+                      <iframe
+                        title={t("club.detail.locationMap")}
+                        src={`https://maps.google.com/maps?q=${encodeURIComponent(activity.location)}&output=embed`}
+                        loading="lazy"
+                        referrerPolicy="no-referrer-when-downgrade"
+                      />
                     </section>
-                  ) : activity.recurrenceSeriesId ? (
-                    <section className="social-card social-join-card">
-                      <div>
-                        <span className="section-kicker">{t("club.detail.join.kicker")}</span>
-                        <h2>{t("club.detail.join.pickDayTitle")}</h2>
-                        <p className="repeat-join-help">
-                          {t("club.detail.join.pickDayHelp")}
-                        </p>
-                      </div>
-                      <button
-                        className="button-primary repeat-date-picker-toggle"
-                        type="button"
-                        aria-expanded={showRepeatDatePicker}
-                        onClick={() => {
-                          setShowRepeatDatePicker((current) => !current);
-                          setJoiningOccurrenceId(null);
-                          setJoinError("");
-                        }}
-                      >
-                        {showRepeatDatePicker ? t("club.detail.join.hideDates") : t("club.detail.join.register")}
-                      </button>
-                      {showRepeatDatePicker && (
-                        <div className="repeat-date-picker">
-                          {recurringOccurrences.length ? (
-                            recurringOccurrences.map((occurrence) => {
-                              const occurrenceDay =
-                                occurrence.day ??
-                                dateKey(new Date(occurrence.date as string));
-                              const selected =
-                                joiningOccurrenceId === occurrence.id;
-                              const registered = Boolean(
-                                user &&
-                                  occurrence.participants.some((participant) =>
-                                    isOwnParticipant(user.displayName, participant),
-                                  ),
-                              );
-                              return (
-                                <div
-                                  className={`repeat-date-option ${selected ? "selected" : ""}`}
-                                  key={occurrence.id}
-                                >
-                                  <div>
-                                    <strong>
-                                      {formatDate(
-                                        new Date(`${occurrenceDay}T00:00:00`),
-                                        intlLocale,
-                                        {
-                                          weekday: "long",
-                                          day: "numeric",
-                                          month: "long",
-                                          year: "numeric",
-                                        },
-                                      )}
-                                    </strong>
-                                    <span>
-                                      {occurrence.participants.length
-                                        ? t("club.detail.join.registeredCount", { count: occurrence.participants.length })
-                                        : t("club.detail.join.noRegistered")}
-                                    </span>
-                                  </div>
-                                  {registered ? (
-                                    <button
-                                      className="button-secondary"
-                                      type="button"
-                                      disabled={joinLoading}
-                                      onClick={() => void leaveOwnActivity(occurrence.id)}
-                                    >
-                                      {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.cancelRegistration")}
-                                    </button>
-                                  ) : (
-                                    <button
-                                      className={selected ? "button-secondary" : "button-primary"}
-                                      type="button"
-                                      onClick={() => {
-                                        setJoiningOccurrenceId(occurrence.id);
-                                        setJoinError("");
-                                      }}
-                                    >
-                                      {selected ? t("club.detail.join.selected") : t("club.detail.join.chooseDay")}
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })
-                          ) : (
-                            <p className="social-empty-members">
-                              {t("club.detail.join.noUpcoming")}
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      {joiningOccurrenceId && (
-                        <form className="activity-form repeat-join-form" onSubmit={joinActivity}>
-                          <div className="social-join-row">
-                            <span className="activity-join-account">
-                              {t("club.detail.join.asAccount", { name: user.displayName })}
-                            </span>
-                            <button
-                              className="button-primary"
-                              type="submit"
-                              disabled={joinLoading}
-                            >
-                              {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.confirm")}
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                      {joinError && <p className="modal-error" role="alert">{joinError}</p>}
-                    </section>
-                  ) : (
-                    <form className="social-card social-join-card" onSubmit={joinActivity}>
-                      <div>
-                        <span className="section-kicker">{t("club.detail.join.kicker")}</span>
-                        <h2>{t("club.detail.join.register")}</h2>
-                      </div>
-                      <div className="social-join-row">
-                        <span className="activity-join-account">
-                          {t("club.detail.join.asAccount", { name: user?.displayName ?? "" })}
-                        </span>
-                        {activity.participants.some((participant) =>
-                          isOwnParticipant(user.displayName, participant),
-                        ) ? (
-                          <button
-                            className="button-secondary"
-                            type="button"
-                            disabled={joinLoading}
-                            onClick={() => void leaveOwnActivity()}
-                          >
-                            {joinLoading
-                              ? t("club.detail.join.registering")
-                              : t("club.detail.join.cancelRegistration")}
-                          </button>
-                        ) : (
-                          <button className="button-primary" type="submit" disabled={joinLoading}>
-                            {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.join")}
-                          </button>
-                        )}
-                      </div>
-                      {joinError && <p className="modal-error" role="alert">{joinError}</p>}
-                    </form>
-                  )}
+                  ) : null}
 
                   <section className="social-card activity-chat-card">
                     <div className="social-card-heading">
@@ -606,8 +568,154 @@ export default function ActivityDetailPage({
                   </section>
                 </section>
 
-                <aside className="activity-social-sidebar">
-                  <section className="social-card">
+                <aside className="event-detail-sidebar">
+                  {!user ? (
+                    <section className="social-card event-detail-join-card">
+                      <span className="section-kicker">{t("club.auth.loginRequired")}</span>
+                      <Link className="button-primary event-join-full" href={loginHref}>
+                        {t("club.auth.login")}
+                      </Link>
+                    </section>
+                  ) : activity.recurrenceSeriesId ? (
+                    <section className="social-card event-detail-join-card">
+                      <div>
+                        <span className="section-kicker">{t("club.detail.join.kicker")}</span>
+                        <h2>{t("club.detail.join.pickDayTitle")}</h2>
+                        <p className="repeat-join-help">
+                          {t("club.detail.join.pickDayHelp")}
+                        </p>
+                      </div>
+                      <button
+                        className="button-primary event-join-full"
+                        type="button"
+                        aria-expanded={showRepeatDatePicker}
+                        onClick={() => {
+                          setShowRepeatDatePicker((current) => !current);
+                          setJoiningOccurrenceId(null);
+                          setJoinError("");
+                        }}
+                      >
+                        {showRepeatDatePicker ? t("club.detail.join.hideDates") : t("club.detail.join.register")}
+                      </button>
+                      {showRepeatDatePicker && (
+                        <div className="repeat-date-picker">
+                          {recurringOccurrences.length ? (
+                            recurringOccurrences.map((occurrence) => {
+                              const occurrenceDay =
+                                occurrence.day ??
+                                dateKey(new Date(occurrence.date as string));
+                              const selected =
+                                joiningOccurrenceId === occurrence.id;
+                              const registered = Boolean(
+                                user &&
+                                  occurrence.participants.some((participant) =>
+                                    isOwnParticipant(user.displayName, participant),
+                                  ),
+                              );
+                              return (
+                                <div
+                                  className={`repeat-date-option ${selected ? "selected" : ""}`}
+                                  key={occurrence.id}
+                                >
+                                  <div>
+                                    <strong>
+                                      {formatDate(
+                                        new Date(`${occurrenceDay}T00:00:00`),
+                                        intlLocale,
+                                        {
+                                          weekday: "short",
+                                          day: "numeric",
+                                          month: "short",
+                                        },
+                                      )}
+                                    </strong>
+                                    <span>
+                                      {occurrence.participants.length
+                                        ? t("club.detail.join.registeredCount", { count: occurrence.participants.length })
+                                        : t("club.detail.join.noRegistered")}
+                                    </span>
+                                  </div>
+                                  {registered ? (
+                                    <button
+                                      className="button-secondary"
+                                      type="button"
+                                      disabled={joinLoading}
+                                      onClick={() => void leaveOwnActivity(occurrence.id)}
+                                    >
+                                      {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.cancelRegistration")}
+                                    </button>
+                                  ) : (
+                                    <button
+                                      className={selected ? "button-secondary" : "button-primary"}
+                                      type="button"
+                                      onClick={() => {
+                                        setJoiningOccurrenceId(occurrence.id);
+                                        setJoinError("");
+                                      }}
+                                    >
+                                      {selected ? t("club.detail.join.selected") : t("club.detail.join.chooseDay")}
+                                    </button>
+                                  )}
+                                </div>
+                              );
+                            })
+                          ) : (
+                            <p className="social-empty-members">
+                              {t("club.detail.join.noUpcoming")}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                      {joiningOccurrenceId && (
+                        <form className="activity-form repeat-join-form" onSubmit={joinActivity}>
+                          <div className="event-join-confirm">
+                            <span className="activity-join-account">
+                              {t("club.detail.join.asAccount", { name: user.displayName })}
+                            </span>
+                            <button
+                              className="button-primary event-join-full"
+                              type="submit"
+                              disabled={joinLoading}
+                            >
+                              {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.confirm")}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+                      {joinError && <p className="modal-error" role="alert">{joinError}</p>}
+                    </section>
+                  ) : (
+                    <form className="social-card event-detail-join-card" onSubmit={joinActivity}>
+                      <div>
+                        <span className="section-kicker">{t("club.detail.join.kicker")}</span>
+                        <h2>{t("club.detail.join.register")}</h2>
+                      </div>
+                      <span className="activity-join-account">
+                        {t("club.detail.join.asAccount", { name: user?.displayName ?? "" })}
+                      </span>
+                      {activity.participants.some((participant) =>
+                        isOwnParticipant(user.displayName, participant),
+                      ) ? (
+                        <button
+                          className="button-secondary event-join-full"
+                          type="button"
+                          disabled={joinLoading}
+                          onClick={() => void leaveOwnActivity()}
+                        >
+                          {joinLoading
+                            ? t("club.detail.join.registering")
+                            : t("club.detail.join.cancelRegistration")}
+                        </button>
+                      ) : (
+                        <button className="button-primary event-join-full" type="submit" disabled={joinLoading}>
+                          {joinLoading ? t("club.detail.join.registering") : t("club.detail.join.join")}
+                        </button>
+                      )}
+                      {joinError && <p className="modal-error" role="alert">{joinError}</p>}
+                    </form>
+                  )}
+
+                  <section className="social-card event-detail-roster">
                     <div className="social-card-heading">
                       <div>
                         <h2>
@@ -700,35 +808,6 @@ export default function ActivityDetailPage({
                     )}
                     {actionError && <p className="modal-error" role="alert">{actionError}</p>}
                   </section>
-                  <section className="social-card activity-social-about">
-                    <span className="section-kicker">{t("club.detail.about.kicker")}</span>
-                    <p>{activity.description || t("club.detail.about.defaultDescription")}</p>
-                    <div>
-                      <strong>
-                        {activity.recurrenceSeriesId
-                          ? recurringOccurrences.reduce(
-                              (total, occurrence) =>
-                                total + occurrence.participants.length,
-                              0,
-                            )
-                          : activity.participants.length}
-                      </strong>{" "}
-                      {t("club.detail.about.registrations")}
-                    </div>
-                    <div><strong>{activity.comments?.length ?? 0}</strong> {t("club.detail.about.messages")}</div>
-                  </section>
-                  {activity.location ? (
-                    <section className="social-card activity-map-card" aria-labelledby="activity-map-title">
-                      <h2 id="activity-map-title">{t("club.detail.locationMap")}</h2>
-                      <p>{activity.location}</p>
-                      <iframe
-                        title={t("club.detail.locationMap")}
-                        src={`https://maps.google.com/maps?q=${encodeURIComponent(activity.location)}&output=embed`}
-                        loading="lazy"
-                        referrerPolicy="no-referrer-when-downgrade"
-                      />
-                    </section>
-                  ) : null}
                 </aside>
               </div>
             </>

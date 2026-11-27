@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
 
@@ -27,6 +28,7 @@ function vietnamToday() {
 
 export function ActivitySlackSettings({ activityId }: { activityId: string }) {
   const { t, intlLocale } = useI18n();
+  const { confirm } = useDialog();
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [interval, setInterval] = useState<Schedule["interval"]>("daily");
@@ -82,7 +84,16 @@ export function ActivitySlackSettings({ activityId }: { activityId: string }) {
   }
 
   async function cancel(id: string) {
-    if (!window.confirm(t("club.detail.slack.confirmCancel"))) return;
+    if (
+      !(await confirm({
+        title: t("common.confirmTitle"),
+        message: t("club.detail.slack.confirmCancel"),
+        confirmLabel: t("common.confirm"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");

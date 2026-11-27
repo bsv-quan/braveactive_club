@@ -22,6 +22,7 @@ never trust any client-supplied result or winner.
 
 from copy import deepcopy
 import random
+import time
 
 
 def _clone(state):
@@ -92,38 +93,59 @@ def _king_square(board, side):
     return None
 
 
+_KNIGHT_DELTAS = ((1, 2), (2, 1), (2, -1), (1, -2), (-1, -2), (-2, -1), (-2, 1), (-1, 2))
+_ORTHO_DIRS = ((1, 0), (-1, 0), (0, 1), (0, -1))
+_DIAG_DIRS = ((1, 1), (1, -1), (-1, 1), (-1, -1))
+_KING_DELTAS = ((-1, -1), (-1, 0), (-1, 1), (0, -1), (0, 1), (1, -1), (1, 0), (1, 1))
+
+
 def _chess_attacked(board, r, c, by_side):
-    for ar in range(8):
-        for ac in range(8):
-            p = board[ar][ac]
-            if p is None or _piece_side(p) != by_side:
-                continue
-            pt = p.lower()
-            dr, dc = r - ar, c - ac
-            if pt == "p":
-                direction = -1 if by_side == "white" else 1
-                if dr == direction and abs(dc) == 1:
+    """Fast outward attack detection from target square (r, c)."""
+    by_white = by_side == "white"
+    # Pawn attacks
+    pr = r + 1 if by_white else r - 1
+    if 0 <= pr < 8:
+        pawn = "P" if by_white else "p"
+        if c > 0 and board[pr][c - 1] == pawn:
+            return True
+        if c < 7 and board[pr][c + 1] == pawn:
+            return True
+    # Knight attacks
+    knight = "N" if by_white else "n"
+    for dr, dc in _KNIGHT_DELTAS:
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < 8 and 0 <= nc < 8 and board[nr][nc] == knight:
+            return True
+    # King attacks
+    king = "K" if by_white else "k"
+    for dr, dc in _KING_DELTAS:
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < 8 and 0 <= nc < 8 and board[nr][nc] == king:
+            return True
+    # Orthogonal sliders (Rook / Queen)
+    rq = ("R", "Q") if by_white else ("r", "q")
+    for dr, dc in _ORTHO_DIRS:
+        nr, nc = r + dr, c + dc
+        while 0 <= nr < 8 and 0 <= nc < 8:
+            p = board[nr][nc]
+            if p is not None:
+                if p in rq:
                     return True
-            elif pt == "n" and (abs(dr), abs(dc)) in ((1, 2), (2, 1)):
-                return True
-            elif pt == "k" and max(abs(dr), abs(dc)) == 1:
-                return True
-            elif pt in "rbq":
-                orthogonal = (dr == 0 and dc != 0) or (dc == 0 and dr != 0)
-                diagonal = abs(dr) == abs(dc) and dr != 0
-                step_ok = (pt in "rq" and orthogonal) or (pt in "bq" and diagonal)
-                if step_ok:
-                    sr = 0 if dr == 0 else (1 if dr > 0 else -1)
-                    sc = 0 if dc == 0 else (1 if dc > 0 else -1)
-                    rr, cc = ar + sr, ac + sc
-                    clear = True
-                    while (rr, cc) != (r, c):
-                        if board[rr][cc] is not None:
-                            clear = False
-                            break
-                        rr += sr; cc += sc
-                    if clear:
-                        return True
+                break
+            nr += dr
+            nc += dc
+    # Diagonal sliders (Bishop / Queen)
+    bq = ("B", "Q") if by_white else ("b", "q")
+    for dr, dc in _DIAG_DIRS:
+        nr, nc = r + dr, c + dc
+        while 0 <= nr < 8 and 0 <= nc < 8:
+            p = board[nr][nc]
+            if p is not None:
+                if p in bq:
+                    return True
+                break
+            nr += dr
+            nc += dc
     return False
 
 
@@ -226,22 +248,29 @@ def _chess_legal_moves(state, from_square=None):
         if rights.get("white_q" if side=="white" else "black_q", False) and board[kr][0]==("R" if side=="white" else "r"):
             if board[kr][1] is None and board[kr][2] is None and board[kr][3] is None and not _chess_attacked(board,kr,3,enemy) and not _chess_attacked(board,kr,2,enemy):
                 moves.append(((kr,kc),(kr,2),None))
-    # promotions and legality
+    # promotions and legality (in-place make/unmake, zero deepcopy)
     legal=[]
+    ep_tuple=tuple(ep) if ep else None
     for a,b,_ in moves:
         r,c=a; tr,tc=b
         p=board[r][c]
-        test=_clone(state); tb=test["board"]
-        captured=tb[tr][tc]
-        tb[tr][tc]=tb[r][c]; tb[r][c]=None
-        if p.lower()=="p" and (tr,tc)==tuple(ep or ()) and captured is None:
-            tb[r][tc]=None
+        captured=board[tr][tc]
+        is_ep=p.lower()=="p" and ep_tuple is not None and (tr,tc)==ep_tuple and captured is None
+        ep_captured=board[r][tc] if is_ep else None
+        board[tr][tc]=p; board[r][c]=None
+        if is_ep:
+            board[r][tc]=None
         if p.lower()=="p" and tr in (0,7):
             for prom in "qrbn":
-                tt=_clone(test); tt["board"][tr][tc]=prom.upper() if side=="white" else prom
-                if not _chess_in_check(tt["board"],side): legal.append((a,b,prom))
-        elif not _chess_in_check(tb,side):
+                board[tr][tc]=prom.upper() if side=="white" else prom
+                if not _chess_in_check(board,side):
+                    legal.append((a,b,prom))
+        elif not _chess_in_check(board,side):
             legal.append((a,b,None))
+        # restore
+        board[r][c]=p; board[tr][tc]=captured
+        if is_ep:
+            board[r][tc]=ep_captured
     # deduplicate
     seen=set(); out=[]
     for m in legal:
@@ -260,8 +289,8 @@ def _chess_make_move(state, move, check_legality=True):
     else:
         a,b,promotion=move
     side=state["turn"]
-    legal=_chess_legal_moves(state)
     if check_legality:
+        legal=_chess_legal_moves(state)
         matches=[m for m in legal if m[0]==a and m[1]==b]
         if not matches:
             raise ValueError("illegal chess move")
@@ -348,69 +377,671 @@ def _chess_king_square(board,side):
     return _king_square(board,side)
 
 
+_CHESS_MG_VALUE = {"p": 82, "n": 337, "b": 365, "r": 477, "q": 1025, "k": 20000}
+_CHESS_EG_VALUE = {"p": 94, "n": 281, "b": 297, "r": 512, "q": 936, "k": 20000}
+_CHESS_PHASE_WEIGHT = {"p": 0, "n": 1, "b": 1, "r": 2, "q": 4, "k": 0}
+_CHESS_MVV_VAL = {"p": 100, "n": 320, "b": 330, "r": 500, "q": 900, "k": 10000}
+
+# PeSTO Piece-Square Tables (from White's perspective: row 0 = rank 8, row 7 = rank 1)
+_PST_MG = {
+    "p": (
+        (0, 0, 0, 0, 0, 0, 0, 0),
+        (98, 134, 61, 95, 68, 126, 34, -11),
+        (-6, 7, 26, 31, 65, 56, 25, -20),
+        (-14, 13, 6, 21, 23, 12, 17, -23),
+        (-27, -2, -5, 12, 17, 6, 10, -25),
+        (-26, -4, -4, -10, 3, 3, 33, -12),
+        (-35, -1, -20, -23, -15, 24, 38, -22),
+        (0, 0, 0, 0, 0, 0, 0, 0),
+    ),
+    "n": (
+        (-167, -89, -34, -49, 61, -97, -15, -107),
+        (-73, -41, 72, 36, 23, 62, 7, -17),
+        (-47, 60, 37, 65, 84, 129, 73, 44),
+        (-9, 17, 19, 53, 37, 69, 18, 22),
+        (-13, 4, 16, 13, 28, 19, 21, -8),
+        (-23, -9, 12, 10, 19, 17, 25, -16),
+        (-29, -53, -12, -3, -1, 18, -14, -19),
+        (-105, -21, -58, -33, -17, -28, -19, -23),
+    ),
+    "b": (
+        (-29, 4, -82, -37, -25, -42, 7, -8),
+        (-26, 16, -18, -13, 30, 59, 18, -47),
+        (-16, 37, 43, 40, 35, 50, 37, -2),
+        (-4, 5, 19, 50, 37, 37, 7, -2),
+        (-6, 13, 13, 26, 34, 12, 10, 4),
+        (0, 15, 15, 15, 14, 27, 18, 10),
+        (4, 15, 16, 0, 7, 21, 33, 1),
+        (-33, -3, -14, -21, -13, -12, -39, -21),
+    ),
+    "r": (
+        (32, 42, 32, 51, 63, 9, 31, 43),
+        (27, 32, 58, 62, 80, 67, 26, 44),
+        (-5, 19, 26, 36, 17, 45, 61, 16),
+        (-24, -11, 7, 26, 24, 35, -8, -20),
+        (-36, -26, -12, -1, 9, -7, 6, -23),
+        (-45, -25, -16, -17, 3, 0, -5, -33),
+        (-44, -16, -20, -9, -1, 11, -6, -71),
+        (-19, -13, 1, 17, 16, 7, -37, -26),
+    ),
+    "q": (
+        (-28, 0, 29, 12, 59, 44, 43, 45),
+        (-24, -39, -5, 1, -16, 57, 28, 54),
+        (-13, -17, 7, 8, 29, 56, 47, 57),
+        (-27, -27, -16, -16, -1, 17, -2, 1),
+        (-9, -26, -9, -10, -2, -4, 3, -3),
+        (-14, 2, -11, -2, -5, 2, 14, 5),
+        (-35, -8, 11, 2, 8, 15, -3, 1),
+        (-1, -18, -9, 10, -15, -25, -31, -50),
+    ),
+    "k": (
+        (-65, 23, 16, -15, -56, -34, 2, 13),
+        (29, -1, -20, -7, -8, -4, -38, -29),
+        (-9, 24, 2, -16, -20, 6, 22, -22),
+        (-17, -20, -12, -27, -30, -25, -14, -36),
+        (-49, -1, -27, -39, -46, -44, -33, -51),
+        (-14, -14, -22, -46, -44, -30, -15, -27),
+        (1, 7, -8, -64, -43, -16, 9, 8),
+        (-15, 36, 12, -54, 8, -28, 24, 14),
+    ),
+}
+
+_PST_EG = {
+    "p": (
+        (0, 0, 0, 0, 0, 0, 0, 0),
+        (178, 173, 158, 134, 147, 132, 165, 187),
+        (94, 100, 85, 67, 56, 53, 82, 84),
+        (32, 24, 13, 5, -2, 4, 17, 17),
+        (13, 9, -3, -7, -7, -8, 3, -1),
+        (4, 7, -6, 1, 0, -5, -1, -8),
+        (13, 8, 8, 10, 13, 0, 2, -7),
+        (0, 0, 0, 0, 0, 0, 0, 0),
+    ),
+    "n": (
+        (-58, -38, -13, -28, -31, -27, -63, -99),
+        (-25, -8, -25, -2, -9, -25, -24, -52),
+        (-24, -20, 10, 9, -1, -9, -19, -41),
+        (-17, 3, 22, 22, 22, 11, 8, -18),
+        (-18, -6, 16, 25, 16, 17, 4, -18),
+        (-23, -3, -1, 15, 10, -3, -20, -22),
+        (-42, -20, -10, -5, -2, -20, -23, -44),
+        (-29, -51, -23, -15, -22, -18, -50, -64),
+    ),
+    "b": (
+        (-14, -21, -11, -8, -7, -9, -17, -24),
+        (-8, -4, 7, -12, -3, -13, -4, -14),
+        (2, -8, 0, -1, -2, 6, 0, 4),
+        (-3, 9, 12, 9, 14, 10, 3, 2),
+        (-6, 3, 13, 19, 7, 10, -3, -9),
+        (-12, -3, 8, 10, 13, 3, -7, -15),
+        (-14, -18, -7, -1, 4, -9, -15, -27),
+        (-23, -9, -23, -5, -9, -16, -5, -17),
+    ),
+    "r": (
+        (13, 10, 18, 15, 12, 12, 8, 5),
+        (11, 13, 13, 11, -3, 3, 8, 3),
+        (7, 7, 7, 5, 4, -3, -5, -3),
+        (4, 3, 13, 1, 2, 1, -1, 2),
+        (3, 5, 8, 4, -5, -6, -8, -11),
+        (-4, 0, -5, -1, -7, -12, -8, -16),
+        (-6, -6, 0, 2, -9, -9, -11, -3),
+        (-9, 2, 3, -1, -5, -13, 4, -20),
+    ),
+    "q": (
+        (-9, 22, 22, 27, 27, 19, 10, 20),
+        (-17, 20, 32, 41, 58, 25, 30, 0),
+        (-20, 6, 9, 49, 47, 35, 19, 9),
+        (3, 22, 24, 45, 57, 40, 57, 36),
+        (-18, 28, 19, 47, 31, 34, 39, 23),
+        (-16, -27, 15, 6, 9, 17, 10, 5),
+        (-22, -23, -30, -16, -16, -23, -36, -32),
+        (-33, -28, -22, -43, -5, -32, -20, -41),
+    ),
+    "k": (
+        (-74, -35, -18, -18, -11, 15, 4, -17),
+        (-12, 17, 14, 17, 17, 38, 23, 11),
+        (10, 17, 23, 15, 20, 45, 44, 13),
+        (-8, 22, 24, 27, 26, 33, 26, 3),
+        (-18, -4, 21, 24, 27, 23, 9, -11),
+        (-19, -3, 11, 21, 23, 16, 7, -9),
+        (-27, -11, 4, 13, 14, 4, -5, -17),
+        (-53, -34, -21, -11, -28, -14, -24, -43),
+    ),
+}
+
+# Classical opening book for Black responses keyed by tuple of ((fr,fc),(tr,tc)) history
+_CHESS_OPENING_BOOK = {
+    # 1.e4 -> Sicilian (c5), Open (e5), French (e6), Caro-Kann (c6)
+    (((6, 4), (4, 4)),): [((1, 2), (3, 2), None), ((1, 4), (3, 4), None), ((1, 4), (2, 4), None), ((1, 2), (2, 2), None)],
+    # 1.d4 -> d5, Nf6
+    (((6, 3), (4, 3)),): [((1, 3), (3, 3), None), ((0, 6), (2, 5), None)],
+    # 1.c4 -> e5, Nf6, c5
+    (((6, 2), (4, 2)),): [((1, 4), (3, 4), None), ((0, 6), (2, 5), None), ((1, 2), (3, 2), None)],
+    # 1.Nf3 -> d5, Nf6
+    (((7, 6), (5, 5)),): [((1, 3), (3, 3), None), ((0, 6), (2, 5), None)],
+    # 1.e4 e5 2.Nf3 -> Nc6
+    (((6, 4), (4, 4)), ((1, 4), (3, 4)), ((7, 6), (5, 5))): [((0, 1), (2, 2), None)],
+    # 1.e4 e5 2.Bc4 -> Nf6
+    (((6, 4), (4, 4)), ((1, 4), (3, 4)), ((7, 5), (4, 2))): [((0, 6), (2, 5), None)],
+    # 1.e4 c5 2.Nf3 -> d6, Nc6, e6
+    (((6, 4), (4, 4)), ((1, 2), (3, 2)), ((7, 6), (5, 5))): [((1, 3), (2, 3), None), ((0, 1), (2, 2), None), ((1, 4), (2, 4), None)],
+    # 1.e4 e6 2.d4 -> d5
+    (((6, 4), (4, 4)), ((1, 4), (2, 4)), ((6, 3), (4, 3))): [((1, 3), (3, 3), None)],
+    # 1.e4 c6 2.d4 -> d5
+    (((6, 4), (4, 4)), ((1, 2), (2, 2)), ((6, 3), (4, 3))): [((1, 3), (3, 3), None)],
+    # 1.d4 d5 2.c4 -> e6, c6
+    (((6, 3), (4, 3)), ((1, 3), (3, 3)), ((6, 2), (4, 2))): [((1, 4), (2, 4), None), ((1, 2), (2, 2), None)],
+    # 1.d4 Nf6 2.c4 -> e6, g6
+    (((6, 3), (4, 3)), ((0, 6), (2, 5)), ((6, 2), (4, 2))): [((1, 4), (2, 4), None), ((1, 6), (2, 6), None)],
+    # 1.e4 e5 2.Nf3 Nc6 3.Bb5 -> a6, Nf6
+    (((6, 4), (4, 4)), ((1, 4), (3, 4)), ((7, 6), (5, 5)), ((0, 1), (2, 2)), ((7, 5), (3, 1))): [((1, 0), (2, 0), None), ((0, 6), (2, 5), None)],
+    # 1.e4 e5 2.Nf3 Nc6 3.Bc4 -> Bc5, Nf6
+    (((6, 4), (4, 4)), ((1, 4), (3, 4)), ((7, 6), (5, 5)), ((0, 1), (2, 2)), ((7, 5), (4, 2))): [((0, 5), (3, 2), None), ((0, 6), (2, 5), None)],
+}
+
+_MATE_SCORE = 100000
+_INF_SCORE = 1000000
+_TT_EXACT = 0
+_TT_LOWER = 1
+_TT_UPPER = 2
+
+
 def _chess_piece_value(p):
-    return {"p":100,"n":320,"b":330,"r":500,"q":900,"k":20000}[p.lower()] * (1 if p.isupper() else -1)
+    return {"p": 100, "n": 320, "b": 330, "r": 500, "q": 900, "k": 20000}[p.lower()] * (1 if p.isupper() else -1)
+
+
+def _chess_eval_board(board, turn_is_white):
+    """Tapered PeSTO evaluation from the perspective of the side to move."""
+    mg_w = mg_b = eg_w = eg_b = 0
+    phase = 0
+    wb = bb = 0
+    for r in range(8):
+        row = board[r]
+        mr = 7 - r
+        for c in range(8):
+            p = row[c]
+            if p is None:
+                continue
+            if p.isupper():
+                pt = p.lower()
+                mg_w += _CHESS_MG_VALUE[pt] + _PST_MG[pt][r][c]
+                eg_w += _CHESS_EG_VALUE[pt] + _PST_EG[pt][r][c]
+                phase += _CHESS_PHASE_WEIGHT[pt]
+                if pt == "b":
+                    wb += 1
+            else:
+                mg_b += _CHESS_MG_VALUE[p] + _PST_MG[p][mr][c]
+                eg_b += _CHESS_EG_VALUE[p] + _PST_EG[p][mr][c]
+                phase += _CHESS_PHASE_WEIGHT[p]
+                if p == "b":
+                    bb += 1
+    # Bishop pair bonus
+    if wb >= 2:
+        mg_w += 30
+        eg_w += 45
+    if bb >= 2:
+        mg_b += 30
+        eg_b += 45
+    mg_phase = 24 if phase > 24 else phase
+    eg_phase = 24 - mg_phase
+    score = ((mg_w - mg_b) * mg_phase + (eg_w - eg_b) * eg_phase) // 24
+    return score if turn_is_white else -score
 
 
 def _chess_score(state):
-    score=sum(_chess_piece_value(p) for row in state["board"] for p in row if p)
-    if state["turn"]=="white": score += 10 if _chess_in_check(state["board"],"black") else 0
-    else: score -= 10 if _chess_in_check(state["board"],"white") else 0
-    return score
+    return _chess_eval_board(state["board"], True)
 
 
 def _choose_near_best(scored_moves, tolerance, rng):
-    best_score=max(score for _,score in scored_moves)
-    candidates=[(move,score) for move,score in scored_moves if score>=best_score-tolerance]
-    weights=[1/(1+(best_score-score)/max(tolerance,1)) for _,score in candidates]
-    return rng.choices([move for move,_ in candidates],weights=weights,k=1)[0]
+    best_score = max(score for _, score in scored_moves)
+    candidates = [(move, score) for move, score in scored_moves if score >= best_score - tolerance]
+    weights = [1 / (1 + (best_score - score) / max(tolerance, 1)) for _, score in candidates]
+    return rng.choices([move for move, _ in candidates], weights=weights, k=1)[0]
 
 
-def _chess_ai_move(state,difficulty):
-    moves=_chess_legal_moves(state)
-    if not moves: raise ValueError("no legal chess moves")
-    rng=random.Random()
-    if difficulty=="easy":
-        captures=[]
+class _ChessSearch:
+    """Fast in-place alpha-beta Negamax with quiescence, TT, killers and iterative deepening."""
+
+    def __init__(self, state, deadline):
+        self.board = [row[:] for row in state["board"]]
+        self.turn_white = state["turn"] == "white"
+        rights = state.get("castling", {})
+        self.castling = (
+            (1 if rights.get("white_k") else 0)
+            | (2 if rights.get("white_q") else 0)
+            | (4 if rights.get("black_k") else 0)
+            | (8 if rights.get("black_q") else 0)
+        )
+        ep = state.get("en_passant")
+        self.ep = (ep[0], ep[1]) if ep else None
+        self.wk = _king_square(self.board, "white")
+        self.bk = _king_square(self.board, "black")
+        self.deadline = deadline
+        self.aborted = False
+        self.nodes = 0
+        self.tt = {}
+        self.killers = [[None, None] for _ in range(32)]
+
+    def _in_check(self, white):
+        sq = self.wk if white else self.bk
+        if sq is None:
+            return True
+        return _chess_attacked(self.board, sq[0], sq[1], "black" if white else "white")
+
+    def _board_key(self):
+        return (
+            tuple(tuple(row) for row in self.board),
+            self.turn_white,
+            self.castling,
+            self.ep,
+        )
+
+    def _gen_moves(self, captures_only=False):
+        board = self.board
+        white = self.turn_white
+        ep = self.ep
+        moves = []
+        for r in range(8):
+            row = board[r]
+            for c in range(8):
+                p = row[c]
+                if p is None or (p.isupper() != white):
+                    continue
+                pt = p.lower()
+                if pt == "p":
+                    d = -1 if white else 1
+                    start = 6 if white else 1
+                    prom_row = 0 if white else 7
+                    nr = r + d
+                    if 0 <= nr < 8:
+                        if not captures_only and board[nr][c] is None:
+                            if nr == prom_row:
+                                moves.append(((r, c), (nr, c), "q"))
+                                moves.append(((r, c), (nr, c), "n"))
+                            else:
+                                moves.append(((r, c), (nr, c), None))
+                                if r == start and board[r + 2 * d][c] is None:
+                                    moves.append(((r, c), (r + 2 * d, c), None))
+                        elif captures_only and nr == prom_row and board[nr][c] is None:
+                            moves.append(((r, c), (nr, c), "q"))
+                        for dc in (-1, 1):
+                            nc = c + dc
+                            if 0 <= nc < 8:
+                                target = board[nr][nc]
+                                if target is not None and (target.isupper() != white):
+                                    if nr == prom_row:
+                                        moves.append(((r, c), (nr, nc), "q"))
+                                        if not captures_only:
+                                            moves.append(((r, c), (nr, nc), "n"))
+                                    else:
+                                        moves.append(((r, c), (nr, nc), None))
+                                elif ep is not None and nr == ep[0] and nc == ep[1]:
+                                    moves.append(((r, c), (nr, nc), None))
+                elif pt == "n":
+                    for dr, dc in _KNIGHT_DELTAS:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < 8 and 0 <= nc < 8:
+                            target = board[nr][nc]
+                            if target is None:
+                                if not captures_only:
+                                    moves.append(((r, c), (nr, nc), None))
+                            elif target.isupper() != white:
+                                moves.append(((r, c), (nr, nc), None))
+                elif pt == "k":
+                    for dr, dc in _KING_DELTAS:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < 8 and 0 <= nc < 8:
+                            target = board[nr][nc]
+                            if target is None:
+                                if not captures_only:
+                                    moves.append(((r, c), (nr, nc), None))
+                            elif target.isupper() != white:
+                                moves.append(((r, c), (nr, nc), None))
+                else:
+                    dirs = _ORTHO_DIRS if pt == "r" else (_DIAG_DIRS if pt == "b" else _ORTHO_DIRS + _DIAG_DIRS)
+                    for dr, dc in dirs:
+                        nr, nc = r + dr, c + dc
+                        while 0 <= nr < 8 and 0 <= nc < 8:
+                            target = board[nr][nc]
+                            if target is None:
+                                if not captures_only:
+                                    moves.append(((r, c), (nr, nc), None))
+                            else:
+                                if target.isupper() != white:
+                                    moves.append(((r, c), (nr, nc), None))
+                                break
+                            nr += dr
+                            nc += dc
+        # Castling (only when generating full moves)
+        if not captures_only:
+            kr = 7 if white else 0
+            king_char = "K" if white else "k"
+            rook_char = "R" if white else "r"
+            enemy = "black" if white else "white"
+            if board[kr][4] == king_char and not _chess_attacked(board, kr, 4, enemy):
+                ks_mask = 1 if white else 4
+                qs_mask = 2 if white else 8
+                if (self.castling & ks_mask) and board[kr][7] == rook_char:
+                    if (
+                        board[kr][5] is None
+                        and board[kr][6] is None
+                        and not _chess_attacked(board, kr, 5, enemy)
+                        and not _chess_attacked(board, kr, 6, enemy)
+                    ):
+                        moves.append(((kr, 4), (kr, 6), None))
+                if (self.castling & qs_mask) and board[kr][0] == rook_char:
+                    if (
+                        board[kr][1] is None
+                        and board[kr][2] is None
+                        and board[kr][3] is None
+                        and not _chess_attacked(board, kr, 3, enemy)
+                        and not _chess_attacked(board, kr, 2, enemy)
+                    ):
+                        moves.append(((kr, 4), (kr, 2), None))
+        return moves
+
+    def _make(self, move):
+        (r, c), (tr, tc), prom = move
+        board = self.board
+        p = board[r][c]
+        captured = board[tr][tc]
+        prev_castling = self.castling
+        prev_ep = self.ep
+        prev_wk = self.wk
+        prev_bk = self.bk
+        ep_cap = None
+        rook_undo = None
+
+        pt = p.lower()
+        if pt == "p" and prev_ep is not None and (tr, tc) == prev_ep and captured is None:
+            ep_cap = (r, tc, board[r][tc])
+            board[r][tc] = None
+
+        board[r][c] = None
+        if prom is not None:
+            board[tr][tc] = prom.upper() if self.turn_white else prom
+        else:
+            board[tr][tc] = p
+
+        if pt == "k":
+            if self.turn_white:
+                self.wk = (tr, tc)
+                self.castling &= ~3
+            else:
+                self.bk = (tr, tc)
+                self.castling &= ~12
+            if abs(tc - c) == 2:
+                if tc == 6:
+                    rook_undo = ((tr, 7), (tr, 5), board[tr][7])
+                    board[tr][5] = board[tr][7]
+                    board[tr][7] = None
+                else:
+                    rook_undo = ((tr, 0), (tr, 3), board[tr][0])
+                    board[tr][3] = board[tr][0]
+                    board[tr][0] = None
+
+        # Update castling rights for rooks moving or being captured
+        if self.castling:
+            if (r, c) == (7, 7) or (tr, tc) == (7, 7):
+                self.castling &= ~1
+            if (r, c) == (7, 0) or (tr, tc) == (7, 0):
+                self.castling &= ~2
+            if (r, c) == (0, 7) or (tr, tc) == (0, 7):
+                self.castling &= ~4
+            if (r, c) == (0, 0) or (tr, tc) == (0, 0):
+                self.castling &= ~8
+
+        self.ep = ((r + tr) // 2, c) if pt == "p" and abs(tr - r) == 2 else None
+        self.turn_white = not self.turn_white
+        return (move, p, captured, prev_castling, prev_ep, prev_wk, prev_bk, ep_cap, rook_undo)
+
+    def _unmake(self, undo):
+        move, p, captured, prev_castling, prev_ep, prev_wk, prev_bk, ep_cap, rook_undo = undo
+        (r, c), (tr, tc), _ = move
+        board = self.board
+        self.turn_white = not self.turn_white
+        board[r][c] = p
+        board[tr][tc] = captured
+        if ep_cap is not None:
+            board[ep_cap[0]][ep_cap[1]] = ep_cap[2]
+        if rook_undo is not None:
+            (rf, rfc), (rt, rtc), rp = rook_undo
+            board[rf][rfc] = rp
+            board[rt][rtc] = None
+        self.castling = prev_castling
+        self.ep = prev_ep
+        self.wk = prev_wk
+        self.bk = prev_bk
+
+    def _order_moves(self, moves, tt_move, ply):
+        board = self.board
+        k1, k2 = self.killers[ply] if ply < 32 else (None, None)
+
+        def score_move(m):
+            if m == tt_move:
+                return 1000000
+            (r, c), (tr, tc), prom = m
+            target = board[tr][tc]
+            s = 0
+            if target is not None:
+                attacker = board[r][c]
+                s = 100000 + _CHESS_MVV_VAL[target.lower()] * 10 - _CHESS_MVV_VAL[attacker.lower()]
+            elif prom is not None:
+                s = 90000 + _CHESS_MVV_VAL[prom]
+            elif m == k1:
+                s = 80000
+            elif m == k2:
+                s = 70000
+            return s
+
+        moves.sort(key=score_move, reverse=True)
+        return moves
+
+    def _quiesce(self, alpha, beta, qdepth):
+        self.nodes += 1
+        if (self.nodes & 1023) == 0 and time.perf_counter() >= self.deadline:
+            self.aborted = True
+            return 0
+        stand_pat = _chess_eval_board(self.board, self.turn_white)
+        if stand_pat >= beta:
+            return beta
+        if stand_pat > alpha:
+            alpha = stand_pat
+        if qdepth <= 0:
+            return alpha
+
+        moves = self._gen_moves(captures_only=True)
+        if not moves:
+            return alpha
+        self._order_moves(moves, None, 31)
         for m in moves:
-            target=state["board"][m[1][0]][m[1][1]]
-            if target is not None: captures.append(m)
-        candidates=captures if captures and rng.random()<0.5 else moves
-        return rng.choice(candidates)
-    depth={"medium":2,"hard":3}[difficulty]
-    scored_moves=[]
-    root_side=state["turn"]
-    for m in moves:
-        child=_clone(state); _chess_make_move(child,{"from":[m[0][0],m[0][1]],"to":[m[1][0],m[1][1]],"promotion":m[2] or "q"})
-        score=_chess_minimax(child,depth-1,-10**9,10**9,root_side)
-        scored_moves.append((m,score))
-    tolerance={"medium":120,"hard":15}[difficulty]
-    return _choose_near_best(scored_moves,tolerance,rng)
+            target = self.board[m[1][0]][m[1][1]]
+            # Delta pruning: skip hopeless captures far below alpha
+            if target is not None and m[2] is None:
+                if stand_pat + _CHESS_MVV_VAL[target.lower()] + 200 < alpha:
+                    continue
+            undo = self._make(m)
+            if self._in_check(not self.turn_white):
+                self._unmake(undo)
+                continue
+            score = -self._quiesce(-beta, -alpha, qdepth - 1)
+            self._unmake(undo)
+            if self.aborted:
+                return 0
+            if score >= beta:
+                return beta
+            if score > alpha:
+                alpha = score
+        return alpha
 
+    def _negamax(self, depth, alpha, beta, ply, use_quiesce):
+        self.nodes += 1
+        if (self.nodes & 1023) == 0 and time.perf_counter() >= self.deadline:
+            self.aborted = True
+            return 0
 
-def _chess_minimax(state,depth,alpha,beta,root_side):
-    if state["terminal"]:
-        if state["winner"]==root_side: return 1000000
-        if state["winner"]=="draw": return 0
-        return -1000000
-    if depth<=0:
-        return _chess_score(state)*(1 if root_side=="white" else -1)
-    moves=_chess_legal_moves(state)
-    if not moves: return 0
-    maximizing=state["turn"]==root_side
-    if maximizing:
-        val=-10**9
+        alpha_orig = alpha
+        key = self._board_key()
+        tt_entry = self.tt.get(key)
+        tt_move = None
+        if tt_entry is not None:
+            tt_depth, tt_flag, tt_score, tt_move = tt_entry
+            if tt_depth >= depth:
+                if tt_flag == _TT_EXACT:
+                    return tt_score
+                if tt_flag == _TT_LOWER and tt_score > alpha:
+                    alpha = tt_score
+                elif tt_flag == _TT_UPPER and tt_score < beta:
+                    beta = tt_score
+                if alpha >= beta:
+                    return tt_score
+
+        if depth <= 0:
+            if use_quiesce:
+                return self._quiesce(alpha, beta, 5)
+            return _chess_eval_board(self.board, self.turn_white)
+
+        moves = self._gen_moves(captures_only=False)
+        self._order_moves(moves, tt_move, ply)
+
+        best_score = -_INF_SCORE
+        best_move = None
+        legal_count = 0
         for m in moves:
-            child=_clone(state); _chess_make_move(child,{"from":[m[0][0],m[0][1]],"to":[m[1][0],m[1][1]],"promotion":m[2] or "q"})
-            val=max(val,_chess_minimax(child,depth-1,alpha,beta,root_side)); alpha=max(alpha,val)
-            if beta<=alpha: break
-        return val
-    val=10**9
-    for m in moves:
-        child=_clone(state); _chess_make_move(child,{"from":[m[0][0],m[0][1]],"to":[m[1][0],m[1][1]],"promotion":m[2] or "q"})
-        val=min(val,_chess_minimax(child,depth-1,alpha,beta,root_side)); beta=min(beta,val)
-        if beta<=alpha: break
-    return val
+            is_quiet = self.board[m[1][0]][m[1][1]] is None and m[2] is None
+            undo = self._make(m)
+            if self._in_check(not self.turn_white):
+                self._unmake(undo)
+                continue
+            legal_count += 1
+            score = -self._negamax(depth - 1, -beta, -alpha, ply + 1, use_quiesce)
+            self._unmake(undo)
+            if self.aborted:
+                return 0
+            if score > best_score:
+                best_score = score
+                best_move = m
+            if score > alpha:
+                alpha = score
+            if alpha >= beta:
+                if is_quiet and ply < 32 and self.killers[ply][0] != m:
+                    self.killers[ply][1] = self.killers[ply][0]
+                    self.killers[ply][0] = m
+                break
+
+        if legal_count == 0:
+            if self._in_check(self.turn_white):
+                return -(_MATE_SCORE - ply)
+            return 0
+
+        if len(self.tt) < 60000:
+            flag = _TT_EXACT
+            if best_score <= alpha_orig:
+                flag = _TT_UPPER
+            elif best_score >= beta:
+                flag = _TT_LOWER
+            self.tt[key] = (depth, flag, best_score, best_move)
+        return best_score
+
+    def search_root(self, legal_moves, max_depth, use_quiesce, tolerance=0):
+        """Iterative deepening from depth 1..max_depth, returning scored root moves.
+
+        Moves within ``tolerance`` of the best score receive exact scores; moves that
+        fail low outside the window are bounded strictly below ``best_score - tolerance``.
+        """
+        ordered = list(legal_moves)
+        self._order_moves(ordered, None, 0)
+        best_scored = None
+
+        for depth in range(1, max_depth + 1):
+            current_scored = []
+            best_score = -_INF_SCORE
+            for m in ordered:
+                undo = self._make(m)
+                if self._in_check(not self.turn_white):
+                    self._unmake(undo)
+                    continue
+                # Keep window wide enough so all moves within `tolerance` get exact scores
+                cutoff = (best_score - tolerance - 1) if best_score > -_INF_SCORE else -_INF_SCORE
+                score = -self._negamax(depth - 1, -_INF_SCORE, -cutoff, 1, use_quiesce)
+                self._unmake(undo)
+                if self.aborted:
+                    break
+                if score <= cutoff:
+                    # Failed low: strictly worse than best_score - tolerance
+                    current_scored.append((m, cutoff - 1))
+                else:
+                    current_scored.append((m, score))
+                    if score > best_score:
+                        best_score = score
+            if self.aborted:
+                break
+            if current_scored:
+                current_scored.sort(key=lambda item: item[1], reverse=True)
+                best_scored = current_scored
+                ordered = [m for m, _ in current_scored]
+                # Stop early if a forced mate is already found
+                if best_scored[0][1] >= _MATE_SCORE - 32:
+                    break
+        return best_scored
+
+
+def _chess_book_move(state, legal_moves, rng):
+    history = state.get("history") or []
+    if len(history) > 6:
+        return None
+    try:
+        key = tuple((tuple(m["from"]), tuple(m["to"])) for m in history)
+    except (KeyError, TypeError):
+        return None
+    book_choices = _CHESS_OPENING_BOOK.get(key)
+    if not book_choices:
+        return None
+    legal_set = set(legal_moves)
+    valid = [m for m in book_choices if m in legal_set]
+    return rng.choice(valid) if valid else None
+
+
+def _chess_ai_move(state, difficulty):
+    moves = _chess_legal_moves(state)
+    if not moves:
+        raise ValueError("no legal chess moves")
+    if len(moves) == 1:
+        return moves[0]
+
+    rng = random.Random()
+
+    if difficulty == "easy":
+        # Fast 1-ply evaluation with wide randomness so beginners can win
+        engine = _ChessSearch(state, time.perf_counter() + 0.08)
+        scored = engine.search_root(moves, max_depth=1, use_quiesce=False, tolerance=220)
+        if not scored:
+            return rng.choice(moves)
+        return _choose_near_best(scored, 220, rng)
+
+    if difficulty == "medium":
+        if rng.random() < 0.55:
+            book = _chess_book_move(state, moves, rng)
+            if book is not None:
+                return book
+        engine = _ChessSearch(state, time.perf_counter() + 0.18)
+        scored = engine.search_root(moves, max_depth=3, use_quiesce=True, tolerance=60)
+        if not scored:
+            return rng.choice(moves)
+        return _choose_near_best(scored, 60, rng)
+
+    # Hard ("Thử thách"): Opening book + deep iterative-deepening Negamax + Quiescence + TT
+    book = _chess_book_move(state, moves, rng)
+    if book is not None:
+        return book
+    engine = _ChessSearch(state, time.perf_counter() + 0.75)
+    scored = engine.search_root(moves, max_depth=6, use_quiesce=True, tolerance=0)
+    if not scored:
+        return moves[0]
+    # Pick the strictly strongest move (tie-break randomly only among exact ties)
+    best_score = scored[0][1]
+    best_moves = [m for m, s in scored if s == best_score]
+    return rng.choice(best_moves)
 
 
 # ----------------------------- Xiangqi -----------------------------
@@ -441,74 +1072,80 @@ def _x_in_palace(r,c,side):
     return c in (3,4,5) and (r in (0,1,2) if side=="black" else r in (7,8,9))
 
 
-def _x_general(board,side):
-    for r in range(10):
-        for c in range(9):
-            if board[r][c]==("K" if side=="red" else "k"):
-                return r,c
+def _x_general(board, side):
+    target = "K" if side == "red" else "k"
+    rows = (7, 8, 9) if side == "red" else (0, 1, 2)
+    for r in rows:
+        row = board[r]
+        for c in (3, 4, 5):
+            if row[c] == target:
+                return r, c
     return None
 
 
-def _x_attacked(board,r,c,by_side):
-    for ar in range(10):
-        for ac in range(9):
-            p=board[ar][ac]
-            if p is None or _x_side(p)!=by_side:
-                continue
-            t=p.lower()
-            dr=r-ar; dc=c-ac
-            if t=="h" and (abs(dr),abs(dc)) in ((1,2),(2,1)):
-                leg=(ar+(dr//2 if abs(dr)==2 else 0),ac+(dc//2 if abs(dc)==2 else 0))
-                if board[leg[0]][leg[1]] is None:
-                    return True
-            elif t=="e" and abs(dr)==abs(dc)==2:
-                eye=(ar+dr//2,ac+dc//2)
-                if board[eye[0]][eye[1]] is None:
-                    # elephants cannot cross river
-                    if (r<5)==(ar<5): return True
-            elif t=="a" and abs(dr)==abs(dc)==1 and _x_in_palace(r,c,by_side):
+# Reverse horse offsets: (horse_dr, horse_dc, block_dr, block_dc) from target square (r, c)
+_X_HORSE_REV = (
+    (2, 1, 1, 1), (2, -1, 1, -1),
+    (-2, 1, -1, 1), (-2, -1, -1, -1),
+    (1, 2, 1, 1), (-1, 2, -1, 1),
+    (1, -2, 1, -1), (-1, -2, -1, -1),
+)
+
+
+def _x_attacked(board, r, c, by_side):
+    """Fast outward attack detection from (r, c) in Xiangqi."""
+    by_red = by_side == "red"
+    rook = "R" if by_red else "r"
+    cannon = "C" if by_red else "c"
+    king = "K" if by_red else "k"
+    horse = "H" if by_red else "h"
+    pawn = "P" if by_red else "p"
+
+    # 4 orthogonal rays: Chariot (0 screens), Flying General (0 screens on same file), Cannon (1 screen)
+    for dr, dc in _ORTHO_DIRS:
+        rr, cc = r + dr, c + dc
+        screen = False
+        while 0 <= rr < 10 and 0 <= cc < 9:
+            p = board[rr][cc]
+            if p is not None:
+                if not screen:
+                    if p == rook or (dc == 0 and p == king):
+                        return True
+                    screen = True
+                else:
+                    if p == cannon:
+                        return True
+                    break
+            rr += dr
+            cc += dc
+
+    # Horse attacks (checking enemy horse's leg)
+    for dr, dc, ldr, ldc in _X_HORSE_REV:
+        hr, hc = r + dr, c + dc
+        if 0 <= hr < 10 and 0 <= hc < 9 and board[hr][hc] == horse:
+            if board[r + ldr][c + ldc] is None:
                 return True
-            elif t=="k" and max(abs(dr),abs(dc))==1 and _x_in_palace(r,c,by_side):
-                return True
-            elif t=="r" and (dr==0 or dc==0):
-                sr=0 if dr==0 else (1 if dr>0 else -1); sc=0 if dc==0 else (1 if dc>0 else -1)
-                rr,cc=ar+sr,ac+sc; clear=True
-                while (rr,cc)!=(r,c):
-                    if board[rr][cc] is not None: clear=False; break
-                    rr+=sr;cc+=sc
-                if clear: return True
-            elif t=="c" and (dr==0 or dc==0):
-                sr=0 if dr==0 else (1 if dr>0 else -1); sc=0 if dc==0 else (1 if dc>0 else -1)
-                rr,cc=ar+sr,ac+sc; count=0
-                while (rr,cc)!=(r,c):
-                    if board[rr][cc] is not None: count+=1
-                    rr+=sr;cc+=sc
-                if count==1: return True
-            elif t=="p":
-                direction=-1 if by_side=="red" else 1
-                crossed=(r>4) if by_side=="black" else (r<5)
-                if dr==direction and dc==0: return True
-                if crossed and dr==0 and abs(dc)==1: return True
+
+    # Pawn attacks
+    pr = r + 1 if by_red else r - 1
+    if 0 <= pr < 10 and board[pr][c] == pawn:
+        return True
+    # Sideways pawn attacks only if target is across the attacker's river
+    if (by_red and r < 5) or ((not by_red) and r > 4):
+        if c > 0 and board[r][c - 1] == pawn:
+            return True
+        if c < 8 and board[r][c + 1] == pawn:
+            return True
+
     return False
 
 
-def _x_check(board,side):
-    gs=_x_general(board,side)
-    if gs is None: return True
-    gr,gc=gs
-    enemy="black" if side=="red" else "red"
-    # flying general
-    eg=_x_general(board,enemy)
-    if eg:
-        er,ec=eg
-        if ec==gc:
-            rr=er+(1 if gr>er else -1)
-            clear=True
-            while rr!=gr:
-                if board[rr][gc] is not None: clear=False; break
-                rr+=1 if gr>er else -1
-            if clear: return True
-    return _x_attacked(board,gr,gc,enemy)
+def _x_check(board, side):
+    gs = _x_general(board, side)
+    if gs is None:
+        return True
+    enemy = "black" if side == "red" else "red"
+    return _x_attacked(board, gs[0], gs[1], enemy)
 
 
 def _x_pseudo(board,r,c):
@@ -562,16 +1199,25 @@ def _x_pseudo(board,r,c):
     return out
 
 
-def _x_legal(state,fr=None):
-    board=state["board"]; side=state["turn"]; out=[]
+def _x_legal(state, fr=None):
+    board = state["board"]
+    side = state["turn"]
+    out = []
     for r in range(10):
         for c in range(9):
-            if fr is not None and (r,c)!=fr: continue
-            p=board[r][c]
-            if p is None or _x_side(p)!=side: continue
-            for b in _x_pseudo(board,r,c):
-                tb=_clone(board); tb[b[0]][b[1]]=tb[r][c];tb[r][c]=None
-                if not _x_check(tb,side): out.append(((r,c),b))
+            if fr is not None and (r, c) != fr:
+                continue
+            p = board[r][c]
+            if p is None or _x_side(p) != side:
+                continue
+            for br, bc in _x_pseudo(board, r, c):
+                cap = board[br][bc]
+                board[br][bc] = p
+                board[r][c] = None
+                if not _x_check(board, side):
+                    out.append(((r, c), (br, bc)))
+                board[r][c] = p
+                board[br][bc] = cap
     return out
 
 
@@ -596,59 +1242,402 @@ def _x_make(state,a,b):
         state.update(result="draw",winner="draw",terminal=True)
 
 
+_X_VALUES = {"k": 20000, "r": 900, "c": 450, "h": 400, "e": 200, "a": 200, "p": 100}
+
+# Positional bonuses from Red's perspective (row 0 = black back rank, row 9 = red back rank)
+_X_PST = {
+    "p": (
+        (9, 9, 9, 11, 13, 11, 9, 9, 9),
+        (19, 24, 34, 42, 44, 42, 34, 24, 19),
+        (19, 24, 32, 37, 37, 37, 32, 24, 19),
+        (19, 23, 27, 29, 30, 29, 27, 23, 19),
+        (14, 18, 20, 27, 29, 27, 20, 18, 14),
+        (7, 0, 13, 0, 16, 0, 13, 0, 7),
+        (7, 0, 7, 0, 15, 0, 7, 0, 7),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+    ),
+    "h": (
+        (4, 8, 16, 12, 4, 12, 16, 8, 4),
+        (4, 10, 28, 16, 8, 16, 28, 10, 4),
+        (12, 14, 16, 20, 18, 20, 16, 14, 12),
+        (8, 24, 18, 24, 20, 24, 18, 24, 8),
+        (6, 16, 14, 18, 16, 18, 14, 16, 6),
+        (4, 12, 16, 14, 12, 14, 16, 12, 4),
+        (2, 6, 8, 6, 10, 6, 8, 6, 2),
+        (4, 2, 8, 8, 4, 8, 8, 2, 4),
+        (0, 2, 4, 4, -2, 4, 4, 2, 0),
+        (0, -4, 0, 0, 0, 0, 0, -4, 0),
+    ),
+    "c": (
+        (6, 4, 0, -10, -12, -10, 0, 4, 6),
+        (2, 2, 0, -4, -14, -4, 0, 2, 2),
+        (2, 2, 0, -10, -8, -10, 0, 2, 2),
+        (0, 0, -2, 4, 10, 4, -2, 0, 0),
+        (0, 0, 0, 2, 8, 2, 0, 0, 0),
+        (-2, 0, 4, 2, 6, 2, 4, 0, -2),
+        (0, 0, 0, 2, 4, 2, 0, 0, 0),
+        (4, 0, 8, 6, 14, 6, 8, 0, 4),
+        (0, 2, 4, 6, 6, 6, 4, 2, 0),
+        (0, 0, 2, 6, 6, 6, 2, 0, 0),
+    ),
+    "r": (
+        (14, 14, 12, 18, 16, 18, 12, 14, 14),
+        (16, 20, 18, 24, 26, 24, 18, 20, 16),
+        (12, 12, 12, 18, 18, 18, 12, 12, 12),
+        (12, 18, 16, 22, 22, 22, 16, 18, 12),
+        (12, 14, 12, 18, 18, 18, 12, 14, 12),
+        (12, 16, 14, 20, 20, 20, 14, 16, 12),
+        (6, 10, 8, 14, 14, 14, 8, 10, 6),
+        (4, 8, 6, 14, 12, 14, 6, 8, 4),
+        (8, 4, 8, 16, 8, 16, 8, 4, 8),
+        (-2, 10, 6, 14, 12, 14, 6, 10, -2),
+    ),
+    "e": (
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 8, 0, 0, 0, 8, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (4, 0, 0, 0, 14, 0, 0, 0, 4),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 6, 0, 0, 0, 6, 0, 0),
+    ),
+    "a": (
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 6, 0, 6, 0, 0, 0),
+        (0, 0, 0, 0, 12, 0, 0, 0, 0),
+        (0, 0, 0, 6, 0, 6, 0, 0, 0),
+    ),
+    "k": (
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, 0, 0, 0, 0, 0, 0),
+        (0, 0, 0, -4, -6, -4, 0, 0, 0),
+        (0, 0, 0, -2, 0, -2, 0, 0, 0),
+        (0, 0, 0, 4, 10, 4, 0, 0, 0),
+    ),
+}
+
+# Classical Xiangqi opening responses for Black
+_X_OPENING_BOOK = {
+    # Red 1.Phao dau (7,1->7,4 or 7,7->7,4) -> Binh phong ma (0,7->2,6 / 0,1->2,2) or Thuan phao (2,7->2,4 / 2,1->2,4)
+    (((7, 1), (7, 4)),): [((0, 7), (2, 6)), ((0, 1), (2, 2)), ((2, 7), (2, 4))],
+    (((7, 7), (7, 4)),): [((0, 1), (2, 2)), ((0, 7), (2, 6)), ((2, 1), (2, 4))],
+    # Red 1.Tien tot (6,2->5,2 or 6,6->5,6) -> Doi tot or Phao
+    (((6, 2), (5, 2)),): [((3, 2), (4, 2)), ((0, 1), (2, 2)), ((2, 1), (2, 4))],
+    (((6, 6), (5, 6)),): [((3, 6), (4, 6)), ((0, 7), (2, 6)), ((2, 7), (2, 4))],
+    # Red 1.Phi tuong (9,2->7,4 or 9,6->7,4) -> Qua cung phao / Ma
+    (((9, 2), (7, 4)),): [((2, 7), (2, 4)), ((0, 7), (2, 6)), ((3, 6), (4, 6))],
+    (((9, 6), (7, 4)),): [((2, 1), (2, 4)), ((0, 1), (2, 2)), ((3, 2), (4, 2))],
+    # Red 1.Khoi ma (9,1->7,2 or 9,7->7,6) -> Tien tot / Ma
+    (((9, 1), (7, 2)),): [((3, 6), (4, 6)), ((0, 7), (2, 6))],
+    (((9, 7), (7, 6)),): [((3, 2), (4, 2)), ((0, 1), (2, 2))],
+}
+
+
+def _x_eval_board(board, turn_red):
+    """Positional + material Xiangqi evaluation from side-to-move's perspective."""
+    score = 0
+    for r in range(10):
+        row = board[r]
+        mr = 9 - r
+        for c in range(9):
+            p = row[c]
+            if p is None:
+                continue
+            if p.isupper():
+                pt = p.lower()
+                score += _X_VALUES[pt] + _X_PST[pt][r][c] * 2
+            else:
+                score -= _X_VALUES[p] + _X_PST[p][mr][c] * 2
+    return score if turn_red else -score
+
+
 def _x_eval(state):
-    values={"k":20000,"a":120,"e":180,"h":400,"r":550,"c":450,"p":100}
-    score=0
-    for row in state["board"]:
-        for p in row:
-            if p:
-                v=values[p.lower()]*(1 if p.isupper() else -1)
-                score+=v
-    return score
+    return _x_eval_board(state["board"], True)
 
 
-def _x_minimax(state,depth,alpha,beta,root):
-    if state["terminal"]:
-        if state["winner"]==root: return 1000000
-        if state["winner"]=="draw": return 0
-        return -1000000
-    if depth<=0:
-        v=_x_eval(state)
-        return v if root=="red" else -v
-    moves=_x_legal(state)
-    if not moves:return 0
-    maxing=state["turn"]==root
-    if maxing:
-        val=-10**9
+class _XiangqiSearch:
+    """Fast in-place alpha-beta Negamax for Xiangqi with quiescence, TT and killers."""
+
+    def __init__(self, state, deadline):
+        self.board = [row[:] for row in state["board"]]
+        self.turn_red = state["turn"] == "red"
+        self.deadline = deadline
+        self.aborted = False
+        self.nodes = 0
+        self.tt = {}
+        self.killers = [[None, None] for _ in range(32)]
+
+    def _board_key(self):
+        return (tuple(tuple(row) for row in self.board), self.turn_red)
+
+    def _gen_moves(self, captures_only=False):
+        board = self.board
+        red = self.turn_red
+        moves = []
+        for r in range(10):
+            row = board[r]
+            for c in range(9):
+                p = row[c]
+                if p is None or (p.isupper() != red):
+                    continue
+                for tr, tc in _x_pseudo(board, r, c):
+                    if captures_only and board[tr][tc] is None:
+                        continue
+                    moves.append(((r, c), (tr, tc)))
+        return moves
+
+    def _order_moves(self, moves, tt_move, ply):
+        board = self.board
+        k1, k2 = self.killers[ply] if ply < 32 else (None, None)
+
+        def score_move(m):
+            if m == tt_move:
+                return 1000000
+            (r, c), (tr, tc) = m
+            target = board[tr][tc]
+            if target is not None:
+                attacker = board[r][c]
+                return 100000 + _X_VALUES[target.lower()] * 10 - _X_VALUES[attacker.lower()]
+            if m == k1:
+                return 80000
+            if m == k2:
+                return 70000
+            return 0
+
+        moves.sort(key=score_move, reverse=True)
+        return moves
+
+    def _quiesce(self, alpha, beta, qdepth):
+        self.nodes += 1
+        if (self.nodes & 511) == 0 and time.perf_counter() >= self.deadline:
+            self.aborted = True
+            return 0
+        stand_pat = _x_eval_board(self.board, self.turn_red)
+        if stand_pat >= beta:
+            return beta
+        if stand_pat > alpha:
+            alpha = stand_pat
+        if qdepth <= 0:
+            return alpha
+
+        board = self.board
+        side = "red" if self.turn_red else "black"
+        moves = self._gen_moves(captures_only=True)
+        if not moves:
+            return alpha
+        self._order_moves(moves, None, 31)
         for m in moves:
-            ch=_clone(state);_x_make(ch,m[0],m[1])
-            val=max(val,_x_minimax(ch,depth-1,alpha,beta,root));alpha=max(alpha,val)
-            if beta<=alpha:break
-        return val
-    val=10**9
-    for m in moves:
-        ch=_clone(state);_x_make(ch,m[0],m[1])
-        val=min(val,_x_minimax(ch,depth-1,alpha,beta,root));beta=min(beta,val)
-        if beta<=alpha:break
-    return val
+            (r, c), (tr, tc) = m
+            target = board[tr][tc]
+            if target is not None and stand_pat + _X_VALUES[target.lower()] + 220 < alpha:
+                continue
+            p = board[r][c]
+            board[tr][tc] = p
+            board[r][c] = None
+            if _x_check(board, side):
+                board[r][c] = p
+                board[tr][tc] = target
+                continue
+            self.turn_red = not self.turn_red
+            score = -self._quiesce(-beta, -alpha, qdepth - 1)
+            self.turn_red = not self.turn_red
+            board[r][c] = p
+            board[tr][tc] = target
+            if self.aborted:
+                return 0
+            if score >= beta:
+                return beta
+            if score > alpha:
+                alpha = score
+        return alpha
+
+    def _negamax(self, depth, alpha, beta, ply, use_quiesce):
+        self.nodes += 1
+        if (self.nodes & 511) == 0 and time.perf_counter() >= self.deadline:
+            self.aborted = True
+            return 0
+
+        alpha_orig = alpha
+        key = self._board_key()
+        tt_entry = self.tt.get(key)
+        tt_move = None
+        if tt_entry is not None:
+            tt_depth, tt_flag, tt_score, tt_move = tt_entry
+            if tt_depth >= depth:
+                if tt_flag == _TT_EXACT:
+                    return tt_score
+                if tt_flag == _TT_LOWER and tt_score > alpha:
+                    alpha = tt_score
+                elif tt_flag == _TT_UPPER and tt_score < beta:
+                    beta = tt_score
+                if alpha >= beta:
+                    return tt_score
+
+        if depth <= 0:
+            if use_quiesce:
+                return self._quiesce(alpha, beta, 4)
+            return _x_eval_board(self.board, self.turn_red)
+
+        board = self.board
+        side = "red" if self.turn_red else "black"
+        moves = self._gen_moves(captures_only=False)
+        self._order_moves(moves, tt_move, ply)
+
+        best_score = -_INF_SCORE
+        best_move = None
+        legal_count = 0
+        for m in moves:
+            (r, c), (tr, tc) = m
+            p = board[r][c]
+            cap = board[tr][tc]
+            board[tr][tc] = p
+            board[r][c] = None
+            if _x_check(board, side):
+                board[r][c] = p
+                board[tr][tc] = cap
+                continue
+            legal_count += 1
+            self.turn_red = not self.turn_red
+            score = -self._negamax(depth - 1, -beta, -alpha, ply + 1, use_quiesce)
+            self.turn_red = not self.turn_red
+            board[r][c] = p
+            board[tr][tc] = cap
+            if self.aborted:
+                return 0
+            if score > best_score:
+                best_score = score
+                best_move = m
+            if score > alpha:
+                alpha = score
+            if alpha >= beta:
+                if cap is None and ply < 32 and self.killers[ply][0] != m:
+                    self.killers[ply][1] = self.killers[ply][0]
+                    self.killers[ply][0] = m
+                break
+
+        if legal_count == 0:
+            # In Xiangqi, both checkmate and stalemate are a loss for the side with no legal moves
+            return -(_MATE_SCORE - ply)
+
+        if len(self.tt) < 50000:
+            flag = _TT_EXACT
+            if best_score <= alpha_orig:
+                flag = _TT_UPPER
+            elif best_score >= beta:
+                flag = _TT_LOWER
+            self.tt[key] = (depth, flag, best_score, best_move)
+        return best_score
+
+    def search_root(self, legal_moves, max_depth, use_quiesce, tolerance=0):
+        board = self.board
+        ordered = list(legal_moves)
+        self._order_moves(ordered, None, 0)
+        best_scored = None
+
+        for depth in range(1, max_depth + 1):
+            current_scored = []
+            best_score = -_INF_SCORE
+            for m in ordered:
+                (r, c), (tr, tc) = m
+                p = board[r][c]
+                cap = board[tr][tc]
+                board[tr][tc] = p
+                board[r][c] = None
+                self.turn_red = not self.turn_red
+                cutoff = (best_score - tolerance - 1) if best_score > -_INF_SCORE else -_INF_SCORE
+                score = -self._negamax(depth - 1, -_INF_SCORE, -cutoff, 1, use_quiesce)
+                self.turn_red = not self.turn_red
+                board[r][c] = p
+                board[tr][tc] = cap
+                if self.aborted:
+                    break
+                if score <= cutoff:
+                    current_scored.append((m, cutoff - 1))
+                else:
+                    current_scored.append((m, score))
+                    if score > best_score:
+                        best_score = score
+            if self.aborted:
+                break
+            if current_scored:
+                current_scored.sort(key=lambda item: item[1], reverse=True)
+                best_scored = current_scored
+                ordered = [m for m, _ in current_scored]
+                if best_scored[0][1] >= _MATE_SCORE - 32:
+                    break
+        return best_scored
 
 
-def _x_ai(state,difficulty):
-    moves=_x_legal(state)
-    if not moves: raise ValueError("no legal xiangqi moves")
-    rng=random.Random()
-    if difficulty=="easy":
-        captures=[m for m in moves if state["board"][m[1][0]][m[1][1]] is not None]
-        candidates=captures if captures and rng.random()<0.5 else moves
-        return rng.choice(candidates)
-    depth={"medium":2,"hard":3}[difficulty]
-    root=state["turn"];scored_moves=[]
-    for m in moves:
-        ch=_clone(state);_x_make(ch,m[0],m[1])
-        score=_x_minimax(ch,depth-1,-10**9,10**9,root)
-        scored_moves.append((m,score))
-    tolerance={"medium":80,"hard":10}[difficulty]
-    return _choose_near_best(scored_moves,tolerance,rng)
+def _x_book_move(state, legal_moves, rng):
+    history = state.get("history") or []
+    if len(history) > 2:
+        return None
+    try:
+        key = tuple((tuple(m["from"]), tuple(m["to"])) for m in history)
+    except (KeyError, TypeError):
+        return None
+    book_choices = _X_OPENING_BOOK.get(key)
+    if not book_choices:
+        return None
+    legal_set = set(legal_moves)
+    valid = [m for m in book_choices if m in legal_set]
+    return rng.choice(valid) if valid else None
+
+
+def _x_ai(state, difficulty):
+    moves = _x_legal(state)
+    if not moves:
+        raise ValueError("no legal xiangqi moves")
+    if len(moves) == 1:
+        return moves[0]
+
+    rng = random.Random()
+
+    if difficulty == "easy":
+        engine = _XiangqiSearch(state, time.perf_counter() + 0.08)
+        scored = engine.search_root(moves, max_depth=1, use_quiesce=False, tolerance=220)
+        if not scored:
+            return rng.choice(moves)
+        return _choose_near_best(scored, 220, rng)
+
+    if difficulty == "medium":
+        if rng.random() < 0.55:
+            book = _x_book_move(state, moves, rng)
+            if book is not None:
+                return book
+        engine = _XiangqiSearch(state, time.perf_counter() + 0.20)
+        scored = engine.search_root(moves, max_depth=3, use_quiesce=True, tolerance=70)
+        if not scored:
+            return rng.choice(moves)
+        return _choose_near_best(scored, 70, rng)
+
+    # Hard ("Thử thách"): Opening book + deep Iterative Deepening + Quiescence + TT
+    book = _x_book_move(state, moves, rng)
+    if book is not None:
+        return book
+    engine = _XiangqiSearch(state, time.perf_counter() + 0.75)
+    scored = engine.search_root(moves, max_depth=5, use_quiesce=True, tolerance=0)
+    if not scored:
+        return moves[0]
+    best_score = scored[0][1]
+    best_moves = [m for m, s in scored if s == best_score]
+    return rng.choice(best_moves)
 
 
 # ------------------------------- Go -------------------------------
@@ -786,69 +1775,276 @@ def _go_play_legal(state,move):
     _go_place(state,r,c,ch)
 
 
+_GO_POS_WEIGHT = (
+    (0.0, 0.2, 0.4, 0.5, 0.5, 0.5, 0.4, 0.2, 0.0),
+    (0.2, 0.4, 0.8, 0.9, 0.9, 0.9, 0.8, 0.4, 0.2),
+    (0.4, 0.8, 1.4, 1.2, 1.3, 1.2, 1.4, 0.8, 0.4),
+    (0.5, 0.9, 1.2, 1.3, 1.4, 1.3, 1.2, 0.9, 0.5),
+    (0.5, 0.9, 1.3, 1.4, 1.6, 1.4, 1.3, 0.9, 0.5),
+    (0.5, 0.9, 1.2, 1.3, 1.4, 1.3, 1.2, 0.9, 0.5),
+    (0.4, 0.8, 1.4, 1.2, 1.3, 1.2, 1.4, 0.8, 0.4),
+    (0.2, 0.4, 0.8, 0.9, 0.9, 0.9, 0.8, 0.4, 0.2),
+    (0.0, 0.2, 0.4, 0.5, 0.5, 0.5, 0.4, 0.2, 0.0),
+)
+_GO_STAR_POINTS = ((4, 4), (2, 2), (2, 6), (6, 2), (6, 6), (2, 4), (4, 2), (4, 6), (6, 4))
+
+
+def _go_is_own_eye(board, r, c, color):
+    """True if (r, c) is a simple true eye for `color` that should not be filled."""
+    for nr, nc in _go_neighbors(r, c):
+        if board[nr][nc] != color:
+            return False
+    enemy = "W" if color == "B" else "B"
+    diag_enemy = 0
+    diag_total = 0
+    for dr, dc in _DIAG_DIRS:
+        nr, nc = r + dr, c + dc
+        if 0 <= nr < 9 and 0 <= nc < 9:
+            diag_total += 1
+            if board[nr][nc] == enemy:
+                diag_enemy += 1
+    if diag_total < 4:
+        return diag_enemy == 0
+    return diag_enemy <= 1
+
+
+def _go_try_play(board, r, c, color, history_keys):
+    """Return (new_board, captured_count, next_key) or None if illegal."""
+    if board[r][c] != ".":
+        return None
+    nb = [row[:] for row in board]
+    nb[r][c] = color
+    enemy = "W" if color == "B" else "B"
+    captured = 0
+    for nr, nc in _go_neighbors(r, c):
+        if nb[nr][nc] == enemy:
+            group, libs = _go_group(nb, nr, nc)
+            if not libs:
+                captured += len(group)
+                for gr, gc in group:
+                    nb[gr][gc] = "."
+    _, own_libs = _go_group(nb, r, c)
+    if not own_libs:
+        return None
+    key = _go_key(nb, enemy)
+    if key in history_keys:
+        return None
+    return nb, captured, key
+
+
+def _go_eval_board(board, turn_color):
+    """Rich 9x9 Go evaluation: area/territory, liberties, Atari threats, and positional influence."""
+    black_area, white_area = _go_area_score(board)
+    score = black_area - white_area  # includes 7.5 komi for white
+
+    seen = set()
+    stone_count = 0
+    for r in range(9):
+        row = board[r]
+        for c in range(9):
+            p = row[c]
+            if p == ".":
+                continue
+            stone_count += 1
+            if (r, c) not in seen:
+                group, libs = _go_group(board, r, c)
+                seen.update(group)
+                n_libs = len(libs)
+                g_size = len(group)
+                sign = 1.0 if p == "B" else -1.0
+                if n_libs == 1:
+                    # Group in Atari! Severe danger if opponent is to move, moderate danger if own turn
+                    penalty = (2.6 if p != turn_color else 1.2) * g_size
+                    score -= sign * penalty
+                elif n_libs == 2:
+                    score -= sign * 0.35 * g_size
+                else:
+                    score += sign * min(n_libs, 6) * 0.18
+            # Positional weight matters most in opening/early middlegame
+            if stone_count < 45:
+                sign = 1.0 if p == "B" else -1.0
+                score += sign * _GO_POS_WEIGHT[r][c] * 0.35
+
+    return score if turn_color == "B" else -score
+
+
 def _go_liberty_score(state):
-    board=state["board"];score=0.0
-    for r in range(9):
-        for c in range(9):
-            if board[r][c]=="B":score+=1
-            elif board[r][c]=="W":score-=1
-    for r in range(9):
-        for c in range(9):
-            if board[r][c]==".":
-                touch={board[nr][nc] for nr,nc in _go_neighbors(r,c)}-{"."}
-                if touch=={"B"}:score+=0.5
-                elif touch=={"W"}:score-=0.5
-    return score
+    return _go_eval_board(state["board"], "B")
 
 
-def _go_ai(state,difficulty):
-    if state["terminal"]:raise ValueError("game is already terminal")
-    side=state["turn"]
-    rng=random.Random()
-    candidates=[]
+def _go_candidate_moves(board, color, history_keys, max_candidates):
+    """Generate and rank high-value tactical/positional moves for 9x9 Go."""
+    enemy = "W" if color == "B" else "B"
+    # Collect stones and urgent Atari liberties
+    has_stones = False
+    near_mask = [[False] * 9 for _ in range(9)]
+    urgent_points = set()
+    seen = set()
     for r in range(9):
         for c in range(9):
-            if state["board"][r][c]==".":
-                ch=_clone(state)
-                try:_go_place(ch,r,c,"B" if side=="black" else "W")
-                except ValueError:continue
-                candidates.append((r,c,ch))
-    if difficulty=="easy":
-        if not candidates:return {"pass":True}
-        capture=[]
-        enemy="W" if side=="black" else "B"
-        for r,c,ch in candidates:
-            before=sum(row.count(enemy) for row in state["board"])
-            after=sum(row.count(enemy) for row in ch["board"])
-            if after<before:capture.append((r,c))
-        all_moves=[(r,c) for r,c,_ in candidates]
-        choice=rng.choice(capture if capture and rng.random()<0.5 else all_moves)
-        return {"at":[choice[0],choice[1]]}
-    # medium and hard use 1-ply/2-ply local heuristic
-    depth=1 if difficulty=="medium" else 2
-    root=side;scored_moves=[]
-    for r,c,ch in candidates:
-        val=_go_search(ch,depth-1,root)
-        scored_moves.append(({"at":[r,c]},val))
-    if not scored_moves:return {"pass":True}
-    tolerance={"medium":1.0,"hard":0.1}[difficulty]
-    return _choose_near_best(scored_moves,tolerance,rng)
+            p = board[r][c]
+            if p == ".":
+                continue
+            has_stones = True
+            for dr in range(-2, 3):
+                for dc in range(-2, 3):
+                    if abs(dr) + abs(dc) <= 2:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < 9 and 0 <= nc < 9:
+                            near_mask[nr][nc] = True
+            if (r, c) not in seen:
+                group, libs = _go_group(board, r, c)
+                seen.update(group)
+                if len(libs) == 1:
+                    urgent_points.update(libs)
+                elif len(libs) == 2 and len(group) >= 2:
+                    urgent_points.update(libs)
 
-
-def _go_search(state,depth,root):
-    if depth<=0:return _go_liberty_score(state)*(1 if root=="black" else -1)
-    side=state["turn"];best=-10**9 if side==root else 10**9
-    found=False
+    candidates = []
     for r in range(9):
         for c in range(9):
-            if state["board"][r][c]!=".":continue
-            ch=_clone(state)
-            try:_go_place(ch,r,c,"B" if side=="black" else "W")
-            except ValueError:continue
-            found=True;v=_go_search(ch,depth-1,root)
-            if side==root:best=max(best,v)
-            else:best=min(best,v)
-    return best if found else _go_liberty_score(state)*(1 if root=="black" else -1)
+            if board[r][c] != ".":
+                continue
+            if _go_is_own_eye(board, r, c, color):
+                continue
+            if has_stones and not near_mask[r][c] and (r, c) not in _GO_STAR_POINTS and (r, c) not in urgent_points:
+                continue
+            played = _go_try_play(board, r, c, color, history_keys)
+            if played is None:
+                continue
+            nb, captured, key = played
+            _, new_libs = _go_group(nb, r, c)
+            # Heuristic move priority
+            prio = _GO_POS_WEIGHT[r][c] * 2.0
+            if captured > 0:
+                prio += 20.0 + captured * 6.0
+            if (r, c) in urgent_points:
+                prio += 12.0
+            if len(new_libs) == 1 and captured == 0:
+                # Self-atari penalty
+                prio -= 14.0
+            elif len(new_libs) >= 3:
+                prio += 1.5
+            # Check if move puts an adjacent enemy group in Atari
+            for nr, nc in _go_neighbors(r, c):
+                if nb[nr][nc] == enemy:
+                    eg, elibs = _go_group(nb, nr, nc)
+                    if len(elibs) == 1:
+                        prio += 8.0 + len(eg) * 2.0
+            candidates.append((prio, r, c, nb, key))
+
+    candidates.sort(key=lambda item: item[0], reverse=True)
+    return candidates[:max_candidates]
+
+
+def _go_negamax(board, color, history_keys, depth, alpha, beta, deadline, state_box):
+    state_box[0] += 1
+    if (state_box[0] & 63) == 0 and time.perf_counter() >= deadline:
+        state_box[1] = True
+        return 0.0
+    if depth <= 0:
+        return _go_eval_board(board, color)
+
+    enemy = "W" if color == "B" else "B"
+    width = 12 if depth >= 2 else 10
+    candidates = _go_candidate_moves(board, color, history_keys, width)
+    if not candidates:
+        return _go_eval_board(board, color)
+
+    best = -1e9
+    for _, r, c, nb, key in candidates:
+        history_keys.add(key)
+        val = -_go_negamax(nb, enemy, history_keys, depth - 1, -beta, -alpha, deadline, state_box)
+        history_keys.remove(key)
+        if state_box[1]:
+            return 0.0
+        if val > best:
+            best = val
+        if val > alpha:
+            alpha = val
+        if alpha >= beta:
+            break
+    return best
+
+
+def _go_ai(state, difficulty):
+    if state["terminal"]:
+        raise ValueError("game is already terminal")
+    side = state["turn"]
+    color = "B" if side == "black" else "W"
+    enemy = "W" if color == "B" else "B"
+    board = state["board"]
+    history_keys = set(state.get("position_history") or [])
+    rng = random.Random()
+
+    if difficulty == "easy":
+        # Fast legal play avoiding own-eye fills, occasional captures
+        cands = _go_candidate_moves(board, color, history_keys, 81)
+        if not cands:
+            return {"pass": True}
+        captures = [item for item in cands if item[0] >= 18.0]
+        if captures and rng.random() < 0.45:
+            pick = rng.choice(captures)
+        else:
+            pick = rng.choice(cands[: min(len(cands), 24)])
+        return {"at": [pick[1], pick[2]]}
+
+    max_depth = 2 if difficulty == "medium" else 4
+    budget = 0.18 if difficulty == "medium" else 0.65
+    max_root = 16 if difficulty == "medium" else 18
+    tolerance = 2.2 if difficulty == "medium" else 0.0
+
+    candidates = _go_candidate_moves(board, color, history_keys, max_root)
+    if not candidates:
+        return {"pass": True}
+
+    # If opponent just passed and we are already clearly winning on area score, consider passing
+    pass_score = _go_eval_board(board, color)
+    opponent_passed = state.get("passes", 0) >= 1
+
+    deadline = time.perf_counter() + budget
+    state_box = [0, False]
+    best_scored = None
+    ordered = candidates
+
+    for depth in range(1, max_depth + 1):
+        current_scored = []
+        best_val = -1e9
+        for item in ordered:
+            _, r, c, nb, key = item
+            history_keys.add(key)
+            cutoff = (best_val - tolerance - 0.01) if best_val > -1e8 else -1e9
+            val = -_go_negamax(nb, enemy, history_keys, depth - 1, -1e9, -cutoff, deadline, state_box)
+            history_keys.remove(key)
+            if state_box[1]:
+                break
+            if val <= cutoff:
+                current_scored.append((item, cutoff - 0.1))
+            else:
+                current_scored.append((item, val))
+                if val > best_val:
+                    best_val = val
+        if state_box[1]:
+            break
+        if current_scored:
+            current_scored.sort(key=lambda pair: pair[1], reverse=True)
+            best_scored = current_scored
+            ordered = [pair[0] for pair in current_scored]
+
+    if not best_scored:
+        top = candidates[0]
+        return {"at": [top[1], top[2]]}
+
+    best_move_score = best_scored[0][1]
+    # Pass if opponent passed and we're already ahead and no move improves our position
+    if opponent_passed and pass_score > 1.5 and best_move_score <= pass_score + 0.25:
+        return {"pass": True}
+
+    scored_payloads = [({"at": [item[1], item[2]]}, score) for item, score in best_scored]
+    if tolerance == 0.0:
+        best_moves = [m for m, s in scored_payloads if s == best_move_score]
+        return rng.choice(best_moves)
+    return _choose_near_best(scored_payloads, tolerance, rng)
 
 
 # --------------------------- Public API ---------------------------

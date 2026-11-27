@@ -2,8 +2,8 @@ import type { Messages } from "./types";
 
 const en: Messages = {
   meta: {
-    title: "Brave Active — Move together",
-    description: "Club announcements, badminton scheduling and the Brave Active community.",
+    title: "braveActive — Move together",
+    description: "Club announcements, badminton scheduling and the braveActive community.",
   },
   language: { label: "Language" },
   theme: { switchToDark: "Switch to dark mode", switchToLight: "Switch to light mode" },
@@ -19,6 +19,8 @@ const en: Messages = {
     kicker: "MOVE EVERY DAY",
     title: "A little movement, more energy",
     intro: "Short, approachable exercises for your workday. Choose what feels right for your body and space.",
+    quickBreakHeading: "1-minute desk breaks",
+    quickBreakCta: "Start now",
     safety: "Move slowly and within a comfortable range. Stop if you feel pain, dizziness or discomfort. If you have an injury or health condition, consult a healthcare professional before exercising.",
     filters: "Find an exercise",
     posture: "Position",
@@ -51,6 +53,10 @@ const en: Messages = {
   },
   footer: { tagline: "Built by people who love moving together." },
   common: {
+    confirmTitle: "Confirm action",
+    noticeTitle: "Notice",
+    confirm: "Confirm",
+    ok: "Got it",
     loading: "Loading...",
     cancel: "Cancel",
     close: "Close",
@@ -72,7 +78,7 @@ const en: Messages = {
   feedback: {
     button: "Feedback",
     title: "Send feedback",
-    intro: "Share your thoughts to help us improve Brave Active.",
+    intro: "Share your thoughts to help us improve braveActive.",
     titleField: "Title",
     contentField: "Content",
     submit: "Send feedback",
@@ -139,7 +145,7 @@ const en: Messages = {
     logoutConfirm: "Are you sure you want to log out?",
     login: {
       title: "Log in",
-      subtitle: "Welcome back to Brave Active.",
+      subtitle: "Welcome back to braveActive.",
       email: "Email",
       checkEmail: "Continue",
       checkingEmail: "Checking email...",
@@ -225,21 +231,36 @@ const en: Messages = {
     sideRail: {
       label: "Community tools",
       calendarAria: "Open activity calendar",
+      calendarKicker: "ACTIVITY CALENDAR",
       prevMonth: "Previous month",
       nextMonth: "Next month",
       openCalendar: "Open activity calendar",
       quickLinks: "Activity, training and entertainment shortcuts",
+      trainingDesc: "1–3 minute desk-friendly stretches to recharge at work",
+      trainingCta: "Start moving",
+      gamesDesc: "Word Search, Chess, Xiangqi, Go and weekly leaderboards",
+      gamesCta: "Play now",
+    },
+    editorial: {
+      kicker: "CLUB DISPATCH",
+      title: "braveActive Newsroom",
+      latest: "Latest",
+      aiNews: "AI News",
+      feedHeading: "Community feed",
     },
     games: {
       tab: "Entertainment",
       open: "Open entertainment game",
       kicker: "PLAY, LEARN, AND HAVE FUN",
-      title: "Play with Brave Active",
+      title: "Play with braveActive",
       intro: "Take a few minutes to play and discover useful facts about movement and wellbeing.",
       chooseGame: "Choose a game",
       chooseGameIntro: "What would you like to play today?",
       backToGames: "Choose another game",
       backToCommunity: "Back to community",
+      switchConfirmTitle: "Leave current game?",
+      switchConfirmMessage: "You have a game in progress. Switching away will discard your current progress.",
+      switchConfirmAction: "Leave game",
       difficultyLabel: "Difficulty",
       difficulties: { easy: "Casual stroll", medium: "Getting serious", hard: "Challenge" },
       guide: {
@@ -362,6 +383,7 @@ const en: Messages = {
         startError: "Could not start the game. Please try again.",
         resumeError: "Could not restore your active game. Please reload the page.",
         botThinking: "The computer is thinking...",
+        checkAlert: "Check!",
         botTurnError: "The computer could not move yet. Your move has been saved.",
         retryBot: "Let the computer move",
         moveInterrupted: "Connection lost while sending your move. The game state has been synced; retry if the move was not recorded.",
@@ -650,7 +672,19 @@ const en: Messages = {
     activities: {
       eyebrow: "COMMUNITY UPDATES",
       title: "Activity feed",
-      subtitle: "The latest stories, announcements and activities from Brave Active.",
+      subtitle: "The latest stories, announcements and activities from braveActive.",
+    },
+    agenda: {
+      allCategories: "All",
+      upcomingHeading: "Upcoming activities",
+      dayHeading: "Activities on {date}",
+      clearDateFilter: "Show all upcoming",
+      today: "Today",
+      join: "Join",
+      emptyUpcoming: "No upcoming activities yet. Create one to get started!",
+      emptyFilter: "No activities match this filter.",
+      pastToggleShow: "Show past activities ({count})",
+      pastToggleHide: "Hide past activities",
     },
     calendar: {
       kicker: "CLUB CALENDAR",
@@ -695,7 +729,7 @@ const en: Messages = {
       confirmDelete: 'Delete the announcement "{title}"?',
       back: "← Back to activities",
       welcome: {
-        title: "Welcome to Brave Active",
+        title: "Welcome to braveActive",
         description:
           "A place to connect members who love to move, share and create meaningful activities together.",
       },
@@ -861,7 +895,7 @@ const en: Messages = {
       },
       about: {
         kicker: "ABOUT THE ACTIVITY",
-        defaultDescription: "A Brave Active community activity.",
+        defaultDescription: "A braveActive community activity.",
         registrations: "sign-ups from today",
         messages: "messages",
       },

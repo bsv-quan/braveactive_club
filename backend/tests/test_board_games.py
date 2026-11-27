@@ -256,3 +256,120 @@ def test_go_ai_is_legal(difficulty):
     if state["turn"]=="white":
         state=apply_ai_move("go",state,difficulty)
     assert state["board"] is not None
+
+
+def test_chess_hard_finds_mate_in_one_and_is_fast():
+    import time
+
+    state = create_game("chess")
+    state["board"] = [["."] * 8 for _ in range(8)]
+    # White King trapped on h1 (7,7) behind pawns on g2 (6,6) and h2 (6,7); Black Rook on a2 (6,0) mates on a1 (7,0)
+    state["board"][7][7] = "K"
+    state["board"][6][6] = "P"
+    state["board"][6][7] = "P"
+    state["board"][0][4] = "k"
+    state["board"][6][0] = "r"
+    state["turn"] = "black"
+    state["to_move"] = "black"
+    state["castling"] = {"white_k": False, "white_q": False, "black_k": False, "black_q": False}
+
+    t0 = time.perf_counter()
+    moved = apply_ai_move("chess", state, "hard")
+    elapsed = time.perf_counter() - t0
+
+    assert moved["terminal"] is True
+    assert moved["winner"] == "black"
+    assert moved["last_move"] == {"from": [6, 0], "to": [7, 0]}
+    assert elapsed < 1.0
+
+
+def test_chess_hard_avoids_queen_blunder_and_takes_hanging_piece():
+    state = create_game("chess")
+    state["board"] = [["."] * 8 for _ in range(8)]
+    # Black Queen at d5 (3,3) can take a pawn on d4 (4,3) defended by White Rook on d1 (7,3),
+    # OR take a free undefended White Rook on a5 (3,0). White King is safe on f1 (7,5) with pawns.
+    state["board"][7][5] = "K"
+    state["board"][6][5] = "P"
+    state["board"][6][6] = "P"
+    state["board"][0][6] = "k"
+    state["board"][3][3] = "q"
+    state["board"][4][3] = "P"
+    state["board"][7][3] = "R"
+    state["board"][3][0] = "R"
+    state["turn"] = "black"
+    state["to_move"] = "black"
+    state["castling"] = {"white_k": False, "white_q": False, "black_k": False, "black_q": False}
+
+    moved = apply_ai_move("chess", state, "hard")
+
+    assert moved["last_move"] == {"from": [3, 3], "to": [3, 0]}
+
+
+def test_chess_hard_middlegame_respects_time_budget():
+    import time
+
+    state = create_game("chess")
+    # Out-of-book complex middlegame position (history > 6 so opening book is bypassed)
+    state["board"] = [
+        ["r", ".", "b", "q", ".", "r", "k", "."],
+        ["p", "p", "p", "p", ".", "p", "p", "p"],
+        [".", ".", "n", ".", ".", "n", ".", "."],
+        [".", ".", "b", ".", "p", ".", ".", "."],
+        [".", ".", "B", ".", "P", ".", ".", "."],
+        [".", ".", "N", "P", ".", "N", ".", "."],
+        ["P", "P", "P", ".", ".", "P", "P", "P"],
+        ["R", ".", "B", "Q", ".", "R", "K", "."],
+    ]
+    state["turn"] = "black"
+    state["to_move"] = "black"
+    state["castling"] = {"white_k": False, "white_q": False, "black_k": False, "black_q": False}
+    state["history"] = [{"from": [6, 4], "to": [4, 4]}] * 8
+
+    t0 = time.perf_counter()
+    moved = apply_ai_move("chess", state, "hard")
+    elapsed = time.perf_counter() - t0
+
+    assert moved["turn"] == "white"
+    assert elapsed < 1.2
+
+
+def test_xiangqi_hard_captures_hanging_chariot_and_is_fast():
+    import time
+
+    state = create_game("xiangqi")
+    state["board"] = [["."] * 9 for _ in range(10)]
+    state["board"][0][4] = "k"
+    state["board"][9][3] = "K"
+    state["board"][2][4] = "r"  # Black Chariot
+    state["board"][5][4] = "R"  # Undefended Red Chariot on same file
+    state["turn"] = "black"
+    state["to_move"] = "black"
+    state["history"] = [{"from": [6, 0], "to": [5, 0]}] * 4
+
+    t0 = time.perf_counter()
+    moved = apply_ai_move("xiangqi", state, "hard")
+    elapsed = time.perf_counter() - t0
+
+    assert moved["last_move"] == {"from": [2, 4], "to": [5, 4]}
+    assert elapsed < 1.2
+
+
+def test_go_hard_captures_stone_in_atari_and_is_fast():
+    import time
+
+    state = create_game("go")
+    # Black stone at (4,4) surrounded on 3 sides by White -> last liberty at (4,5)
+    state["board"][4][4] = "B"
+    state["board"][3][4] = "W"
+    state["board"][5][4] = "W"
+    state["board"][4][3] = "W"
+    state["turn"] = "white"
+    state["to_move"] = "white"
+
+    t0 = time.perf_counter()
+    moved = apply_ai_move("go", state, "hard")
+    elapsed = time.perf_counter() - t0
+
+    assert moved["last_move"] == {"at": [4, 5]}
+    assert moved["board"][4][4] == "."
+    assert elapsed < 1.2

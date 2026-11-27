@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { useI18n } from "@/i18n/i18n-provider";
 import { communityApi, type CommunityPost } from "@/lib/api/community";
 import { errorMessage } from "@/lib/api/client";
@@ -13,6 +14,7 @@ import { PostCard } from "./post-card";
 
 export function AdminPostsPage() {
   const { t } = useI18n();
+  const { confirm } = useDialog();
   const { user, loading: authLoading } = useAuth();
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
@@ -139,13 +141,20 @@ export function AdminPostsPage() {
             aria-label={t("common.delete")}
             disabled={actionPostId === post.id}
             onClick={() => {
-              if (!window.confirm(t("community.post.deleteConfirm"))) return;
-              setActionPostId(post.id);
-              setError("");
-              void communityApi.deleteAdminPost(post.id)
-                .then(() => removePost(post.id))
-                .catch((reason) => setError(errorMessage(reason, t("admin.error"))))
-                .finally(() => setActionPostId(null));
+              void confirm({
+                title: t("common.delete"),
+                message: t("community.post.deleteConfirm"),
+                confirmLabel: t("common.delete"),
+                tone: "danger",
+              }).then((ok) => {
+                if (!ok) return;
+                setActionPostId(post.id);
+                setError("");
+                void communityApi.deleteAdminPost(post.id)
+                  .then(() => removePost(post.id))
+                  .catch((reason) => setError(errorMessage(reason, t("admin.error"))))
+                  .finally(() => setActionPostId(null));
+              });
             }}
           >
             <Trash2 size={17} aria-hidden />

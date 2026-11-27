@@ -1,13 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Copy, Dices, UserPlus } from "lucide-react";
+import { BellRing, CalendarDays, Check, Copy, Dices, FileText, MessageSquare, UserCheck, UserPlus, Users } from "lucide-react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AdminActivitiesPanel } from "@/components/admin/admin-activities-panel";
 import { AdminFeedbackPanel } from "@/components/admin/admin-feedback-panel";
 import { AdminSlackPanel } from "@/components/admin/admin-slack-panel";
 import { AdminPostsPage } from "@/components/community/admin-posts-page";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { PasswordField } from "@/components/ui/form-controls";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
@@ -39,6 +40,7 @@ function generateTemporaryPassword() {
 export function AdminPage() {
   const { user, loading } = useAuth();
   const { t } = useI18n();
+  const { confirm } = useDialog();
   const [tab, setTab] = useState<Tab>("users");
   const [users, setUsers] = useState<User[]>([]);
   const [requests, setRequests] = useState<Request[]>([]);
@@ -153,14 +155,26 @@ export function AdminPage() {
   if (loading) return <p>{t("common.loading")}</p>;
   if (!user || user.role !== "admin") return <p role="alert">{t("community.admin.accessDenied")}</p>;
 
+  const tabItems = [
+    { id: "users", Icon: Users },
+    { id: "requests", Icon: UserCheck },
+    { id: "posts", Icon: FileText },
+    { id: "activities", Icon: CalendarDays },
+    { id: "slack", Icon: BellRing },
+    { id: "feedback", Icon: MessageSquare },
+  ] as const;
+
   return (
-    <section className="admin-console">
-      <h1>{t("admin.title")}</h1>
+    <section className="admin-console admin-console-v2">
+      <header className="admin-masthead">
+        <h1>{t("admin.title")}</h1>
+      </header>
       <nav className="admin-tabs" aria-label={t("admin.title")}>
-        {(["users", "requests", "posts", "activities", "slack", "feedback"] as const).map((item) => (
-          <button key={item} type="button" className={tab === item ? "button-primary" : "button-secondary"}
+        {tabItems.map(({ id: item, Icon }) => (
+          <button key={item} type="button" className={`admin-tab-btn${tab === item ? " active" : ""}`}
             aria-pressed={tab === item} onClick={() => { setTab(item); setError(""); setAddingUser(false); setEditing(null); setApproving(null); setPassword(""); setCredentialNotice(null); }}>
-            {t(`admin.${item}`)}
+            <Icon size={15} aria-hidden="true" />
+            <span>{t(`admin.${item}`)}</span>
           </button>
         ))}
       </nav>
@@ -224,11 +238,29 @@ export function AdminPage() {
           </form> : null}
           {users.map((item) => (
             <article key={item.id} className="admin-row">
-              <span><strong>{item.displayName}</strong> · {item.email} · {item.role === "admin" ? t("admin.adminRole") : t("admin.member")}</span>
+              <div className="admin-user-summary">
+                <span className="admin-user-initial" aria-hidden="true">{item.displayName.charAt(0).toUpperCase()}</span>
+                <div className="admin-user-meta">
+                  <div className="admin-user-name-row">
+                    <strong>{item.displayName}</strong>
+                    <span className={`admin-role-badge${item.role === "admin" ? " is-admin" : ""}`}>
+                      {item.role === "admin" ? t("admin.adminRole") : t("admin.member")}
+                    </span>
+                  </div>
+                  <span className="admin-user-email">{item.email}</span>
+                </div>
+              </div>
               <div className="admin-row-actions">
                 <button className="button-secondary admin-row-action" type="button" onClick={() => { setAddingUser(false); setEmail(""); setPassword(""); setEditing(item.id); setName(item.displayName); setRole(item.role); setCredentialNotice(null); }}>{t("admin.edit")}</button>
                 {item.id !== user.id && <button className="button-secondary admin-row-action" type="button" disabled={busy} onClick={() => {
-                  if (window.confirm(t("admin.deleteUserConfirm", { email: item.email }))) void perform(() => apiJson(`/api/admin/users/${item.id}`, { method: "DELETE" }));
+                  void confirm({
+                    title: t("common.delete"),
+                    message: t("admin.deleteUserConfirm", { email: item.email }),
+                    confirmLabel: t("common.delete"),
+                    tone: "danger",
+                  }).then((ok) => {
+                    if (ok) void perform(() => apiJson(`/api/admin/users/${item.id}`, { method: "DELETE" }));
+                  });
                 }}>{t("common.delete")}</button>}
               </div>
             </article>
@@ -262,7 +294,14 @@ export function AdminPage() {
                 </form>
               ) : <div><button className="button-primary" onClick={() => { setApproving(item.id); setPassword(""); }}>{t("admin.approve")}</button>{" "}
                 <button className="button-secondary" disabled={busy} onClick={() => {
-                  if (window.confirm(t("admin.rejectConfirm"))) void perform(() => apiJson(`/api/admin/requests/${item.id}`, { method: "DELETE" }));
+                  void confirm({
+                    title: t("admin.reject"),
+                    message: t("admin.rejectConfirm"),
+                    confirmLabel: t("admin.reject"),
+                    tone: "danger",
+                  }).then((ok) => {
+                    if (ok) void perform(() => apiJson(`/api/admin/requests/${item.id}`, { method: "DELETE" }));
+                  });
                 }}>{t("admin.reject")}</button></div>}
             </article>
           ))}

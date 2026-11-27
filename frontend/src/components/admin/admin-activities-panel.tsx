@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { useI18n } from "@/i18n/i18n-provider";
 import { type ClubActivity } from "@/lib/activities";
 import { apiJson, errorMessage } from "@/lib/api/client";
@@ -13,6 +14,7 @@ const PAGE_SIZE = 50;
 export function AdminActivitiesPanel() {
   const { user } = useAuth();
   const { t, intlLocale } = useI18n();
+  const { confirm } = useDialog();
   const [activities, setActivities] = useState<ClubActivity[]>([]);
   const [pendingActivities, setPendingActivities] = useState<ClubActivity[]>([]);
   const [hasMore, setHasMore] = useState(false);
@@ -85,7 +87,16 @@ export function AdminActivitiesPanel() {
   }
 
   async function deleteActivity(activity: ClubActivity) {
-    if (!window.confirm(t("admin.deleteActivityConfirm", { title: activity.title }))) return;
+    if (
+      !(await confirm({
+        title: t("common.delete"),
+        message: t("admin.deleteActivityConfirm", { title: activity.title }),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
     setDeleting(activity.id);
     setError("");
     try {

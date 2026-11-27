@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AuthProvider } from "@/components/auth/auth-provider";
 import { GlobalErrorNotice } from "@/components/layout/global-error-notice";
+import { DialogProvider } from "@/components/ui/confirm-dialog";
 import { LOCALE_LABELS } from "@/i18n/config";
 import { I18nProvider } from "@/i18n/i18n-provider";
 import { loadMessages } from "@/i18n/loader";
@@ -25,8 +26,10 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <ThemeProvider initialTheme={theme}>
           <I18nProvider initialLocale={locale} initialMessages={messages}>
             <AuthProvider>
-              <GlobalErrorNotice />
-              {children}
+              <DialogProvider>
+                <GlobalErrorNotice />
+                {children}
+              </DialogProvider>
             </AuthProvider>
           </I18nProvider>
         </ThemeProvider>

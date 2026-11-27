@@ -2,8 +2,8 @@ import type { Messages } from "./types";
 
 const ja: Messages = {
   meta: {
-    title: "Brave Active — みんなで楽しく運動",
-    description: "クラブのお知らせ、バドミントンの予約、Brave Activeコミュニティ。",
+    title: "braveActive — みんなで楽しく運動",
+    description: "クラブのお知らせ、バドミントンの予約、braveActiveコミュニティ。",
   },
   language: { label: "言語" },
   theme: { switchToDark: "ダークモードに切り替え", switchToLight: "ライトモードに切り替え" },
@@ -19,6 +19,8 @@ const ja: Messages = {
     kicker: "毎日少しずつ動こう",
     title: "少しの運動で、もっと元気に",
     intro: "仕事の合間にできる短くて簡単な運動です。体調や場所に合ったものを選びましょう。",
+    quickBreakHeading: "1分リフレッシュ",
+    quickBreakCta: "今すぐ開始",
     safety: "無理のない範囲でゆっくり動きましょう。痛み、めまい、不快感があれば中止してください。けがや持病がある場合は、運動前に医療専門家に相談してください。",
     filters: "運動を探す",
     posture: "姿勢",
@@ -51,6 +53,10 @@ const ja: Messages = {
   },
   footer: { tagline: "一緒に体を動かすことが好きな人たちが作りました。" },
   common: {
+    confirmTitle: "操作の確認",
+    noticeTitle: "お知らせ",
+    confirm: "確認",
+    ok: "了解",
     loading: "読み込み中...",
     cancel: "キャンセル",
     close: "閉じる",
@@ -72,7 +78,7 @@ const ja: Messages = {
   feedback: {
     button: "フィードバック",
     title: "フィードバックを送信",
-    intro: "Brave Activeの改善にご協力ください。",
+    intro: "braveActiveの改善にご協力ください。",
     titleField: "タイトル",
     contentField: "内容",
     submit: "送信",
@@ -139,7 +145,7 @@ const ja: Messages = {
     logoutConfirm: "ログアウトしてもよろしいですか？",
     login: {
       title: "ログイン",
-      subtitle: "Brave Activeへおかえりなさい。",
+      subtitle: "braveActiveへおかえりなさい。",
       email: "メールアドレス",
       checkEmail: "続行",
       checkingEmail: "メールアドレスを確認中...",
@@ -225,21 +231,36 @@ const ja: Messages = {
     sideRail: {
       label: "コミュニティツール",
       calendarAria: "活動カレンダーを開く",
+      calendarKicker: "活動カレンダー",
       prevMonth: "前の月",
       nextMonth: "次の月",
       openCalendar: "活動カレンダーを開く",
       quickLinks: "活動・トレーニング・エンタメのショートカット",
+      trainingDesc: "デスクで1〜3分、肩や首をほぐす簡単ストレッチ",
+      trainingCta: "今すぐ運動",
+      gamesDesc: "ワードサーチ・チェス・シャンチー・囲碁と週間ランキング",
+      gamesCta: "今すぐ遊ぶ",
+    },
+    editorial: {
+      kicker: "クラブニュース",
+      title: "braveActive ニュース",
+      latest: "最新",
+      aiNews: "AIニュース",
+      feedHeading: "コミュニティフィード",
     },
     games: {
       tab: "エンタメ",
       open: "エンタメゲームを開く",
       kicker: "遊んで学ぼう",
-      title: "Brave Activeで遊ぼう",
+      title: "braveActiveで遊ぼう",
       intro: "運動や健康について学びながら、数分間ゲームを楽しみましょう。",
       chooseGame: "ゲームを選ぶ",
       chooseGameIntro: "今日はどのゲームで遊びますか？",
       backToGames: "別のゲームを選ぶ",
       backToCommunity: "コミュニティに戻る",
+      switchConfirmTitle: "プレイ中のゲームを終了しますか？",
+      switchConfirmMessage: "現在プレイ中のゲームがあります。移動すると進行状況が破棄されます。",
+      switchConfirmAction: "終了して移動",
       difficultyLabel: "難易度",
       difficulties: { easy: "気軽にお散歩", medium: "ちょっと本気", hard: "チャレンジ" },
       guide: {
@@ -362,6 +383,7 @@ const ja: Messages = {
         startError: "対局を開始できませんでした。もう一度お試しください。",
         resumeError: "進行中の対局を復元できませんでした。ページを再読み込みしてください。",
         botThinking: "コンピューターが次の手を考えています...",
+        checkAlert: "王手！",
         botTurnError: "コンピューターがまだ指せません。あなたの手は保存されています。",
         retryBot: "コンピューターに指させる",
         moveInterrupted: "着手の送信中に接続が切れました。対局状態を同期しました。着手が記録されていない場合は再度お試しください。",
@@ -650,7 +672,19 @@ const ja: Messages = {
     activities: {
       eyebrow: "コミュニティの最新情報",
       title: "活動フィード",
-      subtitle: "Brave Active の最新のストーリー、お知らせ、活動をお届けします。",
+      subtitle: "braveActive の最新のストーリー、お知らせ、活動をお届けします。",
+    },
+    agenda: {
+      allCategories: "すべて",
+      upcomingHeading: "今後の活動",
+      dayHeading: "{date}の活動",
+      clearDateFilter: "今後の予定をすべて表示",
+      today: "今日",
+      join: "参加",
+      emptyUpcoming: "今後の活動はまだありません。新しく作成しましょう！",
+      emptyFilter: "この条件に一致する活動はありません。",
+      pastToggleShow: "過去の活動を表示 ({count})",
+      pastToggleHide: "過去の活動を非表示",
     },
     calendar: {
       kicker: "クラブカレンダー",
@@ -695,7 +729,7 @@ const ja: Messages = {
       confirmDelete: "お知らせ「{title}」を削除しますか？",
       back: "← 活動に戻る",
       welcome: {
-        title: "Brave Active へようこそ",
+        title: "braveActive へようこそ",
         description:
           "体を動かすことが好きなメンバーがつながり、分かち合い、意味のある活動を一緒につくる場所です。",
       },
@@ -859,7 +893,7 @@ const ja: Messages = {
       },
       about: {
         kicker: "活動について",
-        defaultDescription: "Brave Active のコミュニティ活動です。",
+        defaultDescription: "braveActive のコミュニティ活動です。",
         registrations: "件の登録（今日以降）",
         messages: "件のメッセージ",
       },

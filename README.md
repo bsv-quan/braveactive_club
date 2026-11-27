@@ -1,4 +1,4 @@
-# Brave Active Club
+# braveActive Club
 
 Next.js frontend, Python/FastAPI backend, and PostgreSQL. Redis is not required.
 

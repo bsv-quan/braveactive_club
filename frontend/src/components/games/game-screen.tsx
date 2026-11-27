@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Lottie } from "lottie-react";
 import { ArrowLeft, CircleAlert, CircleHelp, Crown, Flag, Gamepad2, Grid3X3, LoaderCircle, RotateCcw, Search, Shield, Sparkles, WandSparkles, X } from "lucide-react";
 import { ApiError } from "@/lib/api/client";
@@ -22,6 +23,7 @@ import { GameGuideDialog } from "@/components/games/game-guide-dialog";
 import gameOverAnimation from "@/components/games/animations/game-over.json";
 import trophyAnimation from "@/components/games/animations/trophy.json";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { useI18n } from "@/i18n/i18n-provider";
 import type { MessageKey } from "@/i18n/messages/types";
 
@@ -140,8 +142,11 @@ function recordGuestAttendance() {
 export function GameScreen({ game }: { game: GameSlug }) {
   const { t, locale } = useI18n();
   const { user } = useAuth();
+  const router = useRouter();
+  const { confirm } = useDialog();
   const gameType = gameTypeBySlug[game];
   const isWordSearch = game === "word-search";
+  const [gameInProgress, setGameInProgress] = useState(false);
   const [difficulty, setDifficulty] = useState<GameDifficulty>("medium");
   const [leaderboardPeriod, setLeaderboardPeriod] = useState<GameLeaderboardPeriod>("week");
   const [leaderboard, setLeaderboard] = useState<GameLeaderboard | null>(null);
@@ -215,25 +220,74 @@ export function GameScreen({ game }: { game: GameSlug }) {
 
   const name = t(`community.games.${game === "word-search" ? "wordSearch" : game}.title`);
   const DescriptionIcon = game === "word-search" ? Search : game === "chess" ? Crown : game === "xiangqi" ? Shield : Grid3X3;
+  const switcherItems = [
+    { slug: "word-search" as const, key: "wordSearch" as const, Icon: Search },
+    { slug: "chess" as const, key: "chess" as const, Icon: Crown },
+    { slug: "xiangqi" as const, key: "xiangqi" as const, Icon: Shield },
+    { slug: "go" as const, key: "go" as const, Icon: Grid3X3 },
+  ];
+
+  useEffect(() => {
+    setGameInProgress(false);
+  }, [game]);
+
+  function handleLeaveGame(event: React.MouseEvent<HTMLAnchorElement>, href: string) {
+    if (!gameInProgress) return;
+    event.preventDefault();
+    void confirm({
+      title: t("community.games.switchConfirmTitle"),
+      message: t("community.games.switchConfirmMessage"),
+      confirmLabel: t("community.games.switchConfirmAction"),
+      tone: "danger",
+    }).then(async (ok) => {
+      if (!ok) return;
+      if (user && !isWordSearch) {
+        try {
+          await communityApi.abandonActiveBoardGame(gameType as Exclude<GameType, "word_search">);
+        } catch {
+          // Proceed with navigation even if clearing the server-side saved game fails.
+        }
+      }
+      setGameInProgress(false);
+      router.push(href);
+    });
+  }
 
   return (
-    <section className="game-screen">
+    <section className="game-screen game-screen-lounge">
+      <div className="game-screen-top-row">
+        <Link href="/community" className="game-screen-back" onClick={(event) => handleLeaveGame(event, "/community")}><ArrowLeft size={16} /> {t("community.games.backToCommunity")}</Link>
+        <nav className="game-switcher-bar" aria-label={t("community.games.chooseGame")}>
+          {switcherItems.map(({ slug, key, Icon }) => (
+            <Link
+              key={slug}
+              href={`/games/${slug}`}
+              className={`game-switcher-pill${slug === game ? " active" : ""}`}
+              aria-current={slug === game ? "page" : undefined}
+              onClick={slug === game ? undefined : (event) => handleLeaveGame(event, `/games/${slug}`)}
+            >
+              <Icon size={15} aria-hidden="true" />
+              <span>{t(`community.games.${key}.title`)}</span>
+            </Link>
+          ))}
+        </nav>
+      </div>
       <header className="game-screen-header">
-        <Link href="/community" className="game-screen-back"><ArrowLeft size={17} /> {t("community.games.backToCommunity")}</Link>
         <div className="game-screen-heading">
-          <span className="community-games-option-icon"><DescriptionIcon size={22} aria-hidden="true" /></span>
+          <span className={`community-games-option-icon is-${game}`}><DescriptionIcon size={22} aria-hidden="true" /></span>
           <div className="game-screen-heading-copy">
             <p>{t("community.games.kicker")}</p>
             <h1>{name}</h1>
           </div>
           <button
             type="button"
-            className="game-guide-open"
+            className="game-guide-open game-guide-pill"
             aria-label={t("community.games.guide.open")}
             title={t("community.games.guide.open")}
             onClick={() => setGuideOpen(true)}
           >
-            <CircleHelp size={19} aria-hidden="true" />
+            <CircleHelp size={16} aria-hidden="true" />
+            <span>{t("community.games.guide.open")}</span>
           </button>
         </div>
         <p className="game-screen-intro">{t(`community.games.${game === "word-search" ? "wordSearch" : game}.description`)}</p>
@@ -258,6 +312,7 @@ export function GameScreen({ game }: { game: GameSlug }) {
               score={roundScore}
               onScoreChange={setRoundScore}
               onCompleted={onGameCompleted}
+              onActiveChange={setGameInProgress}
               freeHintsRemaining={status?.freeHintsRemaining ?? 2}
               pointsBalance={status?.wordSearchPoints ?? 0}
               isMember={Boolean(user)}
@@ -281,6 +336,7 @@ export function GameScreen({ game }: { game: GameSlug }) {
               error={error}
               setError={setError}
               onCompleted={onGameCompleted}
+              onActiveChange={setGameInProgress}
               t={t}
             />
           )}
@@ -301,6 +357,7 @@ export function GameScreen({ game }: { game: GameSlug }) {
             loading={leaderboardLoading}
             error={leaderboardError}
             isMember={Boolean(user)}
+            currentUserId={user?.id ?? null}
             onChangePeriod={setLeaderboardPeriod}
             t={t}
           />
@@ -359,6 +416,7 @@ function LeaderboardPanel({
   loading,
   error,
   isMember,
+  currentUserId,
   onChangePeriod,
   t,
 }: {
@@ -368,6 +426,7 @@ function LeaderboardPanel({
   loading: boolean;
   error: boolean;
   isMember: boolean;
+  currentUserId: string | null;
   onChangePeriod: (period: GameLeaderboardPeriod) => void;
   t: ReturnType<typeof useI18n>["t"];
 }) {
@@ -394,8 +453,8 @@ function LeaderboardPanel({
       ) : leaderboard?.entries.length ? (
         <ol className="community-games-leaderboard-list">
           {leaderboard.entries.map((entry) => (
-            <li key={entry.userId}>
-              <span className="community-games-leaderboard-rank">{entry.rank}</span>
+            <li key={entry.userId} className={currentUserId === entry.userId ? "is-self" : undefined}>
+              <span className={`community-games-leaderboard-rank${entry.rank <= 3 ? ` rank-${entry.rank}` : ""}`}>{entry.rank}</span>
               <strong>{entry.displayName}</strong>
               <span>{t("community.games.score.points", { score: entry.score })}</span>
             </li>
@@ -462,6 +521,7 @@ function WordSearchScreen({
   score,
   onScoreChange,
   onCompleted,
+  onActiveChange,
   freeHintsRemaining,
   pointsBalance,
   isMember,
@@ -477,6 +537,7 @@ function WordSearchScreen({
   score: number;
   onScoreChange: (value: number | ((current: number) => number)) => void;
   onCompleted: () => void;
+  onActiveChange: (active: boolean) => void;
   freeHintsRemaining: number;
   pointsBalance: number;
   isMember: boolean;
@@ -496,6 +557,10 @@ function WordSearchScreen({
   const [guestHintsRemaining, setGuestHintsRemaining] = useState(2);
   const [roundDifficulty, setRoundDifficulty] = useState<GameDifficulty>("medium");
   const isComplete = Boolean(puzzle && foundWords.length === puzzle.words.length);
+
+  useEffect(() => {
+    onActiveChange(Boolean(puzzle && !isComplete));
+  }, [puzzle, isComplete, onActiveChange]);
   const selectedLetters = useMemo(() => puzzle
     ? selectedCells.map((index) => puzzle.grid[Math.floor(index / puzzle.size)][index % puzzle.size]).join("")
     : "", [puzzle, selectedCells]);
@@ -730,6 +795,7 @@ function BoardGameScreen({
   error,
   setError,
   onCompleted,
+  onActiveChange,
   t,
 }: {
   gameType: Exclude<GameType, "word_search">;
@@ -743,19 +809,29 @@ function BoardGameScreen({
   error: string;
   setError: (value: string) => void;
   onCompleted: () => void;
+  onActiveChange: (active: boolean) => void;
   t: ReturnType<typeof useI18n>["t"];
 }) {
+  const { confirm } = useDialog();
   const [game, setGame] = useState<BoardGameResponse | null>(null);
   const difficultyRef = useRef(difficulty);
   difficultyRef.current = difficulty;
   const gameRef = useRef<BoardGameResponse | null>(null);
   gameRef.current = game;
   const botTurnInFlight = useRef(false);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
   const [selectedCell, setSelectedCell] = useState<[number, number] | null>(null);
   const [guestScore, setGuestScore] = useState(0);
   const [botThinking, setBotThinking] = useState(false);
   const [botTurnError, setBotTurnError] = useState(false);
   const [showBoardResultAnimation, setShowBoardResultAnimation] = useState(false);
+  const [showCheckBanner, setShowCheckBanner] = useState(false);
   const onCompletedRef = useRef(onCompleted);
   onCompletedRef.current = onCompleted;
   const titleKey = gameType === "chess" ? "chess" : gameType;
@@ -763,6 +839,7 @@ function BoardGameScreen({
   const lastMoveCoordinates = gameType === "chess" || gameType === "xiangqi"
     ? getBoardMoveCoordinates(game?.state.last_move)
     : null;
+  const goLastMove = gameType === "go" ? getGoMoveCoordinate(game?.state.last_move) : null;
   const resumeError = t("community.games.board.resumeError");
   const grid = game?.state.board ?? [];
   const columns = grid[0]?.length ?? 0;
@@ -772,7 +849,23 @@ function BoardGameScreen({
     || (gameType === "chess" && game.state.result === "white_win")
   );
   const finished = Boolean(game && game.state.result !== "ongoing");
+
+  useEffect(() => {
+    onActiveChange(Boolean(game && !finished));
+  }, [game, finished, onActiveChange]);
+  const inCheck = Boolean(game && !finished && gameType !== "go" && game.state.check);
+  const checkedKingChar = inCheck && game ? (game.state.turn === game.state.human ? "K" : "k") : null;
   const shouldShowBoardResultAnimation = finished;
+
+  useEffect(() => {
+    if (!inCheck || !game) {
+      setShowCheckBanner(false);
+      return;
+    }
+    setShowCheckBanner(true);
+    const timeout = window.setTimeout(() => setShowCheckBanner(false), 1850);
+    return () => window.clearTimeout(timeout);
+  }, [inCheck, game?.state.turn, game?.state.last_move]);
 
   useEffect(() => {
     if (!shouldShowBoardResultAnimation || !game) {
@@ -798,6 +891,8 @@ function BoardGameScreen({
     setBotTurnError(false);
     setIsLoading(true);
     setError("");
+    const startedAt = performance.now();
+    const minThinkMs = 1000;
     try {
       await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const result = await communityApi.submitBoardBotTurn(
@@ -806,6 +901,11 @@ function BoardGameScreen({
         currentGame.roundId,
         currentGame.state,
       );
+      const remaining = minThinkMs - (performance.now() - startedAt);
+      if (remaining > 0) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, remaining));
+      }
+      if (!mountedRef.current) return;
       setGame(result);
       onScoreChange(result.score);
       if (result.state.result !== "ongoing") {
@@ -875,7 +975,15 @@ function BoardGameScreen({
   }
 
   async function returnToGameSetup() {
-    if (!window.confirm(t("community.games.board.restartConfirm"))) return;
+    if (
+      !(await confirm({
+        title: t("common.confirmTitle"),
+        message: t("community.games.board.restartConfirm"),
+        confirmLabel: t("common.confirm"),
+      }))
+    ) {
+      return;
+    }
     setIsLoading(true);
     setError("");
     try {
@@ -906,7 +1014,16 @@ function BoardGameScreen({
   }
 
   async function surrenderGame() {
-    if (!window.confirm(t("community.games.board.surrenderConfirm"))) return;
+    if (
+      !(await confirm({
+        title: t("common.confirmTitle"),
+        message: t("community.games.board.surrenderConfirm"),
+        confirmLabel: t("common.confirm"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
     if (!game) return;
     setIsLoading(true);
     setError("");
@@ -1047,12 +1164,22 @@ function BoardGameScreen({
         </div>
       ) : (
         <>
-          <p className={`board-game-turn${finished ? " board-game-result-message" : ""}`} role="status" aria-live="polite">
+          <p className={`board-game-turn${finished ? " board-game-result-message" : ""}${inCheck ? " is-in-check" : ""}${botThinking ? " is-thinking" : ""}`} role="status" aria-live="polite">
             {finished
               ? t(won ? "community.games.board.youWon" : game.state.result === "draw" ? "community.games.board.draw" : "community.games.board.youLost")
               : botThinking
-                ? t("community.games.board.botThinking")
-                : t("community.games.board.turn", { turn: t(getTurnMessageKey(gameType, game.state.turn)) })}
+                ? (
+                  <>
+                    <LoaderCircle className="ui-spin" size={14} aria-hidden="true" />
+                    {t("community.games.board.botThinking")}
+                  </>
+                )
+                : (
+                  <>
+                    {t("community.games.board.turn", { turn: t(getTurnMessageKey(gameType, game.state.turn)) })}
+                    {inCheck ? <span className="board-check-pill">{t("community.games.board.checkAlert")}</span> : null}
+                  </>
+                )}
           </p>
           {botTurnError && (
             <button type="button" className="community-quiz-primary board-game-pass" disabled={isLoading} onClick={() => void runBotTurn(game)}>
@@ -1071,7 +1198,7 @@ function BoardGameScreen({
             )}
             <div className={`board-game-surface board-game-surface-${gameType}`}>
               <div
-                className={`board-game-board board-game-${gameType}`}
+                className={`board-game-board board-game-${gameType}${inCheck ? " board-in-check" : ""}`}
                 style={gameType === "go" || gameType === "xiangqi" ? undefined : { gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
                 role="grid"
                 aria-label={title}
@@ -1096,6 +1223,10 @@ function BoardGameScreen({
                     && lastMoveCoordinates.from[0] === rowIndex
                     && lastMoveCoordinates.from[1] === columnIndex,
                   );
+                  const isGoLastMove = Boolean(
+                    goLastMove && goLastMove[0] === rowIndex && goLastMove[1] === columnIndex && isOccupied,
+                  );
+                  const isKingInCheck = Boolean(checkedKingChar && piece === checkedKingChar);
                   const squareTone = (rowIndex + columnIndex) % 2 === 0 ? " square-light" : " square-dark";
                   const sideClass = isOccupied && gameType !== "go"
                     ? (piece === piece.toUpperCase() ? " piece-light-side" : " piece-dark-side")
@@ -1105,7 +1236,7 @@ function BoardGameScreen({
                       type="button"
                       role="gridcell"
                       key={`${rowIndex}-${columnIndex}`}
-                      className={`board-game-square${gameType === "chess" ? squareTone : ""}${isSelected ? " selected" : ""}${isOccupied ? " occupied" : ""}${sideClass}${isLastMovedPiece ? " piece-move-active piece-move-target" : ""}${isLastMoveOrigin ? " piece-move-origin" : ""}${gameType === "go" && isOccupied ? ` stone-${piece.toLowerCase()}` : ""}`}
+                      className={`board-game-square${gameType === "chess" ? squareTone : ""}${isSelected ? " selected" : ""}${isOccupied ? " occupied" : ""}${sideClass}${isLastMovedPiece ? " piece-move-active piece-move-target" : ""}${isLastMoveOrigin ? " piece-move-origin" : ""}${isKingInCheck ? " in-check-king" : ""}${isGoLastMove ? " go-last-move" : ""}${gameType === "go" && isOccupied ? ` stone-${piece.toLowerCase()}` : ""}`}
                       aria-label={t("community.games.board.cell", { row: rowIndex + 1, column: columnIndex + 1, piece: describePiece(gameType, piece, t) })}
                       onClick={() => chooseBoardCell(rowIndex, columnIndex)}
                       disabled={isLoading || finished || botTurnError || game.state.turn !== game.state.human}
@@ -1121,6 +1252,12 @@ function BoardGameScreen({
                             }
                           : undefined}
                     >
+                      {gameType === "chess" && columnIndex === 0 && (
+                        <span className="chess-coord chess-coord-rank" aria-hidden="true">{8 - rowIndex}</span>
+                      )}
+                      {gameType === "chess" && rowIndex === 7 && (
+                        <span className="chess-coord chess-coord-file" aria-hidden="true">{String.fromCharCode(97 + columnIndex)}</span>
+                      )}
                       {gameType === "go" ? null : isOccupied ? (
                         <span
                           className={isLastMovedPiece ? "board-game-piece-motion" : "board-game-piece-static"}
@@ -1142,6 +1279,11 @@ function BoardGameScreen({
                   );
                 }))}
               </div>
+              {showCheckBanner && inCheck && (
+                <div className="board-check-banner" aria-hidden="true">
+                  <span>{t("community.games.board.checkAlert")}</span>
+                </div>
+              )}
               {showBoardResultAnimation && shouldShowBoardResultAnimation && (
                 <div className={`board-game-result-overlay${won ? " board-game-result-victory" : " board-game-result-game-over"}`} aria-hidden="true">
                   <Lottie
@@ -1175,8 +1317,13 @@ function BoardGameScreen({
               </button>
             )}
           </div>
-          {gameType === "go" && !finished && game.state.turn === game.state.human && (
-            <button type="button" className="community-quiz-primary board-game-pass" disabled={isLoading} onClick={() => void sendMove({ pass: true })}>
+          {gameType === "go" && !finished && (
+            <button
+              type="button"
+              className="community-quiz-primary board-game-pass"
+              disabled={isLoading || botThinking || game.state.turn !== game.state.human}
+              onClick={() => void sendMove({ pass: true })}
+            >
               {t("community.games.go.pass")}
             </button>
           )}
@@ -1206,6 +1353,16 @@ function getBoardMoveCoordinates(
   };
 }
 
+function getGoMoveCoordinate(
+  lastMove: Record<string, unknown> | null | undefined,
+): [number, number] | null {
+  const at = lastMove?.at;
+  if (!Array.isArray(at) || at.length !== 2) return null;
+  const [row, col] = at;
+  if (!isBoardCoordinate(row) || !isBoardCoordinate(col)) return null;
+  return [row, col];
+}
+
 function isBoardCoordinate(value: unknown): value is number {
   return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 9;
 }
@@ -1225,10 +1382,11 @@ function describePiece(
 }
 
 function ChessPiece({ piece }: { piece: string }) {
+  const uid = useId();
   const kind = piece.toLowerCase();
   const isWhite = piece === piece.toUpperCase();
-  const outline = isWhite ? "#8f7350" : "#111827";
-  const detail = isWhite ? "#c3974f" : "#c8a767";
+  const outline = isWhite ? "#1f2937" : "#0b0f17";
+  const detail = isWhite ? "#a17c42" : "#e5c989";
   const shape: Record<string, string> = {
     p: "M32 8a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM28 23h8c0 6 3 10 7 14l5 13H16l5-13c4-4 7-8 7-14ZM12 50h40v7H12z",
     r: "M14 9h9v8h6V9h7v8h6V9h9v15H46v20l6 7v6H12v-6l6-7V24h-4z",
@@ -1247,50 +1405,49 @@ function ChessPiece({ piece }: { piece: string }) {
   };
 
   if (!shape[kind]) return null;
-  const pieceId = isWhite ? "white" : "black";
-  const bodyGradient = `chess-piece-${pieceId}`;
-  const sideGradient = `chess-piece-side-${pieceId}`;
-  const sheenGradient = `chess-piece-sheen-${pieceId}`;
-  const shadow = isWhite ? "#806a49" : "#090e18";
+  const bodyGradient = `cp-body-${uid}`;
+  const sideGradient = `cp-side-${uid}`;
+  const sheenGradient = `cp-sheen-${uid}`;
+  const shadow = isWhite ? "#475569" : "#020617";
   return (
     <svg className="chess-piece-art" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
       <defs>
-        <linearGradient id={bodyGradient} x1="0" y1="0" x2="1" y2=".35">
+        <linearGradient id={bodyGradient} x1="0" y1="0" x2="1" y2=".4">
           {isWhite ? (
             <>
-              <stop offset="0" stopColor="#fffef7" />
-              <stop offset=".28" stopColor="#f5e6bf" />
-              <stop offset=".58" stopColor="#d7bc88" />
-              <stop offset="1" stopColor="#a7834e" />
+              <stop offset="0" stopColor="#ffffff" />
+              <stop offset=".35" stopColor="#fbf8f0" />
+              <stop offset=".75" stopColor="#e8dfc9" />
+              <stop offset="1" stopColor="#cbbca0" />
             </>
           ) : (
             <>
-              <stop offset="0" stopColor="#7e8da5" />
-              <stop offset=".28" stopColor="#4a5870" />
-              <stop offset=".62" stopColor="#283449" />
-              <stop offset="1" stopColor="#111827" />
+              <stop offset="0" stopColor="#64748b" />
+              <stop offset=".3" stopColor="#334155" />
+              <stop offset=".68" stopColor="#1e293b" />
+              <stop offset="1" stopColor="#0b111c" />
             </>
           )}
         </linearGradient>
         <linearGradient id={sideGradient} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stopColor={isWhite ? "#fff6d8" : "#73819a"} />
-          <stop offset=".38" stopColor={isWhite ? "#d2b37b" : "#354258"} />
-          <stop offset="1" stopColor={isWhite ? "#8f6e3d" : "#0b111c"} />
+          <stop offset="0" stopColor={isWhite ? "#fffcf5" : "#475569"} />
+          <stop offset=".45" stopColor={isWhite ? "#dfd4bc" : "#1e293b"} />
+          <stop offset="1" stopColor={isWhite ? "#a69474" : "#06090f"} />
         </linearGradient>
         <linearGradient id={sheenGradient} x1="0" y1="0" x2="1" y2="0">
-          <stop offset="0" stopColor="#fff" stopOpacity=".64" />
-          <stop offset=".32" stopColor="#fff" stopOpacity=".12" />
+          <stop offset="0" stopColor="#fff" stopOpacity={isWhite ? ".7" : ".32"} />
+          <stop offset=".35" stopColor="#fff" stopOpacity=".08" />
           <stop offset="1" stopColor="#fff" stopOpacity="0" />
         </linearGradient>
       </defs>
-      <path d={shape[kind]} transform="translate(0 3)" fill={shadow} stroke={shadow} strokeWidth="3" strokeLinejoin="round" />
-      <path d={shape[kind]} transform="translate(0 1.5)" fill={`url(#${sideGradient})`} stroke={outline} strokeWidth="2.5" strokeLinejoin="round" />
-      <path d={shape[kind]} fill={`url(#${bodyGradient})`} stroke={outline} strokeWidth="2.2" strokeLinejoin="round" />
-      <path d={shape[kind]} fill={`url(#${sheenGradient})`} opacity=".55" />
-      <path d="M17 53h30M14 56h36" fill="none" stroke={isWhite ? "#fff0c8" : "#8592a7"} strokeWidth="1" opacity=".7" />
+      <path d={shape[kind]} transform="translate(0 3)" fill={shadow} stroke={shadow} strokeWidth="2.8" strokeLinejoin="round" opacity=".55" />
+      <path d={shape[kind]} transform="translate(0 1.5)" fill={`url(#${sideGradient})`} stroke={outline} strokeWidth="2.3" strokeLinejoin="round" />
+      <path d={shape[kind]} fill={`url(#${bodyGradient})`} stroke={outline} strokeWidth="2.1" strokeLinejoin="round" />
+      <path d={shape[kind]} fill={`url(#${sheenGradient})`} opacity=".65" />
+      <path d="M17 53h30M14 56h36" fill="none" stroke={isWhite ? "#ffffff" : "#94a3b8"} strokeWidth="1" opacity=".7" />
       {kind === "p" && <><circle cx="32" cy="15" r="4" fill="none" stroke={detail} strokeWidth="1.5" /><path d="M22 51h20" fill="none" stroke={detail} strokeWidth="1.5" /></>}
       {kind === "b" && <path d="m35 13-6 10" fill="none" stroke={detail} strokeWidth="2.4" strokeLinecap="round" />}
-      {kind === "q" && <g fill={detail}><circle cx="12" cy="12" r="1.5" /><circle cx="32" cy="8" r="1.5" /><circle cx="52" cy="12" r="1.5" /></g>}
+      {kind === "q" && <g fill={detail}><circle cx="12" cy="12" r="1.6" /><circle cx="32" cy="8" r="1.6" /><circle cx="52" cy="12" r="1.6" /></g>}
       {kind === "k" && <path d="M32 7v9M28 11h8" fill="none" stroke={detail} strokeWidth="2" strokeLinecap="round" />}
       {kind !== "q" && kind !== "k" && <path d={accents[kind]} fill="none" stroke={detail} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />}
       {kind === "q" && <path d={accents.q} fill="none" stroke={detail} strokeWidth="1.5" strokeLinecap="round" />}

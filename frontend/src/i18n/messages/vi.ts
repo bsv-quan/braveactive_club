@@ -5,8 +5,8 @@
  */
 const vi = {
   meta: {
-    title: "Brave Active — Cùng nhau năng động",
-    description: "Thông báo hoạt động câu lạc bộ, đăng ký lịch cầu lông và cộng đồng Brave Active.",
+    title: "braveActive — Cùng nhau năng động",
+    description: "Thông báo hoạt động câu lạc bộ, đăng ký lịch cầu lông và cộng đồng braveActive.",
   },
   language: { label: "Ngôn ngữ" },
   theme: { switchToDark: "Chuyển sang giao diện tối", switchToLight: "Chuyển sang giao diện sáng" },
@@ -22,6 +22,8 @@ const vi = {
     kicker: "VẬN ĐỘNG MỖI NGÀY",
     title: "Một chút vận động, thêm nhiều năng lượng",
     intro: "Những bài tập ngắn, dễ thực hiện dành cho ngày làm việc. Hãy chọn bài phù hợp với cơ thể và không gian của bạn.",
+    quickBreakHeading: "Gợi ý tập nhanh 1 phút",
+    quickBreakCta: "Tập ngay",
     safety: "Tập chậm và trong phạm vi thoải mái. Dừng lại nếu thấy đau, chóng mặt hoặc khó chịu. Nếu có chấn thương hay vấn đề sức khỏe, hãy hỏi chuyên gia y tế trước khi tập.",
     filters: "Tìm bài phù hợp",
     posture: "Tư thế",
@@ -54,6 +56,10 @@ const vi = {
   },
   footer: { tagline: "Được tạo nên bởi những người thích cùng nhau vận động." },
   common: {
+    confirmTitle: "Xác nhận thao tác",
+    noticeTitle: "Thông báo",
+    confirm: "Xác nhận",
+    ok: "Đã hiểu",
     loading: "Đang tải...",
     cancel: "Hủy",
     close: "Đóng",
@@ -75,7 +81,7 @@ const vi = {
   feedback: {
     button: "Phản hồi",
     title: "Gửi phản hồi",
-    intro: "Chia sẻ góp ý để chúng tôi cải thiện Brave Active.",
+    intro: "Chia sẻ góp ý để chúng tôi cải thiện braveActive.",
     titleField: "Tiêu đề",
     contentField: "Nội dung",
     submit: "Gửi phản hồi",
@@ -142,7 +148,7 @@ const vi = {
     logoutConfirm: "Bạn có chắc chắn muốn đăng xuất không?",
     login: {
       title: "Đăng nhập",
-      subtitle: "Chào mừng bạn quay lại Brave Active.",
+      subtitle: "Chào mừng bạn quay lại braveActive.",
       email: "Email",
       checkEmail: "Tiếp tục",
       checkingEmail: "Đang kiểm tra email...",
@@ -228,21 +234,36 @@ const vi = {
     sideRail: {
       label: "Công cụ cộng đồng",
       calendarAria: "Mở lịch hoạt động",
+      calendarKicker: "LỊCH HOẠT ĐỘNG",
       prevMonth: "Tháng trước",
       nextMonth: "Tháng sau",
       openCalendar: "Mở lịch hoạt động",
       quickLinks: "Lối tắt hoạt động, rèn luyện và giải trí",
+      trainingDesc: "Bài tập nhẹ 1–3 phút giảm mỏi cổ vai tại bàn làm việc",
+      trainingCta: "Tập ngay",
+      gamesDesc: "Tìm từ, Cờ vua, Cờ tướng, Cờ vây và bảng xếp hạng tuần",
+      gamesCta: "Chơi ngay",
+    },
+    editorial: {
+      kicker: "BẢN TIN CÂU LẠC BỘ",
+      title: "Bản tin braveActive",
+      latest: "Mới nhất",
+      aiNews: "Tin AI",
+      feedHeading: "Dòng tin cộng đồng",
     },
     games: {
       tab: "Giải trí",
       open: "Mở trò chơi giải trí",
       kicker: "CHƠI VUI, HỌC ĐIỀU HAY",
-      title: "Giải trí cùng Brave Active",
+      title: "Giải trí cùng braveActive",
       intro: "Dành vài phút chơi vui và khám phá những kiến thức nhỏ về vận động, sức khỏe.",
       chooseGame: "Chọn trò chơi",
       chooseGameIntro: "Bạn muốn thử trò nào hôm nay?",
       backToGames: "Chọn trò chơi khác",
       backToCommunity: "Quay lại cộng đồng",
+      switchConfirmTitle: "Rời khỏi ván đang chơi?",
+      switchConfirmMessage: "Bạn đang trong một ván chơi. Chuyển sang màn hình khác sẽ huỷ tiến trình hiện tại.",
+      switchConfirmAction: "Huỷ và chuyển",
       difficultyLabel: "Độ khó",
       difficulties: { easy: "Dạo chơi", medium: "Hơi nghiêm túc", hard: "Thử thách" },
       guide: {
@@ -365,6 +386,7 @@ const vi = {
         startError: "Không thể bắt đầu trận. Vui lòng thử lại.",
         resumeError: "Không thể khôi phục ván đang chơi. Vui lòng tải lại trang.",
         botThinking: "Máy đang tính nước đi...",
+        checkAlert: "Chiếu tướng!",
         botTurnError: "Chưa thể tính nước đi của máy. Nước đi của bạn đã được lưu.",
         retryBot: "Để máy đi tiếp",
         moveInterrupted: "Mất kết nối khi gửi nước đi. Trạng thái ván đã được đồng bộ; vui lòng thử lại nếu nước đi chưa được ghi nhận.",
@@ -653,7 +675,19 @@ const vi = {
     activities: {
       eyebrow: "CẬP NHẬT TỪ CỘNG ĐỒNG",
       title: "Bảng tin hoạt động",
-      subtitle: "Những câu chuyện, thông báo và hoạt động mới nhất từ Brave Active.",
+      subtitle: "Những câu chuyện, thông báo và hoạt động mới nhất từ braveActive.",
+    },
+    agenda: {
+      allCategories: "Tất cả",
+      upcomingHeading: "Hoạt động sắp diễn ra",
+      dayHeading: "Hoạt động ngày {date}",
+      clearDateFilter: "Xem tất cả sắp tới",
+      today: "Hôm nay",
+      join: "Tham gia",
+      emptyUpcoming: "Chưa có hoạt động nào sắp diễn ra. Hãy tạo một hoạt động mới!",
+      emptyFilter: "Không có hoạt động nào phù hợp bộ lọc này.",
+      pastToggleShow: "Xem hoạt động đã qua ({count})",
+      pastToggleHide: "Ẩn hoạt động đã qua",
     },
     calendar: {
       kicker: "LỊCH CÂU LẠC BỘ",
@@ -699,7 +733,7 @@ const vi = {
       confirmDelete: 'Xóa thông báo "{title}"?',
       back: "← Quay lại hoạt động",
       welcome: {
-        title: "Chào mừng bạn đến với Brave Active",
+        title: "Chào mừng bạn đến với braveActive",
         description:
           "Nơi kết nối những thành viên yêu vận động, sẻ chia và cùng nhau tạo nên những hoạt động ý nghĩa.",
       },
@@ -865,7 +899,7 @@ const vi = {
       },
       about: {
         kicker: "VỀ HOẠT ĐỘNG",
-        defaultDescription: "Hoạt động cộng đồng Brave Active.",
+        defaultDescription: "Hoạt động cộng đồng braveActive.",
         registrations: "lượt đăng ký từ hôm nay",
         messages: "tin nhắn",
       },

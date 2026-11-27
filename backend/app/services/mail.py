@@ -44,9 +44,9 @@ async def send_verification_email(to: str, code: str, purpose: str, ttl_minutes:
     """Send a one-time registration or password-recovery code, without a URL."""
     action = "đăng ký tài khoản" if purpose == "register" else "đặt lại mật khẩu"
     text = (
-        f"Bạn vừa yêu cầu {action} Brave Active.\n\n"
+        f"Bạn vừa yêu cầu {action} braveActive.\n\n"
         f"Mã xác minh: {code}\n"
         f"Mã có hiệu lực {ttl_minutes} phút và chỉ dùng được một lần.\n\n"
         "Nếu bạn không yêu cầu, hãy bỏ qua email này."
     )
-    await send_mail(to, "Mã xác minh Brave Active", text)
+    await send_mail(to, "Mã xác minh braveActive", text)

@@ -2,6 +2,7 @@
 
 import json
 import uuid
+import asyncio
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -249,7 +250,7 @@ async def submit_board_game_bot_turn(
         }
 
     try:
-        next_state = board_games.apply_ai_move(game_type, state, difficulty)
+        next_state = await asyncio.to_thread(board_games.apply_ai_move, game_type, state, difficulty)
     except ValueError as exc:
         raise AppError("Máy không thể thực hiện nước đi.", 500) from exc
 
