@@ -7,6 +7,7 @@ import { useAuth } from "@/components/auth/auth-provider";
 import { LanguageSwitcher } from "@/components/layout/language-switcher";
 import { ThemeSwitcher } from "@/components/layout/theme-switcher";
 import { UserAvatar } from "@/components/ui/user-avatar";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { NotificationBell } from "@/components/layout/notification-bell";
 import { useI18n } from "@/i18n/i18n-provider";
 import { useFeedEvents } from "@/lib/use-feed-events";
@@ -18,6 +19,7 @@ const COMMUNITY_RELOAD_TO_TOP_KEY = "ba:community-reload-to-top";
 export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
   const { user, loading, logout } = useAuth();
   const { t } = useI18n();
+  const { confirm } = useDialog();
   const [unreadPosts, setUnreadPosts] = useState(0);
   const unreadRef = useRef(0);
   const storageKey = user ? `ba_unread_posts:${user.id}` : null;
@@ -90,13 +92,13 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
     <header className="topbar">
       <Link className="brand" href="/">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img className="brand-logo" src="/logos/braveactive.png" alt="Brave Active" />
+        <img className="brand-logo" src="/logos/braveactive.png" alt="braveActive" />
       </Link>
-      {currentPage !== "community" ? (
       <nav className="community-hub-switcher" aria-label={t("nav.ariaLabel")}>
         <Link
-          className="community-hub-link"
+          className={currentPage === "community" ? "community-hub-link active" : "community-hub-link"}
           href="/community"
+          aria-current={currentPage === "community" ? "page" : undefined}
           onClick={clearUnreadPosts}
         >
           <Users size={16} aria-hidden />
@@ -124,7 +126,6 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
           <span>{t("nav.training")}</span>
         </Link>
       </nav>
-      ) : null}
       <div className="auth-menu">
         <LanguageSwitcher />
         <ThemeSwitcher />
@@ -152,7 +153,13 @@ export function ClubHeader({ currentPage }: { currentPage?: NavPage }) {
               aria-label={t("auth.logout")}
               title={t("auth.logout")}
               onClick={() => {
-                if (window.confirm(t("auth.logoutConfirm"))) void logout();
+                void confirm({
+                  title: t("auth.logout"),
+                  message: t("auth.logoutConfirm"),
+                  confirmLabel: t("auth.logout"),
+                }).then((ok) => {
+                  if (ok) void logout();
+                });
               }}
             >
               <LogOut size={18} aria-hidden />
@@ -182,7 +189,7 @@ export function ClubFooter() {
         <img className="brand-logo footer-logo" src="/logos/bravesoft.png" alt="BraveSoft" />
       </Link>
       <span>{t("footer.tagline")}</span>
-      <span>© 2026 Brave Active Club</span>
+      <span>© 2026 braveActive Club</span>
     </footer>
   );
 }

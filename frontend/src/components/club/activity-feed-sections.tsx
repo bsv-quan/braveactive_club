@@ -76,6 +76,7 @@ type AnnouncementFeedProps = {
   /** The API does not expose an owner, so signed-in users see edit/delete controls; the backend enforces owner-or-admin. */
   canManage: boolean;
   canCreate: boolean;
+  compact?: boolean;
   onRetry: () => void;
   onEdit: (announcement: ClubAnnouncement) => void;
   onDelete: (announcement: ClubAnnouncement) => void;
@@ -89,11 +90,102 @@ function AnnouncementFeedSectionBase({
   actionLoading,
   canManage,
   canCreate,
+  compact = false,
   onRetry,
   onEdit,
   onDelete,
 }: AnnouncementFeedProps) {
-  const { t } = useI18n();
+  const { t, intlLocale } = useI18n();
+  const visibleAnnouncements = announcements.filter(
+    (announcement) => announcement.id !== "welcome",
+  );
+
+  if (compact) {
+    return (
+      <section className="agenda-announcements-card" aria-label={t("club.announcements.title")}>
+        <div className="agenda-announcements-head">
+          <div>
+            <span className="community-calendar-kicker">{t("club.announcements.kicker")}</span>
+            <h2>{t("club.announcements.title")}</h2>
+          </div>
+          {canCreate && (
+            <Link
+              className="agenda-announcement-add"
+              href="/activities/announcements/new"
+              aria-label={t("club.announcements.create")}
+              title={t("club.announcements.create")}
+            >
+              +
+            </Link>
+          )}
+        </div>
+
+        {contentError ? (
+          <div className="error-panel" role="alert">
+            <span>{t("club.announcements.loadErrorTitle")}</span>
+            <p>{contentError}</p>
+            <button className="button-quiet" onClick={onRetry}>
+              {t("club.retry")}
+            </button>
+          </div>
+        ) : (
+          <div className="agenda-announcements-list">
+            {welcomeAnnouncement && (
+              <article className="agenda-announcement-item is-welcome">
+                <span className="category-label green">
+                  {categoryLabel(t, welcomeAnnouncement.category)}
+                </span>
+                <h3>{welcomeAnnouncement.title}</h3>
+                <p>{welcomeAnnouncement.description}</p>
+              </article>
+            )}
+            {visibleAnnouncements.map((announcement) => (
+              <article key={announcement.id} className="agenda-announcement-item">
+                <div className="agenda-announcement-meta">
+                  <span className={`category-label ${categoryColor(announcement.category)}`}>
+                    {categoryLabel(t, announcement.category)}
+                  </span>
+                  <time dateTime={announcement.date}>
+                    {formatDate(new Date(`${announcement.date}T00:00:00`), intlLocale, {
+                      day: "numeric",
+                      month: "short",
+                    })}
+                  </time>
+                </div>
+                <h3>{announcement.title}</h3>
+                <p>{announcement.description}</p>
+                {canManage && (
+                  <div className="agenda-announcement-actions">
+                    <button
+                      className="announcement-action edit"
+                      type="button"
+                      onClick={() => onEdit(announcement)}
+                    >
+                      {t("club.announcements.edit")}
+                    </button>
+                    <button
+                      className="announcement-action delete"
+                      type="button"
+                      disabled={actionLoading}
+                      onClick={() => onDelete(announcement)}
+                    >
+                      {t("club.announcements.delete")}
+                    </button>
+                  </div>
+                )}
+              </article>
+            ))}
+            {actionError && (
+              <p className="announcement-action-error" role="alert">
+                {actionError}
+              </p>
+            )}
+          </div>
+        )}
+      </section>
+    );
+  }
+
   return (
     <section className="activity-notifications">
       <div className="scheduled-heading">

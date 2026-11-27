@@ -58,11 +58,12 @@ export function PostList({ posts, loading, error, hasMore, viewerId, isAdmin, on
   if (posts.length === 0 && !error) return <p className="feed-note">{t("community.feed.empty")}</p>;
 
   return (
-    <div className="feed">
-      {posts.map((post) => (
+    <div className="feed" aria-label={t("community.editorial.feedHeading")}>
+      {posts.map((post, index) => (
         <PostCard
           key={post.id}
           post={post}
+          featured={index === 0}
           viewerId={viewerId}
           isAdmin={isAdmin}
           online={presence.statusFor(post.author.id)}

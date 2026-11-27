@@ -1,12 +1,12 @@
-# Brave Active Club — Khái niệm & Luồng hoạt động Web
+# braveActive Club — Khái niệm & Luồng hoạt động Web
 
-Tài liệu này tổng hợp khái niệm sản phẩm, kiến trúc kỹ thuật, ma trận phân quyền, bản đồ trang và các luồng nghiệp vụ chính của **Brave Active Club** dựa trên mã nguồn (`frontend/`, `backend/`), [README.md](../README.md), [AGENTS.md](../AGENTS.md) và [frontend/AGENTS.md](../frontend/AGENTS.md).
+Tài liệu này tổng hợp khái niệm sản phẩm, kiến trúc kỹ thuật, ma trận phân quyền, bản đồ trang và các luồng nghiệp vụ chính của **braveActive Club** dựa trên mã nguồn (`frontend/`, `backend/`), [README.md](../README.md), [AGENTS.md](../AGENTS.md) và [frontend/AGENTS.md](../frontend/AGENTS.md).
 
 ---
 
 ## 1. Khái niệm sản phẩm (Product Concept)
 
-**Brave Active Club** là cổng thông tin & mạng xã hội nội bộ dành cho thành viên **Bravesoft** (`@bravesoft.vn`, `@bravesoft.com.vn`), kết hợp 4 trụ cột:
+**braveActive Club** là cổng thông tin & mạng xã hội nội bộ dành cho thành viên **Bravesoft** (`@bravesoft.vn`, `@bravesoft.com.vn`), kết hợp 4 trụ cột:
 
 1. **Cộng đồng (`/community`)**: Bảng tin nội bộ thời gian thực (đăng bài, ảnh, link preview, thích, bình luận, nhắc thông báo, trạng thái online) và các bài tóm tắt tin tức do **braveActive AI** tạo từ RSS.
 2. **Hoạt động CLB (`/activities`)**: Lịch sự kiện thể thao/CLB (đơn lẻ hoặc lặp định kỳ), đăng ký tham gia theo tên, bình luận, kiểm duyệt tạo/sửa hoạt động và nhắc lịch tự động qua **Slack Incoming Webhook**.

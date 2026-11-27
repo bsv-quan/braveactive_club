@@ -50,15 +50,15 @@ export function CommunityGamesDialog({ onClose }: { onClose: () => void }) {
       </header>
       <p className="community-games-dialog-intro">{t("community.games.chooseGameIntro")}</p>
       <section className="community-games-selection" aria-label={t("community.games.chooseGame")}>
-        <div className="community-games-options">
+        <div className="community-games-options community-games-options-grid">
           {gameOptions.map(({ slug, key, Icon }) => (
             <Link
               key={slug}
-              className="community-games-option"
+              className={`community-games-option is-${slug}`}
               href={`/games/${slug}`}
               onClick={() => dialogRef.current?.close()}
             >
-              <span className="community-games-option-icon"><Icon size={22} aria-hidden="true" /></span>
+              <span className={`community-games-option-icon is-${slug}`}><Icon size={22} aria-hidden="true" /></span>
               <span className="community-games-option-copy">
                 <strong>{t(`community.games.${key}.title`)}</strong>
                 <span>{t(`community.games.${key}.description`)}</span>

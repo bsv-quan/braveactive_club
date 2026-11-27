@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, ChevronLeft, ChevronRight, Dumbbell, Gamepad2 } from "lucide-react";
+import { ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Dumbbell, Gamepad2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import type { ClubActivity } from "@/lib/activities";
@@ -61,7 +61,40 @@ export function CommunitySideRail() {
 
   return (
     <aside className="community-side-rail" aria-label={t("community.sideRail.label")}>
+      <nav className="community-feature-cards" aria-label={t("community.sideRail.quickLinks")}>
+        <Link className="community-feature-card is-training" href="/training">
+          <span className="community-feature-icon" aria-hidden="true">
+            <Dumbbell size={20} />
+          </span>
+          <span className="community-feature-copy">
+            <strong>{t("nav.training")}</strong>
+            <span>{t("community.sideRail.trainingDesc")}</span>
+            <span className="community-feature-cta">
+              {t("community.sideRail.trainingCta")} <ArrowRight size={14} aria-hidden="true" />
+            </span>
+          </span>
+        </Link>
+        <button
+          type="button"
+          className="community-feature-card is-games"
+          aria-label={t("community.games.open")}
+          onClick={() => setGamesOpen(true)}
+        >
+          <span className="community-feature-icon" aria-hidden="true">
+            <Gamepad2 size={20} />
+          </span>
+          <span className="community-feature-copy">
+            <strong>{t("community.games.tab")}</strong>
+            <span>{t("community.sideRail.gamesDesc")}</span>
+            <span className="community-feature-cta">
+              {t("community.sideRail.gamesCta")} <ArrowRight size={14} aria-hidden="true" />
+            </span>
+          </span>
+        </button>
+      </nav>
+
       <div className="community-calendar-banner">
+        <span className="community-calendar-kicker">{t("community.sideRail.calendarKicker")}</span>
         <div className="community-calendar-banner-head">
           <button type="button" className="calendar-mini-nav" onClick={() => moveMonth(-1)} aria-label={t("community.sideRail.prevMonth")}> <ChevronLeft size={14} /> </button>
           <strong>{monthLabel}</strong>
@@ -85,22 +118,6 @@ export function CommunitySideRail() {
         </div>
         <Link className="community-calendar-open" href={`/activities?date=${dateKey(new Date())}`}><CalendarDays size={15} /> {t("community.sideRail.openCalendar")}</Link>
       </div>
-
-      <nav className="community-accordion-rail" aria-label={t("community.sideRail.quickLinks")}>
-        <Link className="community-accordion-tab" href="/training" aria-label={t("nav.training")}>
-          <Dumbbell className="community-accordion-symbol" size={21} />
-          <span className="community-accordion-label">{t("nav.training")}</span>
-        </Link>
-        <button
-          type="button"
-          className="community-accordion-tab"
-          aria-label={t("community.games.open")}
-          onClick={() => setGamesOpen(true)}
-        >
-          <Gamepad2 className="community-accordion-symbol" size={21} />
-          <span className="community-accordion-label">{t("community.games.tab")}</span>
-        </button>
-      </nav>
       {gamesOpen && <CommunityGamesDialog onClose={() => setGamesOpen(false)} />}
     </aside>
   );

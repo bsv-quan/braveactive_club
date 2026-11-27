@@ -307,7 +307,7 @@ async def _activate_activity(
             link_url=activity_url,
             link_title=activity.title,
             link_description=activity.description,
-            link_site="Brave Active",
+            link_site="braveActive",
         )
         db.add(post)
         await db.flush()

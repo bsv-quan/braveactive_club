@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "@/components/auth/auth-provider";
 import { Button, IconButton } from "@/components/ui/button";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { EmojiTextField } from "@/components/ui/emoji-text-field";
 import { communityApi, type PostComment } from "@/lib/api/community";
@@ -25,6 +26,7 @@ type Props = {
 /** Comment list and input for a single post; loaded lazily when first opened. */
 export function CommentSection({ postId, commentCount, loginNext = "/community", onCountChange }: Props) {
   const { t, intlLocale } = useI18n();
+  const { confirm } = useDialog();
   const { user } = useAuth();
   const [comments, setComments] = useState<PostComment[] | null>(null);
   const [draft, setDraft] = useState("");
@@ -80,7 +82,16 @@ export function CommentSection({ postId, commentCount, loginNext = "/community",
   }
 
   async function handleDelete(comment: PostComment) {
-    if (!window.confirm(t("community.comments.deleteConfirm"))) return;
+    if (
+      !(await confirm({
+        title: t("common.delete"),
+        message: t("community.comments.deleteConfirm"),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
     try {
       const result = await communityApi.deleteComment(postId, comment.id);
       setComments((current) => (current ?? []).filter((item) => item.id !== comment.id));

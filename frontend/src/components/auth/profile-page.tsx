@@ -1,12 +1,14 @@
 "use client";
 
 import Cropper from "react-easy-crop";
-import { ImagePlus, Save, Trash2, X } from "lucide-react";
+import Link from "next/link";
+import { ImagePlus, KeyRound, Mail, Save, ShieldCheck, Trash2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/components/auth/auth-provider";
 import { AppShell } from "@/components/layout/app-shell";
 import { Button } from "@/components/ui/button";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { Alert } from "@/components/ui/form-controls";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { useI18n } from "@/i18n/i18n-provider";
@@ -18,6 +20,7 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/webp"];
 
 export function ProfilePage() {
   const { t } = useI18n();
+  const { confirm } = useDialog();
   const { user, loading, updateProfile, uploadAvatar, removeAvatar } = useAuth();
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
@@ -97,7 +100,16 @@ export function ProfilePage() {
   }
 
   async function clearAvatar() {
-    if (!window.confirm(t("auth.profile.removePhotoConfirm"))) return;
+    if (
+      !(await confirm({
+        title: t("auth.profile.removePhoto"),
+        message: t("auth.profile.removePhotoConfirm"),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
     setSaving(true);
     setError("");
     try {
@@ -113,16 +125,28 @@ export function ProfilePage() {
 
   return (
     <AppShell>
-      <section className="profile-page">
-        <header className="profile-heading">
-          <span className="section-kicker">{t("auth.profile.kicker")}</span>
+      <section className="profile-page profile-page-v2">
+        <header className="profile-masthead">
+          <span className="community-masthead-kicker">{t("auth.profile.kicker")}</span>
           <h1>{t("auth.profile.title")}</h1>
           <p>{t("auth.profile.subtitle")}</p>
         </header>
 
-        <div className="profile-card">
-          <div className="profile-avatar-area">
-            <UserAvatar name={user.displayName} avatarUrl={user.avatarUrl} size={104} />
+        <div className="profile-grid">
+          <aside className="profile-identity-card">
+            <div className="profile-avatar-ring">
+              <UserAvatar name={user.displayName} avatarUrl={user.avatarUrl} size={112} />
+            </div>
+            <div className="profile-identity-copy">
+              <h2>{user.displayName}</h2>
+              <span className="profile-identity-email">
+                <Mail size={13} aria-hidden="true" /> {user.email}
+              </span>
+              <span className={`admin-role-badge${user.role === "admin" ? " is-admin" : ""}`}>
+                <ShieldCheck size={12} aria-hidden="true" />{" "}
+                {user.role === "admin" ? t("admin.adminRole") : t("admin.member")}
+              </span>
+            </div>
             <div className="profile-avatar-actions">
               <Button variant="secondary" icon={ImagePlus} onClick={() => fileInput.current?.click()}>
                 {t("auth.profile.changePhoto")}
@@ -133,27 +157,38 @@ export function ProfilePage() {
                 </Button>
               ) : null}
             </div>
-            <p className="muted">{t("auth.profile.cropHelp")}</p>
+            <p className="profile-avatar-hint">{t("auth.profile.cropHelp")}</p>
             <input ref={fileInput} type="file" accept={IMAGE_TYPES.join(",")} hidden onChange={chooseFile} />
-          </div>
+            <div className="profile-security-link">
+              <Link className="ui-button ui-button-ghost ui-button-sm" href="/change-password">
+                <KeyRound size={15} aria-hidden="true" /> {t("auth.change.title")}
+              </Link>
+            </div>
+          </aside>
 
-          <form className="profile-form" onSubmit={(event) => void saveProfile(event)}>
-            <label htmlFor="profile-display-name">{t("auth.profile.displayName")}</label>
-            <input
-              id="profile-display-name"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              minLength={2}
-              maxLength={40}
-              required
-            />
-            <label htmlFor="profile-email">{t("auth.profile.email")}</label>
-            <input id="profile-email" value={user.email} disabled readOnly />
+          <form className="profile-settings-card profile-form" onSubmit={(event) => void saveProfile(event)}>
+            <div className="profile-field">
+              <label htmlFor="profile-display-name">{t("auth.profile.displayName")}</label>
+              <input
+                id="profile-display-name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                minLength={2}
+                maxLength={40}
+                required
+              />
+            </div>
+            <div className="profile-field">
+              <label htmlFor="profile-email">{t("auth.profile.email")}</label>
+              <input id="profile-email" value={user.email} disabled readOnly />
+            </div>
             {error ? <Alert tone="error">{error}</Alert> : null}
             {success ? <Alert tone="success">{t("auth.profile.saved")}</Alert> : null}
-            <Button type="submit" icon={Save} loading={saving} disabled={!displayName.trim()}>
-              {t("auth.profile.save")}
-            </Button>
+            <div className="profile-form-footer">
+              <Button type="submit" icon={Save} loading={saving} disabled={!displayName.trim()}>
+                {t("auth.profile.save")}
+              </Button>
+            </div>
           </form>
         </div>
 

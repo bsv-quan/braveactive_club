@@ -11,6 +11,7 @@ import { AnnouncementFeedSection } from "@/components/club/activity-feed-section
 import { HomeNewsSection } from "@/components/club/home-news";
 import { LatestCommunityPosts } from "@/components/community/latest-community-posts";
 import { useAuth } from "@/components/auth/auth-provider";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { ClubFooter, ClubHeader } from "@/components/layout/site-chrome";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
@@ -44,6 +45,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const router = useRouter();
   const pathname = usePathname();
   const { t, intlLocale } = useI18n();
+  const { confirm } = useDialog();
   const { user, loading: authLoading } = useAuth();
   const tRef = useRef(t);
   useEffect(() => {
@@ -52,6 +54,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const loginHref = `/login?next=${encodeURIComponent(pathname)}`;
   const [anchorDate, setAnchorDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => dateKey(new Date()));
+  const [dateFilterActive, setDateFilterActive] = useState(false);
   const [content, setContent] = useState<ContentData | null>(null);
   const [contentError, setContentError] = useState("");
   const [activities, setActivities] = useState<ClubActivity[]>([]);
@@ -130,6 +133,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
 
     setSelectedDate(requestedDate);
     setAnchorDate(nextDate);
+    setDateFilterActive(true);
   }, [initialView]);
 
   const activitiesForSelectedDate = useMemo(
@@ -180,8 +184,23 @@ export default function ClubApp({ initialView }: { initialView: View }) {
   const retryContent = useCallback(() => void loadContent(), [loadContent]);
   const retryActivities = useCallback(() => void loadActivities(), [loadActivities]);
   const selectDate = useCallback((date: string, outsideMonth: boolean, day: Date) => {
+    setDateFilterActive((currentlyActive) => {
+      if (currentlyActive && date === selectedDate) {
+        return false;
+      }
+      return true;
+    });
     setSelectedDate(date);
     if (outsideMonth) setAnchorDate(day);
+  }, [selectedDate]);
+  const clearDateFilter = useCallback(() => {
+    setDateFilterActive(false);
+  }, []);
+  const goToToday = useCallback(() => {
+    const today = new Date();
+    setAnchorDate(today);
+    setSelectedDate(dateKey(today));
+    setDateFilterActive(false);
   }, []);
   const handleActivityJoined = useCallback((activityId: string, name: string) => {
     const normalize = (value: string) => value.normalize("NFC").toLocaleLowerCase("vi");
@@ -355,7 +374,12 @@ export default function ClubApp({ initialView }: { initialView: View }) {
 
   const deleteAnnouncement = useCallback(async (announcement: ClubAnnouncement) => {
     if (
-      !window.confirm(t("club.announcements.confirmDelete", { title: announcement.title }))
+      !(await confirm({
+        title: t("common.delete"),
+        message: t("club.announcements.confirmDelete", { title: announcement.title }),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
     ) {
       return;
     }
@@ -381,7 +405,7 @@ export default function ClubApp({ initialView }: { initialView: View }) {
     } finally {
       setAnnouncementActionLoading(false);
     }
-  }, [t]);
+  }, [confirm, t]);
   const handleDeleteAnnouncement = useCallback(
     (announcement: ClubAnnouncement) => void deleteAnnouncement(announcement),
     [deleteAnnouncement],
@@ -489,43 +513,60 @@ export default function ClubApp({ initialView }: { initialView: View }) {
             <LatestCommunityPosts />
           </>
         ) : initialView === "activities" ? (
-          <section className="activities-page">
-            <div className="activities-page-heading">
+          <section className="activities-page activities-agenda-page">
+            <header className="activities-masthead">
               <div>
-                <div className="eyebrow"><span className="eyebrow-dot" /> {t("club.activities.eyebrow")}</div>
-                <h1>{t("club.activities.title")}<span className="hero-period">.</span></h1>
+                <span className="community-masthead-kicker">{t("club.activities.eyebrow")}</span>
+                <h1>{t("club.activities.title")}</h1>
                 <p>{t("club.activities.subtitle")}</p>
               </div>
-              <div className="activities-heading-mark" aria-hidden="true">✳</div>
-            </div>
+              {user ? (
+                <button className="button-primary" type="button" onClick={openCreateActivity}>
+                  <span className="create-button-plus">+</span> {t("club.calendar.createActivity")}
+                </button>
+              ) : (
+                <Link className="button-primary" href={loginHref}>
+                  <span className="create-button-plus">+</span> {t("club.calendar.createActivity")}
+                </Link>
+              )}
+            </header>
+            {activitySubmissionNotice && (
+              <p className="activity-pending-notice" role="status">
+                {activitySubmissionNotice}
+              </p>
+            )}
             <ActivityCalendarSection
               anchorDate={anchorDate}
               period={period}
               selectedDate={selectedDate}
+              dateFilterActive={dateFilterActive}
               activities={activities}
-              activitiesForSelectedDate={activitiesForSelectedDate}
               activitiesError={activitiesError}
               activitiesLoading={activitiesLoading}
               canInteract={Boolean(user)}
               loginHref={loginHref}
               onMoveMonth={movePeriod}
+              onGoToToday={goToToday}
               onSelectDate={selectDate}
+              onClearDateFilter={clearDateFilter}
               onRetryActivities={retryActivities}
-              onCreateActivity={openCreateActivity}
               onOpenActivity={openActivity}
               onActivityJoined={handleActivityJoined}
-            />
-            <AnnouncementFeedSection
-              welcomeAnnouncement={welcomeAnnouncement}
-              announcements={allAnnouncements}
-              contentError={contentError}
-              actionError={announcementActionError}
-              actionLoading={announcementActionLoading}
-              canManage={user !== null}
-              canCreate={user?.role === "admin"}
-              onRetry={retryContent}
-              onEdit={handleEditAnnouncement}
-              onDelete={handleDeleteAnnouncement}
+              announcementsNode={
+                <AnnouncementFeedSection
+                  welcomeAnnouncement={welcomeAnnouncement}
+                  announcements={allAnnouncements}
+                  contentError={contentError}
+                  actionError={announcementActionError}
+                  actionLoading={announcementActionLoading}
+                  canManage={user !== null}
+                  canCreate={user?.role === "admin"}
+                  compact
+                  onRetry={retryContent}
+                  onEdit={handleEditAnnouncement}
+                  onDelete={handleDeleteAnnouncement}
+                />
+              }
             />
           </section>
         ) : initialView === "announcement-create" ? (

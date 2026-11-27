@@ -1,12 +1,13 @@
 "use client";
 
-import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileText, MessageCircle, Pencil, Share2, Trash2, X } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileText, MessageCircle, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { EmojiTextField } from "@/components/ui/emoji-text-field";
 import { IconButton } from "@/components/ui/button";
+import { useDialog } from "@/components/ui/confirm-dialog";
 import { Alert } from "@/components/ui/form-controls";
 import { communityApi, type CommunityPost } from "@/lib/api/community";
 import { errorMessage } from "@/lib/api/client";
@@ -19,6 +20,7 @@ import { LinkPreviewCard } from "./link-preview-card";
 
 type Props = {
   post: CommunityPost;
+  featured?: boolean;
   viewerId: string | null;
   isAdmin: boolean;
   online?: boolean;
@@ -128,6 +130,7 @@ function PostText({
 
 function PostCardBase({
   post,
+  featured = false,
   viewerId,
   isAdmin,
   online,
@@ -140,6 +143,7 @@ function PostCardBase({
   onRemove,
 }: Props) {
   const { t, intlLocale } = useI18n();
+  const { confirm } = useDialog();
   const router = useRouter();
   const [showComments, setShowComments] = useState(initialCommentsOpen);
   const [error, setError] = useState("");
@@ -213,7 +217,16 @@ function PostCardBase({
   }
 
   async function handleDelete() {
-    if (!window.confirm(t("community.post.deleteConfirm"))) return;
+    if (
+      !(await confirm({
+        title: t("community.post.delete"),
+        message: t("community.post.deleteConfirm"),
+        confirmLabel: t("common.delete"),
+        tone: "danger",
+      }))
+    ) {
+      return;
+    }
     try {
       setError("");
       await (deleteRequest ?? communityApi.deletePost)(post.id);
@@ -257,9 +270,20 @@ function PostCardBase({
 
   const canDelete = viewerId !== null && viewerId === post.author.id;
   const canEdit = viewerId !== null && viewerId === post.author.id;
+  const isAiPost = post.author.displayName.toLowerCase().includes("braveactive ai");
 
   return (
-    <article className="post-card">
+    <article className={`post-card${featured ? " post-card-featured" : ""}${isAiPost ? " post-card-ai" : ""}`}>
+      {featured || isAiPost ? (
+        <div className="post-editorial-badges">
+          {featured ? <span className="post-editorial-pill is-latest">{t("community.editorial.latest")}</span> : null}
+          {isAiPost ? (
+            <span className="post-editorial-pill is-ai">
+              <Sparkles size={12} aria-hidden /> {t("community.editorial.aiNews")}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
       <header className="post-header">
         <UserAvatar name={post.author.displayName} avatarUrl={post.author.avatarUrl} online={online} />
         <div className="post-byline">
