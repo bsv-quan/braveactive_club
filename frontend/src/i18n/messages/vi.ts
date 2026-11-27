@@ -437,6 +437,12 @@ const vi = {
         sides: { black: "bạn (quân đen)", white: "máy (quân trắng)" },
         pieces: { B: "quân đen", W: "quân trắng", b: "quân đen", w: "quân trắng" },
       },
+      devVsAi: {
+        title: "Dev vs AI",
+        description: "Thủ trụ Pixel 2D trên mạng lưới LLM: đặt cây hoa robot, gom đồng TOKEN và chặn quái AI!",
+        backToCommunity: "Về Cộng đồng",
+        subtitle: "Bảo vệ Production!",
+      },
       strategy: {
         title: "Thử thách chiến thuật",
         description: "Chọn cách xử lý hợp lý trong các tình huống vận động.",

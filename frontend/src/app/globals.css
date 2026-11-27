@@ -2222,10 +2222,12 @@ select { background-color: var(--bg-input); color: var(--text-primary); border-c
 
 .community-games-options-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .community-games-options-grid .community-games-option { align-items: flex-start; padding: 16px; border-left: 4px solid var(--border-color); }
+.community-games-option.is-dev-vs-ai { border-left-color: #7c3aed; grid-column: 1 / -1; background: linear-gradient(135deg, color-mix(in srgb, #7c3aed 10%, var(--bg-card)), color-mix(in srgb, #06b6d4 10%, var(--bg-card))); }
 .community-games-option.is-word-search { border-left-color: var(--primary-solid); }
 .community-games-option.is-chess { border-left-color: var(--accent-energy); }
 .community-games-option.is-xiangqi { border-left-color: var(--danger-color); }
 .community-games-option.is-go { border-left-color: var(--accent-color); }
+.community-games-option-icon.is-dev-vs-ai { background: color-mix(in srgb, #7c3aed 18%, var(--bg-card)); color: #7c3aed; }
 .community-games-option-icon.is-word-search { background: color-mix(in srgb, var(--primary-solid) 15%, var(--bg-card)); color: var(--primary-solid); }
 .community-games-option-icon.is-chess { background: color-mix(in srgb, var(--accent-energy) 15%, var(--bg-card)); color: var(--accent-energy); }
 .community-games-option-icon.is-xiangqi { background: color-mix(in srgb, var(--danger-color) 15%, var(--bg-card)); color: var(--danger-color); }
