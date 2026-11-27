@@ -6,7 +6,7 @@ import unicodedata
 import uuid
 from datetime import date, datetime, timedelta, timezone
 
-from sqlalchemy import select, text
+from sqlalchemy import select, text, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -20,10 +20,11 @@ from app.models import (
     ActivityComment,
     ActivityParticipant,
     ActivityRecurrence,
+    ActivitySlackSchedule,
     Post,
     User,
 )
-from app.schemas.club import ActivityCommentOut, ActivityCreate, ActivityOut
+from app.schemas.club import ActivityCommentOut, ActivityCreate, ActivityEdit, ActivityOut
 from app.services.ai_content import detect_activity_location
 
 logger = logging.getLogger("app.activities")
@@ -389,6 +390,46 @@ async def create_activity(
     return activity, recurrence_out, generated, community_post_id
 
 
+async def edit_activity(db: AsyncSession, activity_id: uuid.UUID, body: ActivityEdit, user: User) -> Activity:
+    activity = await get_activity_or_404(db, activity_id, include_pending=True)
+    if not can_manage(user, activity.created_by):
+        raise AppError("Bạn không có quyền sửa hoạt động này.", 403)
+    if activity.recurrence_series_id or activity.schedule_type != "scheduled":
+        raise AppError("Chưa hỗ trợ sửa hoạt động lặp hoặc lịch cũ.", 409)
+    if not activity.approved and not activity.edit_pending:
+        raise AppError("Hoạt động đang chờ duyệt lần đầu không thể sửa.", 409)
+
+    title = body.title.strip()
+    description = body.description.strip()
+    when = parse_datetime(body.date)
+    day = parse_day(body.day)
+    if not 3 <= len(title) <= 120 or not 5 <= len(description) <= 1000 or when is None or day is None:
+        raise AppError("Thông tin hoạt động chưa hợp lệ. Vui lòng kiểm tra lại các trường.", 400)
+
+    location = await detect_activity_location(title, description)
+    await db.execute(
+        update(ActivitySlackSchedule)
+        .where(ActivitySlackSchedule.activity_id == activity.id)
+        .values(activity_title=title)
+    )
+    activity.title = title
+    activity.title_key = name_key(title)
+    activity.description = description
+    activity.date = when
+    activity.day = day
+    activity.location = location
+    activity.location_checked_at = datetime.now(timezone.utc)
+    activity.approved = user.role == "admin"
+    activity.edit_pending = not activity.approved
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise AppError("Đã có hoạt động cùng tên trong ngày này.", 409) from None
+    await db.refresh(activity)
+    return activity
+
+
 async def approve_activity(
     db: AsyncSession, activity_id: uuid.UUID
 ) -> tuple[Activity, dict | None, int, uuid.UUID | None]:
@@ -397,7 +438,11 @@ async def approve_activity(
     if activity.approved:
         raise AppError("Hoạt động này đã được duyệt.", 409)
     activity.approved = True
-    recurrence_out, generated, community_post_id = await _activate_activity(db, activity)
+    if activity.edit_pending:
+        activity.edit_pending = False
+        recurrence_out, generated, community_post_id = None, 0, None
+    else:
+        recurrence_out, generated, community_post_id = await _activate_activity(db, activity)
     await db.commit()
     await db.refresh(activity)
     return activity, recurrence_out, generated, community_post_id

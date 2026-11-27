@@ -20,6 +20,22 @@ Run the catalogue tests in Docker with `docker run --rm --entrypoint node -v "$P
 
 The library is general guidance, not medical advice. People with injuries or health conditions should consult a healthcare professional before exercising.
 
+## Activity settings and edits
+
+The authenticated `PATCH /api/activities/{id}` endpoint currently supports editing the title, description, date and day of an approved, non-repeating scheduled activity. Only its creator or an administrator can edit it. Administrator edits are approved immediately; a member edit is hidden from the public and returned to the admin approval queue. Approval of an edit does not create another community post. Existing registrations and comments are retained, and the location is detected again from the edited title and description.
+
+The detail page exposes settings to the creator and administrators, with editing for approved non-repeating scheduled activities and deletion (including whole-series deletion). Editing a repeating activity or a legacy schedule is not supported yet and the settings dialog states this explicitly. The endpoint permits further edits while an edit is awaiting approval but the public detail page is unavailable during moderation. Activities awaiting their initial approval cannot be edited. Migration `0021_activity_edit_pending` adds the persisted moderation marker.
+
+## Activity Slack notifications
+
+Creators and administrators can create and cancel multiple Slack notification schedules in activity settings. A schedule uses a start date and time in `Asia/Ho_Chi_Minh` and repeats daily, on a chosen weekday, or on a chosen day of the month. When a month has fewer days, its last day is used. Schedules continue until cancelled or the activity is deleted. Scheduled slots are skipped while the activity is awaiting approval. For a repeating activity, the message shows the next upcoming occurrence when available and links to the series detail.
+
+Set `SLACK_WEBHOOK_URL` in the server's environment (or the project-root `.env` for Docker Compose) to an Incoming Webhook URL for the desired Slack channel; keep it secret and do not commit it. An Incoming Webhook is tied to one channel, so this configuration does not support entering a channel ID. Set `FRONTEND_BASE_URL` to the externally accessible site address. Schedules can be saved before the webhook is configured; the settings page reports that delivery is not configured. Restart the backend after changing environment settings. Migration `0022_activity_slack_schedules` stores the schedules.
+
+The backend checks for due notifications every 30 seconds; it must remain running. Delivery errors and missing configuration are displayed in settings and retried after five minutes. Database row locks prevent concurrent workers from sending the same due slot simultaneously. Slack webhooks do not provide idempotency: a timeout or crash after Slack accepts a message but before the database commit can cause a duplicate on retry. Missed slots are not replayed individually after downtime; a due schedule sends once and resumes at its next future slot.
+
+Administrators can manage schedules in the Slack notifications tab of the admin console, pause or resume them, and inspect paginated delivery attempts including the message and outcome. Resuming skips missed slots and starts at the next scheduled time. Cancellation and activity deletion archive schedules and preserve their recorded history; they cannot be resumed. Migration `0023_slack_management` adds this history and status. Attempts before this migration cannot be reconstructed; a crash between Slack accepting a message and committing the database can leave a delivery unrecorded.
+
 ## Quick start with Docker
 
 Install and start Docker Desktop (or Docker Engine with Compose), then run from the project root:
