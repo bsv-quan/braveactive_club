@@ -434,6 +434,12 @@ const en: Messages = {
         sides: { black: "you (Black)", white: "the computer (White)" },
         pieces: { B: "Black stone", W: "White stone", b: "Black stone", w: "White stone" },
       },
+      devVsAi: {
+        title: "Dev vs AI",
+        description: "2D pixel tower defense on an LLM grid: deploy mecha-flower robots, collect TOKENs, and defend Production!",
+        backToCommunity: "Back to Community",
+        subtitle: "Defend Your Production!",
+      },
       strategy: {
         title: "Strategy Challenge",
         description: "Choose a sensible response to everyday movement scenarios.",
@@ -847,7 +853,7 @@ const en: Messages = {
         monthEnd: "If the month lacks this day, send on its last day.",
         add: "Add notification schedule",
         cancel: "Cancel notification",
-        next: "Next send/attempt: {date}",
+        next: "Next send: {date}",
         monday: "Monday",
         tuesday: "Tuesday",
         wednesday: "Wednesday",

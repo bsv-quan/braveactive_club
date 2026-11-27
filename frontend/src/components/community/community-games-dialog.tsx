@@ -1,11 +1,12 @@
 "use client";
 
-import { ArrowRight, Crown, Gamepad2, Grid3X3, Search, Shield, X } from "lucide-react";
+import { ArrowRight, Bot, Crown, Gamepad2, Grid3X3, Search, Shield, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef } from "react";
 import { useI18n } from "@/i18n/i18n-provider";
 
 const gameOptions = [
+  { slug: "dev-vs-ai", key: "devVsAi", Icon: Bot },
   { slug: "word-search", key: "wordSearch", Icon: Search },
   { slug: "chess", key: "chess", Icon: Crown },
   { slug: "xiangqi", key: "xiangqi", Icon: Shield },

@@ -434,6 +434,12 @@ const ja: Messages = {
         sides: { black: "あなた（黒）", white: "コンピューター（白）" },
         pieces: { B: "黒石", W: "白石", b: "黒石", w: "白石" },
       },
+      devVsAi: {
+        title: "Dev vs AI",
+        description: "LLMグリッド上の2Dピクセル防衛戦：ロボット花を配置し、TOKENを集めて本番環境を守ろう！",
+        backToCommunity: "コミュニティへ戻る",
+        subtitle: "本番環境を守れ！",
+      },
       strategy: {
         title: "戦略チャレンジ",
         description: "日常の運動シーンで適切な対応を選びましょう。",
@@ -845,7 +851,7 @@ const ja: Messages = {
         monthEnd: "該当日がない月は月末に送信します。",
         add: "通知スケジュールを追加",
         cancel: "通知をキャンセル",
-        next: "次回の送信・再試行: {date}",
+        next: "次回の送信: {date}",
         monday: "月曜日",
         tuesday: "火曜日",
         wednesday: "水曜日",
