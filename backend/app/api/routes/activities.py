@@ -55,6 +55,12 @@ async def create_activity(body: ActivityCreate, db: DbSession, user: CurrentUser
         for recipient_id, unread_count in recipients:
             await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
         await publish("post.created", post=community_post.model_dump(mode="json", by_alias=True))
+    elif not activity.approved:
+        admin_recipients = await notifications.notify_admins_pending_activity(
+            db, user, activity.title
+        )
+        for recipient_id, unread_count in admin_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     return ActivityCreated(
         activity=service.to_activity_out(activity, {}),
         recurrence=recurrence,
@@ -66,6 +72,12 @@ async def create_activity(body: ActivityCreate, db: DbSession, user: CurrentUser
 @router.patch("/{activity_id}", dependencies=[activity_write_limit])
 async def edit_activity(activity_id: uuid.UUID, body: ActivityEdit, db: DbSession, user: CurrentUser):
     activity = await service.edit_activity(db, activity_id, body, user)
+    if not activity.approved:
+        admin_recipients = await notifications.notify_admins_pending_activity(
+            db, user, activity.title
+        )
+        for recipient_id, unread_count in admin_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     return {"activity": service.to_activity_out(activity, {})}
 
 

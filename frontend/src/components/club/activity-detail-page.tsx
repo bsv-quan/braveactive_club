@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { ArrowLeft, CalendarDays, Clock, MapPin, MessageCircle, Repeat, Settings, User, Users } from "lucide-react";
-import type { ActivityComment, ClubActivity } from "@/lib/activities";
+import { upcomingDayOffset, type ActivityComment, type ClubActivity } from "@/lib/activities";
 import { useAuth } from "@/components/auth/auth-provider";
 import { useDialog } from "@/components/ui/confirm-dialog";
 import { ClubFooter, ClubHeader } from "@/components/layout/site-chrome";
@@ -337,6 +337,18 @@ export default function ActivityDetailPage({
     activity && !activity.recurrenceSeriesId && activity.date
       ? new Date(activity.date)
       : null;
+  const heroDayOffset =
+    activity && !activity.recurrenceSeriesId && (activity.day || activity.date)
+      ? upcomingDayOffset(activity.day ?? dateKey(new Date(activity.date as string)))
+      : -1;
+  const heroUrgencyLabel =
+    heroDayOffset === 0
+      ? t("community.sideRail.todayBadge")
+      : heroDayOffset === 1
+        ? t("community.sideRail.tomorrowBadge")
+        : heroDayOffset > 1 && heroDayOffset <= 7
+          ? t("community.sideRail.inDaysBadge", { count: heroDayOffset })
+          : null;
 
   return (
     <main>
@@ -384,6 +396,15 @@ export default function ActivityDetailPage({
                         ? t("club.categories.quickSignup")
                         : categoryLabel(t, activity.category)}
                     </span>
+                    {heroUrgencyLabel ? (
+                      <span
+                        className={`agenda-urgency-pill${
+                          heroDayOffset === 0 ? " is-today" : heroDayOffset === 1 ? " is-soon" : ""
+                        }`}
+                      >
+                        {heroUrgencyLabel}
+                      </span>
+                    ) : null}
                     {activity.recurrenceSeriesId && activity.repeat ? (
                       <span className="agenda-repeat-pill">
                         <Repeat size={11} aria-hidden="true" />

@@ -4,10 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, CircleHelp, X } from "lucide-react";
 import { useI18n } from "@/i18n/i18n-provider";
 import type { MessageKey } from "@/i18n/messages/types";
+import type { ArcadeGameSlug } from "@/lib/games/registry";
 
-type GuideGame = "word-search" | "chess" | "xiangqi" | "go";
-
-const guidePages: Record<GuideGame, { title: MessageKey; body: MessageKey }[]> = {
+const guidePages: Record<ArcadeGameSlug, { title: MessageKey; body: MessageKey }[]> = {
+  "dev-vs-ai": [
+    { title: "community.games.guide.devVsAi.page1Title", body: "community.games.guide.devVsAi.page1Body" },
+    { title: "community.games.guide.devVsAi.page2Title", body: "community.games.guide.devVsAi.page2Body" },
+  ],
   "word-search": [
     { title: "community.games.guide.wordSearch.page1Title", body: "community.games.guide.wordSearch.page1Body" },
   ],
@@ -33,7 +36,7 @@ export function GameGuideDialog({
   gameTitle,
   onClose,
 }: {
-  game: GuideGame;
+  game: ArcadeGameSlug;
   gameTitle: string;
   onClose: () => void;
 }) {
@@ -45,30 +48,53 @@ export function GameGuideDialog({
 
   useEffect(() => {
     const dialog = dialogRef.current;
-    if (dialog && !dialog.open) dialog.showModal();
+    if (!dialog) return;
+    if (!dialog.open) dialog.showModal();
+
+    if (!("closedBy" in HTMLDialogElement.prototype)) {
+      let pressedOutside = false;
+      const isOutside = (event: PointerEvent) => {
+        const rect = dialog.getBoundingClientRect();
+        return (
+          event.clientX < rect.left ||
+          event.clientX > rect.right ||
+          event.clientY < rect.top ||
+          event.clientY > rect.bottom
+        );
+      };
+      const handlePointerDown = (event: PointerEvent) => {
+        pressedOutside = isOutside(event);
+      };
+      const handlePointerUp = (event: PointerEvent) => {
+        if (pressedOutside && isOutside(event)) dialog.close();
+      };
+      dialog.addEventListener("pointerdown", handlePointerDown);
+      dialog.addEventListener("pointerup", handlePointerUp);
+      return () => {
+        dialog.removeEventListener("pointerdown", handlePointerDown);
+        dialog.removeEventListener("pointerup", handlePointerUp);
+      };
+    }
   }, []);
 
   function closeDialog() {
     dialogRef.current?.close();
-    onClose();
   }
 
   return (
     <dialog
       ref={dialogRef}
       className="game-guide-dialog"
+      {...({ closedby: "any" } as Record<string, string>)}
       aria-labelledby="game-guide-title"
       onClose={onClose}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) closeDialog();
-      }}
     >
       <header className="game-guide-header">
         <div className="game-guide-heading">
           <span className="game-guide-icon" aria-hidden="true"><CircleHelp size={21} /></span>
           <div>
             <p>{t("community.games.guide.eyebrow")}</p>
-            <h2 id="game-guide-title">{t("community.games.guide.title", { game: gameTitle })}</h2>
+            <h1 id="game-guide-title">{t("community.games.guide.title", { game: gameTitle })}</h1>
           </div>
         </div>
         <button type="button" className="ui-icon-button" aria-label={t("community.games.guide.close")} onClick={closeDialog}>

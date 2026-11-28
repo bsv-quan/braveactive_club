@@ -1,4 +1,7 @@
+import { COMMUNITY_CATEGORIES, type PostCategory } from "@/lib/community-filters";
 import { ApiError, apiFetch, apiJson } from "./client";
+
+export { COMMUNITY_CATEGORIES, type PostCategory };
 
 export type PostAuthor = { id: string; displayName: string; avatarUrl: string | null };
 
@@ -14,6 +17,7 @@ export type CommunityPost = {
   id: string;
   author: PostAuthor;
   content: string;
+  category?: PostCategory | null;
   imageUrl: string | null;
   imageUrls: string[];
   linkPreview: LinkPreview | null;
@@ -61,20 +65,80 @@ export type WordSearchPuzzle = {
   roundId: string | null;
 };
 export type WordSearchDifficulty = "easy" | "medium" | "hard";
-export type GameLeaderboardPeriod = "week" | "month";
-export type GameType = "word_search" | "chess" | "xiangqi" | "go";
+export type GameLeaderboardPeriod = "week" | "month" | "all";
+export type GameType = "word_search" | "chess" | "xiangqi" | "go" | "dev_vs_ai";
+export type LeaderboardScope = "all" | GameType;
+export type BoardGameApiType = "chess" | "xiangqi" | "go";
 export type GameDifficulty = "easy" | "medium" | "hard";
+export type ArcadeRankTier = "rookie" | "challenger" | "master" | "grandmaster" | "legend";
 export type GameLeaderboard = {
   period: GameLeaderboardPeriod;
-  gameType: GameType;
-  entries: { rank: number; userId: string; displayName: string; score: number }[];
+  gameType: LeaderboardScope;
+  entries: {
+    rank: number;
+    userId: string;
+    displayName: string;
+    avatarUrl?: string | null;
+    score: number;
+    roundsPlayed?: number;
+  }[];
   updatedAt: string;
 };
 export type GameStatus = {
   streakDays: number;
+  longestStreakDays?: number;
   playedToday: boolean;
   freeHintsRemaining: number;
   wordSearchPoints: number;
+  totalPoints?: number;
+  totalRounds?: number;
+};
+export type MiniGameStat = {
+  gameType: GameType;
+  roundsPlayed: number;
+  wins: number;
+  totalScore: number;
+  bestScore: number;
+};
+export type AchievementBadgeId =
+  | "first_round"
+  | "streak_3"
+  | "streak_7"
+  | "explorer"
+  | "tactician"
+  | "points_1000";
+export type AchievementBadge = {
+  id: AchievementBadgeId;
+  unlocked: boolean;
+  progress: number;
+  target: number;
+};
+export type PersonalAchievements = {
+  userId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  rank: number | null;
+  tier: ArcadeRankTier;
+  nextTierPoints: number | null;
+  totalPoints: number;
+  totalRounds: number;
+  totalWins: number;
+  streakDays: number;
+  longestStreakDays: number;
+  activeDays: number;
+  playedToday: boolean;
+  gamesExplored: number;
+  perGame: MiniGameStat[];
+  badges: AchievementBadge[];
+};
+export type GameAchievements = {
+  me: PersonalAchievements | null;
+  club: {
+    totalPlayers: number;
+    totalRounds: number;
+    totalPoints: number;
+  };
+  updatedAt: string;
 };
 export type BoardGameState = {
   board: string[][];
@@ -96,6 +160,13 @@ export type BoardGameResponse = {
   score: number;
   scoreAwarded: number;
 };
+export type PostLiker = {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+  likedAt: string;
+};
+
 export type UserNotification = {
   id: string;
   actorName: string;
@@ -104,7 +175,10 @@ export type UserNotification = {
     | "post_liked_own"
     | "post_liked_followed"
     | "post_commented_own"
-    | "post_commented_followed";
+    | "post_commented_followed"
+    | "admin_pending_post"
+    | "admin_pending_request"
+    | "admin_pending_activity";
   postId: string | null;
   context: string;
   createdAt: string;
@@ -149,10 +223,20 @@ export const communityApi = {
     apiJson<NotificationPage>(`/api/notifications?limit=${limit}&offset=${offset}`, { cache: "no-store" }),
   markNotificationsRead: (ids: string[]) =>
     apiJson<{ unreadCount: number }>("/api/notifications/read", { method: "POST", json: { ids } }),
-  listPosts: (cursor?: string | null, limit = 10) =>
-    apiJson<PostPage>(`/api/posts?limit=${limit}${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ""}`, {
+  listPosts: (
+    cursor?: string | null,
+    limit = 10,
+    filters?: { category?: PostCategory | null; q?: string | null },
+  ) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (cursor) params.set("cursor", cursor);
+    if (filters?.category) params.set("category", filters.category);
+    const trimmedQuery = filters?.q?.trim();
+    if (trimmedQuery) params.set("q", trimmedQuery);
+    return apiJson<PostPage>(`/api/posts?${params.toString()}`, {
       cache: "no-store",
-    }),
+    });
+  },
   getPost: (postId: string) =>
     apiJson<CommunityPost>(`/api/posts/${encodeURIComponent(postId)}`, { cache: "no-store" }),
 
@@ -185,25 +269,46 @@ export const communityApi = {
       score: number;
       freeHintsRemaining: number;
       wordSearchPoints: number;
+      totalPoints?: number;
     }>(
       `/api/games/word-search/${encodeURIComponent(roundId)}/hint`,
       { method: "POST" },
     ),
   getGameStatus: () => apiJson<GameStatus>("/api/games/status", { cache: "no-store" }),
+  getGameAchievements: () => apiJson<GameAchievements>("/api/games/achievements", { cache: "no-store" }),
+  startDevVsAiRound: (stageId: string) =>
+    apiJson<{ roundId: string }>("/api/games/dev-vs-ai/start", {
+      method: "POST",
+      json: { stageId },
+    }),
+  completeDevVsAiRound: (
+    roundId: string,
+    input: { status: "victory" | "defeat"; starsEarned: number; endlessWave: number },
+  ) =>
+    apiJson<{
+      scoreAwarded: number;
+      score: number;
+      totalPoints: number;
+      streakDays: number;
+      playedToday: boolean;
+    }>(`/api/games/dev-vs-ai/${encodeURIComponent(roundId)}/complete`, {
+      method: "POST",
+      json: input,
+    }),
   startBoardGame: (
-    gameType: Exclude<GameType, "word_search">,
+    gameType: BoardGameApiType,
     difficulty: GameDifficulty,
   ) =>
     apiJson<BoardGameResponse>(`/api/games/board/${gameType}/start`, {
       method: "POST",
       json: { difficulty },
     }),
-  getActiveBoardGame: (gameType: Exclude<GameType, "word_search">) =>
+  getActiveBoardGame: (gameType: BoardGameApiType) =>
     apiJson<BoardGameResponse | null>(`/api/games/board/${gameType}/active`, { cache: "no-store" }),
-  abandonActiveBoardGame: (gameType: Exclude<GameType, "word_search">) =>
+  abandonActiveBoardGame: (gameType: BoardGameApiType) =>
     apiJson<{ ok: boolean }>(`/api/games/board/${gameType}/active`, { method: "DELETE" }),
   forfeitBoardGame: (
-    gameType: Exclude<GameType, "word_search">,
+    gameType: BoardGameApiType,
     roundId: string | null,
     state: BoardGameState,
   ) =>
@@ -212,7 +317,7 @@ export const communityApi = {
       json: { roundId, state: roundId ? undefined : state },
     }),
   submitBoardMove: (
-    gameType: Exclude<GameType, "word_search">,
+    gameType: BoardGameApiType,
     difficulty: GameDifficulty,
     move: BoardMove,
     roundId: string | null,
@@ -223,7 +328,7 @@ export const communityApi = {
       json: { difficulty, move, roundId, state: roundId ? undefined : state },
     }),
   submitBoardBotTurn: (
-    gameType: Exclude<GameType, "word_search">,
+    gameType: BoardGameApiType,
     difficulty: GameDifficulty,
     roundId: string | null,
     state: BoardGameState,
@@ -239,7 +344,7 @@ export const communityApi = {
       `/api/games/strategy/${encodeURIComponent(roundId)}/answer`,
       { method: "POST", json: { questionIndex, answerIndex } },
     ),
-  getGameLeaderboard: (period: GameLeaderboardPeriod, gameType: GameType) =>
+  getGameLeaderboard: (period: GameLeaderboardPeriod, gameType: LeaderboardScope) =>
     apiJson<GameLeaderboard>(
       `/api/games/leaderboard?period=${period}&gameType=${gameType}`,
       { cache: "no-store" },
@@ -273,6 +378,15 @@ export const communityApi = {
   setLike: (postId: string, liked: boolean) =>
     apiJson<{ postId: string; likeCount: number; likedByMe: boolean }>(`/api/posts/${postId}/like`, {
       method: liked ? "PUT" : "DELETE",
+    }),
+
+  listPostLikes: (postId: string) =>
+    apiJson<PostLiker[]>(`/api/posts/${encodeURIComponent(postId)}/likes`, { cache: "no-store" }),
+
+  sharePostToSlack: (postId: string, message: string) =>
+    apiJson<{ message: string }>(`/api/posts/${encodeURIComponent(postId)}/share-slack`, {
+      method: "POST",
+      json: { message },
     }),
 
   listComments: (postId: string) => apiJson<PostComment[]>(`/api/posts/${postId}/comments`, { cache: "no-store" }),

@@ -3,6 +3,7 @@
 import asyncio
 import contextlib
 import logging
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import APIRouter, FastAPI
@@ -17,6 +18,7 @@ from app.core.middleware import BodySizeLimitMiddleware, OriginCheckMiddleware, 
 from app.db.session import SessionFactory
 from app.services.activities import run_recurrence_job
 from app.services.ai_post_scheduler import run_due_ai_post_slots
+from app.services.post_category_migration import backfill_post_categories
 from app.services.slack_notifications import run_due_slack_notifications
 
 logger = logging.getLogger("app")
@@ -63,6 +65,19 @@ async def _slack_schedule_loop() -> None:
         await asyncio.sleep(SLACK_SCHEDULE_INTERVAL_SECONDS)
 
 
+async def _post_category_backfill_once() -> None:
+    """Scan uncategorized or unchecked posts on startup using AI (with safe fallback)."""
+    try:
+        async with SessionFactory() as db:
+            processed, categorized = await backfill_post_categories(db, allow_fallback=True)
+        if processed:
+            logger.info("Post category backfill: processed=%s categorized=%s", processed, categorized)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001
+        logger.exception("Post category startup backfill failed")
+
+
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
@@ -73,6 +88,8 @@ async def lifespan(_: FastAPI):
         asyncio.create_task(_ai_post_schedule_loop()),
         asyncio.create_task(_slack_schedule_loop()),
     ]
+    if "PYTEST_CURRENT_TEST" not in os.environ:
+        tasks.append(asyncio.create_task(_post_category_backfill_once()))
     try:
         yield
     finally:

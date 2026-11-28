@@ -25,15 +25,20 @@ def normalize_email(email: str) -> str:
     return email.strip().lower()
 
 
-async def register_user(db: AsyncSession, email: str, display_name: str) -> None:
+async def register_user(db: AsyncSession, email: str, display_name: str) -> bool:
     """Queue an account request without disclosing whether the email is registered."""
     email = normalize_email(email)
     enforce_limit(f"account-request:register:{hash_token(email)}", 5, 900)
     if not await db.scalar(select(User.id).where(User.email == email)):
-        await db.execute(pg_insert(AccountRequest).values(
-            email=email, purpose="register", display_name=display_name
-        ).on_conflict_do_nothing(constraint="uq_account_requests_email_purpose"))
+        inserted = await db.scalar(
+            pg_insert(AccountRequest)
+            .values(email=email, purpose="register", display_name=display_name)
+            .on_conflict_do_nothing(constraint="uq_account_requests_email_purpose")
+            .returning(AccountRequest.id)
+        )
         await db.commit()
+        return inserted is not None
+    return False
 
 
 async def authenticate(db: AsyncSession, email: str, password: str) -> User:
@@ -91,16 +96,22 @@ async def destroy_session(db: AsyncSession, token: str) -> None:
     await db.commit()
 
 
-async def request_password_reset(db: AsyncSession, email: str) -> None:
-    """Queue a reset for an existing user without changing their credentials."""
+async def request_password_reset(db: AsyncSession, email: str) -> str | None:
+    """Queue a reset for an existing user without changing their credentials. Returns display_name if newly queued."""
     email = normalize_email(email)
     enforce_limit(f"account-request:reset:{hash_token(email)}", 5, 900)
     user = await db.scalar(select(User).where(User.email == email, User.is_active))
     if user:
-        await db.execute(pg_insert(AccountRequest).values(
-            email=email, purpose="reset", display_name=user.display_name
-        ).on_conflict_do_nothing(constraint="uq_account_requests_email_purpose"))
+        inserted = await db.scalar(
+            pg_insert(AccountRequest)
+            .values(email=email, purpose="reset", display_name=user.display_name)
+            .on_conflict_do_nothing(constraint="uq_account_requests_email_purpose")
+            .returning(AccountRequest.id)
+        )
         await db.commit()
+        if inserted is not None:
+            return user.display_name
+    return None
 
 
 async def change_password(db: AsyncSession, user: User, new_password: str) -> None:

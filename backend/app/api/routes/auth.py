@@ -21,8 +21,8 @@ from app.schemas.auth import (
     UserOut,
     CORPORATE_EMAIL_DOMAINS,
 )
-from app.services import auth as auth_service
-from app.services.realtime import manager
+from app.services import auth as auth_service, notifications
+from app.services.realtime import manager, publish_to_user
 from app.services import uploads
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -56,7 +56,13 @@ async def check_email(body: EmailCheckRequest):
 
 @router.post("/register", response_model=MessageOut, status_code=202, dependencies=[Depends(rate_limit("register", 10, 3600))])
 async def register(body: RegisterRequest, db: DbSession):
-    await auth_service.register_user(db, body.email, body.display_name)
+    created = await auth_service.register_user(db, body.email, body.display_name)
+    if created:
+        recipients = await notifications.notify_admins_pending_request(
+            db, body.display_name, str(body.email), "register"
+        )
+        for recipient_id, unread_count in recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     return MessageOut(message="Yêu cầu đã được gửi để quản trị viên xem xét.")
 
 
@@ -138,6 +144,12 @@ async def change_password(body: ChangePasswordRequest, auth: RequiredAuth, db: D
 
 @router.post("/forgot-password", response_model=MessageOut, dependencies=[Depends(rate_limit("forgot", 5, 900))])
 async def forgot_password(body: ForgotPasswordRequest, db: DbSession):
-    await auth_service.request_password_reset(db, body.email)
+    display_name = await auth_service.request_password_reset(db, body.email)
+    if display_name is not None:
+        recipients = await notifications.notify_admins_pending_request(
+            db, display_name, str(body.email), "reset"
+        )
+        for recipient_id, unread_count in recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     # Same answer whether or not the email exists.
     return MessageOut(message="Nếu tài khoản tồn tại, yêu cầu đã được gửi để quản trị viên xem xét.")

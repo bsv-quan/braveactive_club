@@ -106,7 +106,7 @@ export function CommentSection({ postId, commentCount, loginNext = "/community",
     setError("");
     try {
       const updated = await communityApi.updateComment(postId, commentId, editDraft);
-      setComments((current) => current?.map((comment) => comment.id === commentId ? updated : comment) ?? current);
+      setComments((current) => current?.map((comment) => (comment.id === commentId ? updated : comment)) ?? current);
       setEditingId(null);
     } catch (err) {
       setError(errorMessage(err, t("common.genericError")));
@@ -118,67 +118,78 @@ export function CommentSection({ postId, commentCount, loginNext = "/community",
   return (
     <div className="comment-section">
       {comments === null && !error ? <p className="muted">{t("common.loading")}</p> : null}
-      {comments?.length === 0 ? <p className="muted">{t("community.comments.empty")}</p> : null}
-      <ul className="comment-list">
-        {comments?.map((comment) => (
-          <li key={comment.id} className="comment-item">
-            <UserAvatar
-              name={comment.author.displayName}
-              avatarUrl={comment.author.avatarUrl}
-              online={presence.statusFor(comment.author.id)}
-              size={32}
-            />
-            <div className="comment-bubble">
-              <strong>{comment.author.displayName}</strong>
-              {editingId === comment.id ? (
-                <form
-                  className="comment-edit-form"
-                  onSubmit={(event) => {
-                    event.preventDefault();
-                    void handleUpdate(comment.id);
-                  }}
-                >
-                  <EmojiTextField
-                    value={editDraft}
-                    onChange={setEditDraft}
-                    maxLength={1000}
-                    aria-label={t("community.comments.edit")}
-                    autoFocus
-                    multiline
-                    rows={3}
-                  />
-                  <div className="comment-edit-actions">
-                    <button type="button" onClick={() => setEditingId(null)}>
-                      <X size={14} aria-hidden /> {t("community.comments.cancelEdit")}
-                    </button>
-                    <button type="submit" disabled={!editDraft.trim() || savingEdit}>
-                      <Check size={14} aria-hidden /> {savingEdit ? t("community.comments.saving") : t("community.comments.save")}
-                    </button>
-                  </div>
-                </form>
-              ) : <p>{comment.content}</p>}
-              <small>{formatRelativeTime(comment.createdAt, intlLocale) ?? t("community.post.justNow")}</small>
-            </div>
-            {user && (user.id === comment.author.id || user.role === "admin") ? (
-              <div className="comment-owner-actions">
-                <IconButton
-                  icon={Pencil}
-                  label={t("community.comments.edit")}
-                  onClick={() => {
-                    setEditDraft(comment.content);
-                    setEditingId(comment.id);
-                  }}
-                />
-                <IconButton
-                  icon={Trash2}
-                  label={t("community.comments.delete")}
-                  onClick={() => void handleDelete(comment)}
-                />
+      {comments?.length === 0 ? <p className="muted comment-empty-note">{t("community.comments.empty")}</p> : null}
+      {comments && comments.length > 0 ? (
+        <ul className="comment-list" role="list">
+          {comments.map((comment) => (
+            <li key={comment.id} className="comment-item">
+              <UserAvatar
+                name={comment.author.displayName}
+                avatarUrl={comment.author.avatarUrl}
+                online={presence.statusFor(comment.author.id)}
+                size={32}
+              />
+              <div className="comment-bubble">
+                <div className="comment-meta-row">
+                  <strong>{comment.author.displayName}</strong>
+                  <small>
+                    <time dateTime={comment.createdAt}>
+                      {formatRelativeTime(comment.createdAt, intlLocale) ?? t("community.post.justNow")}
+                    </time>
+                  </small>
+                </div>
+                {editingId === comment.id ? (
+                  <form
+                    className="comment-edit-form"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void handleUpdate(comment.id);
+                    }}
+                  >
+                    <EmojiTextField
+                      value={editDraft}
+                      onChange={setEditDraft}
+                      maxLength={1000}
+                      aria-label={t("community.comments.edit")}
+                      autoFocus
+                      multiline
+                      rows={3}
+                    />
+                    <div className="comment-edit-actions">
+                      <button type="button" onClick={() => setEditingId(null)}>
+                        <X size={14} aria-hidden="true" /> {t("community.comments.cancelEdit")}
+                      </button>
+                      <button type="submit" disabled={!editDraft.trim() || savingEdit}>
+                        <Check size={14} aria-hidden="true" />{" "}
+                        {savingEdit ? t("community.comments.saving") : t("community.comments.save")}
+                      </button>
+                    </div>
+                  </form>
+                ) : (
+                  <p>{comment.content}</p>
+                )}
               </div>
-            ) : null}
-          </li>
-        ))}
-      </ul>
+              {user && (user.id === comment.author.id || user.role === "admin") ? (
+                <div className="comment-owner-actions">
+                  <IconButton
+                    icon={Pencil}
+                    label={t("community.comments.edit")}
+                    onClick={() => {
+                      setEditDraft(comment.content);
+                      setEditingId(comment.id);
+                    }}
+                  />
+                  <IconButton
+                    icon={Trash2}
+                    label={t("community.comments.delete")}
+                    onClick={() => void handleDelete(comment)}
+                  />
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {error ? <p className="form-error">{error}</p> : null}
       {user ? (
         <form className="comment-form" onSubmit={handleSubmit}>
@@ -197,7 +208,7 @@ export function CommentSection({ postId, commentCount, loginNext = "/community",
           </Button>
         </form>
       ) : (
-        <p className="muted">
+        <p className="muted comment-login-note">
           <Link href={`/login?next=${encodeURIComponent(loginNext)}`}>{t("community.comments.loginToComment")}</Link>
         </p>
       )}

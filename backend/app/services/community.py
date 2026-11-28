@@ -11,13 +11,86 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError
 from app.core.permissions import can_manage
 from app.models import Post, PostComment, PostLike, User
-from app.schemas.community import AuthorOut, CommentOut, LinkPreviewOut, PostOut, PostPage
+from app.schemas.community import (
+    POST_CATEGORIES,
+    AuthorOut,
+    CommentOut,
+    LinkPreviewOut,
+    PostCategory,
+    PostOut,
+    PostPage,
+)
 from app.services import uploads
 from app.services.link_preview import extract_first_url, get_link_preview, normalize_url
 
 MAX_POST_LENGTH = 2000
 PAGE_SIZE_MAX = 30
 MAX_POST_IMAGES = 4
+MAX_SEARCH_TOKENS = 6
+
+_VN_LOWER = "àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ"
+_VN_UPPER = _VN_LOWER.upper()
+_VN_ASCII = (
+    "a" * 17
+    + "e" * 11
+    + "i" * 5
+    + "o" * 17
+    + "u" * 11
+    + "y" * 5
+    + "d"
+)
+
+
+def _escape_like(value: str) -> str:
+    return value.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _sql_casefold(column):
+    return func.translate(func.lower(func.coalesce(column, "")), _VN_UPPER, _VN_LOWER)
+
+
+def _sql_unaccent(column):
+    return func.translate(
+        func.lower(func.coalesce(column, "")),
+        _VN_LOWER + _VN_UPPER,
+        _VN_ASCII + _VN_ASCII,
+    )
+
+
+def _build_search_filter(raw_query: str):
+    tokens = [token for token in raw_query.strip().split() if token][:MAX_SEARCH_TOKENS]
+    if not tokens:
+        return None
+    token_clauses = []
+    for token in tokens:
+        lowered = token.lower()
+        escaped = _escape_like(lowered)
+        pattern = f"%{escaped}%"
+        transform = _sql_unaccent if lowered.isascii() else _sql_casefold
+        token_clauses.append(
+            or_(
+                transform(Post.content).like(pattern, escape="\\"),
+                transform(Post.link_title).like(pattern, escape="\\"),
+                transform(Post.link_description).like(pattern, escape="\\"),
+                transform(Post.link_site).like(pattern, escape="\\"),
+                Post.author.has(transform(User.display_name).like(pattern, escape="\\")),
+            )
+        )
+    return and_(*token_clauses)
+
+
+async def _assign_post_category(post: Post) -> None:
+    from app.services import ai_content
+
+    detected_category, checked_at = await ai_content.classify_post_category(
+        post.content,
+        link_url=post.link_url,
+        link_title=post.link_title,
+        link_description=post.link_description,
+        link_site=post.link_site,
+    )
+    post.category = detected_category
+    post.category_checked_at = checked_at
 
 
 def image_url(name: str | None) -> str | None:
@@ -67,6 +140,7 @@ def to_post_out(row, viewer: User | None) -> PostOut:
             avatar_url=post.author.avatar_url,
         ),
         content=post.content,
+        category=post.category if post.category in POST_CATEGORIES else None,
         image_url=(
             image_url((post.image_names or [post.image_name])[0])
             if (post.image_names or post.image_name)
@@ -113,6 +187,8 @@ async def list_posts(
     include_hidden: bool = False,
     include_unapproved: bool = False,
     pending_first: bool = False,
+    category: PostCategory | None = None,
+    search_query: str | None = None,
 ) -> PostPage:
     limit = max(1, min(limit, PAGE_SIZE_MAX))
     query = _select_posts(viewer)
@@ -120,6 +196,12 @@ async def list_posts(
         query = query.where(Post.hidden.is_(False))
     if not include_unapproved:
         query = query.where(Post.approved.is_(True))
+    if category is not None:
+        query = query.where(Post.category == category)
+    if search_query:
+        search_clause = _build_search_filter(search_query)
+        if search_clause is not None:
+            query = query.where(search_clause)
     if cursor:
         approved, created_at, post_id = _decode_cursor(cursor, pending_first)
         after_cursor = or_(Post.created_at < created_at, and_(Post.created_at == created_at, Post.id < post_id))
@@ -200,6 +282,8 @@ async def create_post(
                 post.link_image = preview.image
                 post.link_site = preview.site
 
+    await _assign_post_category(post)
+
     saved_images: list[str] = []
     try:
         for image in image_uploads:
@@ -267,6 +351,7 @@ async def update_post(db: AsyncSession, user: User, post_id: uuid.UUID, content:
                 post.link_description = preview.description
                 post.link_image = preview.image
                 post.link_site = preview.site
+    await _assign_post_category(post)
     await db.commit()
     return await get_post_out(db, post_id, user)
 
@@ -299,6 +384,45 @@ async def set_like(
         added = False
     await db.commit()
     return await _like_count(db, post_id), liked, added
+
+
+async def list_post_likes(
+    db: AsyncSession,
+    post_id: uuid.UUID,
+    viewer: User | None,
+) -> list[dict]:
+    """Return members who liked a visible post, newest likes first."""
+    post = await db.get(Post, post_id)
+    if not post:
+        raise AppError("Không tìm thấy bài đăng.", 404)
+    is_admin = bool(viewer and viewer.role == "admin")
+    is_owner = bool(viewer and viewer.id == post.author_id)
+    if post.hidden and not is_admin:
+        raise AppError("Không tìm thấy bài đăng.", 404)
+    if not post.approved and not (is_admin or is_owner):
+        raise AppError("Không tìm thấy bài đăng.", 404)
+
+    rows = await db.execute(
+        select(
+            User.id,
+            User.display_name,
+            User.avatar_name,
+            PostLike.created_at,
+        )
+        .join(PostLike, PostLike.user_id == User.id)
+        .where(PostLike.post_id == post_id)
+        .order_by(PostLike.created_at.desc(), User.display_name.asc())
+        .limit(200)
+    )
+    return [
+        {
+            "id": row.id,
+            "display_name": row.display_name,
+            "avatar_url": f"/media/{row.avatar_name}" if row.avatar_name else None,
+            "liked_at": row.created_at,
+        }
+        for row in rows
+    ]
 
 
 def to_comment_out(comment: PostComment) -> CommentOut:

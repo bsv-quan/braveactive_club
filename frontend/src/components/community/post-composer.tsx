@@ -14,6 +14,7 @@ import { LinkPreviewCard } from "./link-preview-card";
 
 const MAX_IMAGE_MB = 5;
 const MAX_IMAGES = 4;
+const MAX_CHARS = 2000;
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const PREVIEW_DEBOUNCE_MS = 700;
 type ComposerImage = { file: File; url: string };
@@ -24,9 +25,10 @@ type Props = {
   onPosted: (post: CommunityPost) => void;
 };
 
-/** Create-post box: text, one optional image, and an automatic link preview. */
+/** Single-line note bar at rest so news stories stay above the fold; expands on demand. */
 export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
   const { t } = useI18n();
+  const [expanded, setExpanded] = useState(false);
   const [content, setContent] = useState("");
   const [images, setImages] = useState<ComposerImage[]>([]);
   const [imageOrientation, setImageOrientation] = useState<"landscape" | "portrait">("landscape");
@@ -38,11 +40,13 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
   const [notice, setNotice] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const objectUrls = useRef(new Set<string>());
   // The detected URL the current preview (or failed lookup) belongs to.
   const previewForRef = useRef<string | null>(null);
 
   const detectedUrl = findFirstUrl(content);
+  const isOpen = expanded || Boolean(content.trim()) || images.length > 0 || Boolean(error);
 
   // Debounced preview lookup. Attached images disable the feature entirely.
   useEffect(() => {
@@ -87,6 +91,7 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
     const files = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!files.length) return;
+    setExpanded(true);
     if (images.length + files.length > MAX_IMAGES) {
       return setError(t("community.composer.imageLimit", { max: MAX_IMAGES }));
     }
@@ -144,6 +149,7 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
       setPreview(null);
       previewForRef.current = null;
       setDismissedUrl(null);
+      setExpanded(false);
     } catch (err) {
       setError(errorMessage(err, t("common.genericError")));
     } finally {
@@ -151,77 +157,143 @@ export function PostComposer({ displayName, avatarUrl, onPosted }: Props) {
     }
   }
 
+  const placeholderText = t("community.composer.placeholder", { name: displayName });
+
   return (
-    <form className="composer card" onSubmit={handleSubmit}>
-      <div className="composer-row">
-        <UserAvatar name={displayName} avatarUrl={avatarUrl} />
-        <EmojiTextField
-          value={content}
-          onChange={setContent}
-          placeholder={t("community.composer.placeholder", { name: displayName })}
-          maxLength={2000}
-          multiline
-          rows={3}
-          aria-label={t("community.composer.placeholder", { name: displayName })}
-        />
-      </div>
+    <form className={`composer${isOpen ? " card is-expanded" : " is-compact"}`} onSubmit={handleSubmit}>
+      <input ref={fileInput} type="file" accept={ALLOWED_TYPES.join(",")} multiple hidden onChange={pickImage} />
+      {isOpen ? (
+        <>
+          <div className="composer-row">
+            <UserAvatar name={displayName} avatarUrl={avatarUrl} size={36} />
+            <EmojiTextField
+              value={content}
+              onChange={setContent}
+              placeholder={placeholderText}
+              maxLength={MAX_CHARS}
+              multiline
+              rows={3}
+              autoFocus={expanded}
+              autoResize
+              aria-label={placeholderText}
+            />
+          </div>
 
-      {images.length ? (
-        <div
-          className={`composer-image-grid composer-image-count-${images.length}`}
-          data-orientation={imageOrientation}
-        >
-          {images.map((image, index) => (
-            <div className="composer-image" key={image.url}>
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={image.url}
-                alt=""
-                onLoad={(event) => {
-                  if (index === 0) {
-                    const selectedImage = event.currentTarget;
-                    setImageOrientation(
-                      selectedImage.naturalHeight > selectedImage.naturalWidth ? "portrait" : "landscape",
-                    );
-                  }
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => removeImage(index)}
-                aria-label={`${t("community.composer.removeImage")} ${index + 1}`}
-                title={t("community.composer.removeImage")}
-              >
-                <X size={16} aria-hidden />
-              </button>
+          {images.length ? (
+            <div
+              className={`composer-image-grid composer-image-count-${images.length}`}
+              data-orientation={imageOrientation}
+            >
+              {images.map((image, index) => (
+                <div className="composer-image" key={image.url}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={image.url}
+                    alt=""
+                    onLoad={(event) => {
+                      if (index === 0) {
+                        const selectedImage = event.currentTarget;
+                        setImageOrientation(
+                          selectedImage.naturalHeight > selectedImage.naturalWidth ? "portrait" : "landscape",
+                        );
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removeImage(index)}
+                    aria-label={`${t("community.composer.removeImage")} ${index + 1}`}
+                    title={t("community.composer.removeImage")}
+                  >
+                    <X size={16} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
-      ) : previewLoading ? (
-        <p className="muted">{t("community.preview.loading")}</p>
-      ) : preview ? (
-        <LinkPreviewCard
-          preview={preview}
-          removeLabel={t("community.preview.remove")}
-          onRemove={() => {
-            setDismissedUrl(detectedUrl);
-            setPreview(null);
-          }}
-        />
-      ) : null}
+          ) : previewLoading ? (
+            <p className="muted">{t("community.preview.loading")}</p>
+          ) : preview ? (
+            <LinkPreviewCard
+              preview={preview}
+              removeLabel={t("community.preview.remove")}
+              onRemove={() => {
+                setDismissedUrl(detectedUrl);
+                setPreview(null);
+              }}
+            />
+          ) : null}
 
-      {error ? <Alert tone="error">{error}</Alert> : null}
-      {notice ? <Alert tone="success">{notice}</Alert> : null}
+          {error ? <Alert tone="error">{error}</Alert> : null}
+          {notice ? <Alert tone="success">{notice}</Alert> : null}
 
-      <div className="composer-actions">
-        <input ref={fileInput} type="file" accept={ALLOWED_TYPES.join(",")} multiple hidden onChange={pickImage} />
-        <Button variant="ghost" icon={ImagePlus} disabled={images.length >= MAX_IMAGES} onClick={() => fileInput.current?.click()}>
-          {t("community.composer.addImage")}
-        </Button>
-        <Button type="submit" loading={submitting}>
-          {submitting ? t("community.composer.posting") : t("community.composer.post")}
-        </Button>
-      </div>
+          <div className="composer-actions">
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ImagePlus}
+              disabled={images.length >= MAX_IMAGES}
+              onClick={() => fileInput.current?.click()}
+            >
+              {t("community.composer.addImage")}
+            </Button>
+            <div className="composer-actions-end">
+              {content.length > 0 ? (
+                <span
+                  className={`composer-char-count${content.length > MAX_CHARS - 120 ? " is-near-limit" : ""}`}
+                  aria-hidden="true"
+                >
+                  {t("community.composer.charCount", { count: content.length, max: MAX_CHARS })}
+                </span>
+              ) : null}
+              {!content.trim() && !images.length ? (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setError("");
+                    setExpanded(false);
+                    requestAnimationFrame(() => triggerRef.current?.focus());
+                  }}
+                >
+                  {t("community.composer.collapse")}
+                </Button>
+              ) : null}
+              <Button type="submit" size="sm" loading={submitting}>
+                {submitting ? t("community.composer.posting") : t("community.composer.post")}
+              </Button>
+            </div>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="composer-compact-row">
+            <UserAvatar name={displayName} avatarUrl={avatarUrl} size={34} />
+            <button
+              ref={triggerRef}
+              type="button"
+              className="composer-trigger"
+              onClick={() => {
+                setNotice("");
+                setExpanded(true);
+              }}
+            >
+              <span>{placeholderText}</span>
+            </button>
+            <Button
+              variant="ghost"
+              size="sm"
+              icon={ImagePlus}
+              onClick={() => {
+                setNotice("");
+                fileInput.current?.click();
+              }}
+            >
+              {t("community.composer.addImage")}
+            </Button>
+          </div>
+          {notice ? <Alert tone="success">{notice}</Alert> : null}
+        </>
+      )}
     </form>
   );
 }

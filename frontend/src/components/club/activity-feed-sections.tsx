@@ -1,5 +1,6 @@
 "use client";
 
+import { Megaphone, Pencil, Plus, Trash2 } from "lucide-react";
 import { memo } from "react";
 import Link from "next/link";
 import { useI18n } from "@/i18n/i18n-provider";
@@ -104,9 +105,14 @@ function AnnouncementFeedSectionBase({
     return (
       <section className="agenda-announcements-card" aria-label={t("club.announcements.title")}>
         <div className="agenda-announcements-head">
-          <div>
-            <span className="community-calendar-kicker">{t("club.announcements.kicker")}</span>
-            <h2>{t("club.announcements.title")}</h2>
+          <div className="community-upcoming-panel-title">
+            <span className="community-upcoming-panel-icon" aria-hidden="true">
+              <Megaphone size={17} />
+            </span>
+            <div>
+              <span className="community-calendar-kicker">{t("club.announcements.kicker")}</span>
+              <h2>{t("club.announcements.title")}</h2>
+            </div>
           </div>
           {canCreate && (
             <Link
@@ -115,7 +121,7 @@ function AnnouncementFeedSectionBase({
               aria-label={t("club.announcements.create")}
               title={t("club.announcements.create")}
             >
-              +
+              <Plus size={16} aria-hidden="true" />
             </Link>
           )}
         </div>
@@ -161,7 +167,7 @@ function AnnouncementFeedSectionBase({
                       type="button"
                       onClick={() => onEdit(announcement)}
                     >
-                      {t("club.announcements.edit")}
+                      <Pencil size={12} aria-hidden="true" /> {t("club.announcements.edit")}
                     </button>
                     <button
                       className="announcement-action delete"
@@ -169,7 +175,7 @@ function AnnouncementFeedSectionBase({
                       disabled={actionLoading}
                       onClick={() => onDelete(announcement)}
                     >
-                      {t("club.announcements.delete")}
+                      <Trash2 size={12} aria-hidden="true" /> {t("club.announcements.delete")}
                     </button>
                   </div>
                 )}

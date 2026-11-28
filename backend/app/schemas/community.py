@@ -2,10 +2,28 @@
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field, field_validator
 
 from app.schemas.base import CamelModel
+
+POST_CATEGORIES = (
+    "culture",
+    "society",
+    "entertainment",
+    "lifestyle",
+    "sports",
+    "technology",
+)
+PostCategory = Literal[
+    "culture",
+    "society",
+    "entertainment",
+    "lifestyle",
+    "sports",
+    "technology",
+]
 
 
 class AuthorOut(CamelModel):
@@ -26,6 +44,7 @@ class PostOut(CamelModel):
     id: uuid.UUID
     author: AuthorOut
     content: str
+    category: PostCategory | None = None
     image_url: str | None = None
     image_urls: list[str] = Field(default_factory=list)
     link_preview: LinkPreviewOut | None = None
@@ -87,6 +106,25 @@ class LikeOut(CamelModel):
     post_id: uuid.UUID
     like_count: int
     liked_by_me: bool
+
+
+class PostLikerOut(CamelModel):
+    id: uuid.UUID
+    display_name: str
+    avatar_url: str | None = None
+    liked_at: datetime
+
+
+class PostShareSlackRequest(CamelModel):
+    message: str = Field(min_length=1, max_length=2000)
+
+    @field_validator("message")
+    @classmethod
+    def strip_message(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Nội dung tin nhắn Slack không được để trống.")
+        return value
 
 
 class CommentCreated(CamelModel):

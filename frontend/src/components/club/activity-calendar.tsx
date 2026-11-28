@@ -1,11 +1,31 @@
 "use client";
 
-import { memo, useMemo, useState } from "react";
+import { memo, useId, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Clock, Repeat, UserPlus, Users, X } from "lucide-react";
+import {
+  Activity,
+  CalendarDays,
+  ChevronLeft,
+  ChevronRight,
+  Clapperboard,
+  Clock,
+  HeartHandshake,
+  Layers,
+  type LucideIcon,
+  MapPin,
+  Repeat,
+  RotateCcw,
+  Search,
+  Trophy,
+  User,
+  UserPlus,
+  Users,
+  X,
+} from "lucide-react";
 import { useI18n } from "@/i18n/i18n-provider";
 import { apiJson, errorMessage } from "@/lib/api/client";
-import type { ClubActivity } from "@/lib/activities";
+import { upcomingDayOffset, type ClubActivity } from "@/lib/activities";
+import { foldSearchText } from "@/lib/community-filters";
 import {
   categoryColor,
   categoryLabel,
@@ -29,6 +49,24 @@ const FILTER_CATEGORIES = [
 ] as const;
 
 type CategoryFilter = (typeof FILTER_CATEGORIES)[number];
+
+const CATEGORY_FILTER_ICONS: Record<CategoryFilter, LucideIcon> = {
+  ALL: Layers,
+  "CẦU LÔNG": Trophy,
+  "THỂ THAO": Activity,
+  "TỪ THIỆN": HeartHandshake,
+  "GIẢI TRÍ": Clapperboard,
+  "CÂU LẠC BỘ": Users,
+};
+
+const CATEGORY_ACCENT_CLASS: Record<CategoryFilter, string> = {
+  ALL: "is-all",
+  "CẦU LÔNG": "is-sports",
+  "THỂ THAO": "is-lifestyle",
+  "TỪ THIỆN": "is-society",
+  "GIẢI TRÍ": "is-entertainment",
+  "CÂU LẠC BỘ": "is-technology",
+};
 
 type ActivityCalendarProps = {
   anchorDate: Date;
@@ -55,6 +93,29 @@ function activityDayKey(activity: ClubActivity): string | null {
   return activity.day ?? dateKey(new Date(activity.date));
 }
 
+function matchesActivityQuery(activity: ClubActivity, rawQuery: string): boolean {
+  const trimmed = rawQuery.trim();
+  if (!trimmed) return true;
+  const tokens = trimmed.split(/\s+/).filter(Boolean).slice(0, 6);
+  const rawHaystack = [
+    activity.title,
+    activity.description,
+    activity.location ?? "",
+    activity.creator,
+    activity.category,
+  ]
+    .join(" ")
+    .toLowerCase();
+  const foldedHaystack = foldSearchText(rawHaystack);
+  return tokens.every((token) => {
+    const lowered = token.toLowerCase();
+    const isAscii = [...lowered].every((ch) => ch.charCodeAt(0) <= 127);
+    return isAscii
+      ? foldedHaystack.includes(foldSearchText(lowered))
+      : rawHaystack.includes(lowered);
+  });
+}
+
 function ActivityCalendarSectionBase({
   anchorDate,
   period,
@@ -75,7 +136,10 @@ function ActivityCalendarSectionBase({
   onActivityJoined,
 }: ActivityCalendarProps) {
   const { t, intlLocale } = useI18n();
+  const searchInputId = useId();
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState<CategoryFilter>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
   const [showPast, setShowPast] = useState(false);
   const [joiningActivityId, setJoiningActivityId] = useState<string | null>(null);
   const [joinError, setJoinError] = useState("");
@@ -91,8 +155,9 @@ function ActivityCalendarSectionBase({
   const scheduledActivities = useMemo(() => {
     return activities
       .filter((activity) => activityDayKey(activity) !== null)
-      .filter((activity) => selectedCategory === "ALL" || activity.category === selectedCategory);
-  }, [activities, selectedCategory]);
+      .filter((activity) => selectedCategory === "ALL" || activity.category === selectedCategory)
+      .filter((activity) => matchesActivityQuery(activity, searchQuery));
+  }, [activities, selectedCategory, searchQuery]);
 
   const { visibleActivities, pastCount } = useMemo(() => {
     if (dateFilterActive) {
@@ -121,6 +186,15 @@ function ActivityCalendarSectionBase({
     };
   }, [scheduledActivities, dateFilterActive, selectedDate, todayKey, showPast]);
 
+  const hasAnyFilter =
+    selectedCategory !== "ALL" || searchQuery.trim().length > 0 || dateFilterActive;
+
+  function resetAllFilters() {
+    setSelectedCategory("ALL");
+    setSearchQuery("");
+    if (dateFilterActive) onClearDateFilter();
+  }
+
   async function joinActivity(
     event: React.FormEvent<HTMLFormElement>,
     activity: ClubActivity,
@@ -145,22 +219,76 @@ function ActivityCalendarSectionBase({
 
   return (
     <section className="agenda-hub">
-      <div className="agenda-filter-bar" role="region" aria-label={t("club.activities.title")}>
-        <div className="agenda-category-pills" role="tablist">
-          {FILTER_CATEGORIES.map((category) => (
+      <search className="community-discovery activities-discovery" aria-label={t("club.activities.title")}>
+        <form
+          className="community-search-form"
+          onSubmit={(event) => event.preventDefault()}
+        >
+          <label htmlFor={searchInputId} className="community-sr-only">
+            {t("club.agenda.searchPlaceholder")}
+          </label>
+          <span className="community-search-icon" aria-hidden="true">
+            <Search size={16} />
+          </span>
+          <input
+            ref={searchInputRef}
+            id={searchInputId}
+            className="community-search-input"
+            type="search"
+            name="q"
+            value={searchQuery}
+            maxLength={100}
+            placeholder={t("club.agenda.searchPlaceholder")}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            enterKeyHint="search"
+            onChange={(event) => setSearchQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.nativeEvent.isComposing || event.keyCode === 229) return;
+              if (event.key === "Escape" && searchQuery) {
+                event.preventDefault();
+                setSearchQuery("");
+              }
+            }}
+          />
+          {searchQuery ? (
             <button
-              key={category}
               type="button"
-              role="tab"
-              aria-selected={selectedCategory === category}
-              className={`agenda-pill${selectedCategory === category ? " active" : ""}`}
-              onClick={() => setSelectedCategory(category)}
+              className="community-search-clear"
+              aria-label={t("club.agenda.clearSearch")}
+              onClick={() => {
+                setSearchQuery("");
+                searchInputRef.current?.focus();
+              }}
             >
-              {category === "ALL" ? t("club.agenda.allCategories") : categoryLabel(t, category)}
+              <X size={15} aria-hidden="true" />
             </button>
-          ))}
+          ) : null}
+        </form>
+
+        <div className="community-section-strip" role="group" aria-label={t("club.activities.title")}>
+          {FILTER_CATEGORIES.map((category) => {
+            const selected = selectedCategory === category;
+            const CategoryIcon = CATEGORY_FILTER_ICONS[category];
+            return (
+              <button
+                key={category}
+                type="button"
+                aria-pressed={selected}
+                className={`community-section-tab ${CATEGORY_ACCENT_CLASS[category]}${selected ? " is-active" : ""}`}
+                onClick={() => setSelectedCategory(category)}
+              >
+                <CategoryIcon size={14} className="community-section-tab-icon" aria-hidden="true" />
+                <span className="community-section-tab-label">
+                  {category === "ALL" ? t("club.agenda.allCategories") : categoryLabel(t, category)}
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </div>
+      </search>
 
       {activitiesError && (
         <div className="error-panel" role="alert">
@@ -181,25 +309,31 @@ function ActivityCalendarSectionBase({
                 ? t("club.agenda.dayHeading", { date: selectedDayLabel })
                 : t("club.agenda.upcomingHeading")}
             </h2>
-            {dateFilterActive && (
+            {hasAnyFilter && (
               <button
                 type="button"
                 className="agenda-clear-date"
-                onClick={onClearDateFilter}
+                onClick={resetAllFilters}
               >
-                <X size={14} aria-hidden="true" /> {t("club.agenda.clearDateFilter")}
+                <RotateCcw size={13} aria-hidden="true" />{" "}
+                {dateFilterActive ? t("club.agenda.clearDateFilter") : t("club.agenda.resetFilters")}
               </button>
             )}
           </div>
 
           {activitiesLoading ? (
-            <div className="loading-panel">{t("club.calendar.loading")}</div>
+            <div className="feed-skeletons" aria-busy="true">
+              {[0, 1, 2].map((index) => (
+                <div key={index} className="post-skeleton" />
+              ))}
+            </div>
           ) : visibleActivities.length ? (
             <div className="agenda-list">
               {visibleActivities.map((activity) => {
                 const dayStr = activityDayKey(activity) ?? todayKey;
                 const dayObj = new Date(`${dayStr}T00:00:00`);
                 const isPast = dayStr < todayKey;
+                const dayOffset = upcomingDayOffset(dayStr);
                 const activityDayLabel = formatDate(dayObj, intlLocale, {
                   day: "numeric",
                   month: "long",
@@ -211,10 +345,20 @@ function ActivityCalendarSectionBase({
                     })
                   : t("club.calendar.timeUnset");
 
+                const urgencyLabel = isPast
+                  ? t("club.agenda.pastBadge")
+                  : dayOffset === 0
+                    ? t("community.sideRail.todayBadge")
+                    : dayOffset === 1
+                      ? t("community.sideRail.tomorrowBadge")
+                      : dayOffset > 1 && dayOffset <= 7
+                        ? t("community.sideRail.inDaysBadge", { count: dayOffset })
+                        : null;
+
                 return (
                   <article
                     key={activity.id}
-                    className={`agenda-card${isPast ? " is-past" : ""}`}
+                    className={`agenda-card${isPast ? " is-past" : ""}${dayOffset === 0 ? " is-today-event" : ""}`}
                   >
                     <div className="agenda-date-badge" aria-hidden="true">
                       <span className="agenda-date-weekday">
@@ -235,6 +379,21 @@ function ActivityCalendarSectionBase({
                             ? t("club.categories.quickSignup")
                             : categoryLabel(t, activity.category)}
                         </span>
+                        {urgencyLabel ? (
+                          <span
+                            className={`agenda-urgency-pill${
+                              dayOffset === 0
+                                ? " is-today"
+                                : dayOffset === 1
+                                  ? " is-soon"
+                                  : isPast
+                                    ? " is-past"
+                                    : ""
+                            }`}
+                          >
+                            {urgencyLabel}
+                          </span>
+                        ) : null}
                         {activity.repeat && (
                           <span className="agenda-repeat-pill">
                             <Repeat size={11} aria-hidden="true" />
@@ -261,9 +420,17 @@ function ActivityCalendarSectionBase({
                             <Clock size={13} aria-hidden="true" /> {timeLabel}
                           </span>
                         )}
+                        {activity.location ? (
+                          <span className="agenda-card-location">
+                            <MapPin size={13} aria-hidden="true" /> {activity.location}
+                          </span>
+                        ) : null}
                         <span>
                           <Users size={13} aria-hidden="true" />{" "}
                           {t("club.calendar.participants", { count: activity.participants.length })}
+                        </span>
+                        <span>
+                          <User size={13} aria-hidden="true" /> {activity.creator}
                         </span>
                       </div>
 
@@ -329,21 +496,25 @@ function ActivityCalendarSectionBase({
               })}
             </div>
           ) : (
-            <div className="agenda-empty-card">
-              <p>
+            <div className="feed-empty-card agenda-empty-state">
+              <span className="feed-empty-icon" aria-hidden="true">
+                <CalendarDays size={24} />
+              </span>
+              <strong>
                 {dateFilterActive
                   ? t("club.calendar.empty")
-                  : selectedCategory !== "ALL"
+                  : hasAnyFilter
                     ? t("club.agenda.emptyFilter")
                     : t("club.agenda.emptyUpcoming")}
-              </p>
-              {dateFilterActive && (
+              </strong>
+              {hasAnyFilter && (
                 <button
                   type="button"
-                  className="button-secondary"
-                  onClick={onClearDateFilter}
+                  className="button-secondary agenda-action-btn"
+                  onClick={resetAllFilters}
                 >
-                  {t("club.agenda.clearDateFilter")}
+                  <RotateCcw size={14} aria-hidden="true" />{" "}
+                  {dateFilterActive ? t("club.agenda.clearDateFilter") : t("club.agenda.resetFilters")}
                 </button>
               )}
             </div>

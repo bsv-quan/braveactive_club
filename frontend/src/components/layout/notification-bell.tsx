@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, X } from "lucide-react";
+import { Bell, ShieldAlert, X } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { communityApi, type NotificationPage, type UserNotification } from "@/lib/api/community";
@@ -10,6 +10,21 @@ import { useI18n } from "@/i18n/i18n-provider";
 import { useFeedEvents } from "@/lib/use-feed-events";
 
 const NOTIFICATION_PAGE_SIZE = 10;
+
+function isAdminModerationKind(kind: UserNotification["kind"]): boolean {
+  return (
+    kind === "admin_pending_post" ||
+    kind === "admin_pending_request" ||
+    kind === "admin_pending_activity"
+  );
+}
+
+function notificationTargetUrl(notification: UserNotification): string {
+  if (notification.kind === "admin_pending_request") return "/admin?tab=requests";
+  if (notification.kind === "admin_pending_post") return "/admin?tab=posts";
+  if (notification.kind === "admin_pending_activity") return "/admin?tab=activities";
+  return notification.postId ? `/community/posts/${notification.postId}` : "/community";
+}
 
 function notificationMessage(
   notification: UserNotification,
@@ -21,10 +36,21 @@ function notificationMessage(
     post_liked_followed: "notifications.items.postLikedFollowed",
     post_commented_own: "notifications.items.postCommentedOwn",
     post_commented_followed: "notifications.items.postCommentedFollowed",
+    admin_pending_post: "notifications.items.adminPendingPost",
+    admin_pending_request: "notifications.items.adminPendingRequest",
+    admin_pending_activity: "notifications.items.adminPendingActivity",
   } as const;
+  let context = notification.context;
+  if (notification.kind === "admin_pending_request") {
+    if (context.startsWith("register:")) {
+      context = `${t("admin.registration")} · ${context.slice("register:".length)}`;
+    } else if (context.startsWith("reset:")) {
+      context = `${t("admin.reset")} · ${context.slice("reset:".length)}`;
+    }
+  }
   return t(keys[notification.kind], {
     actor: notification.actorName,
-    context: notification.context,
+    context,
   });
 }
 
@@ -124,7 +150,7 @@ export function NotificationBell({ userId }: { userId: string }) {
 
   function openNotification(notification: UserNotification) {
     void closeAndRead();
-    router.push(notification.postId ? `/community/posts/${notification.postId}` : "/community");
+    router.push(notificationTargetUrl(notification));
   }
 
   return (
@@ -159,20 +185,29 @@ export function NotificationBell({ userId }: { userId: string }) {
           ) : items.length ? (
             <>
               <ul className="notification-list">
-                {items.map((item) => (
-                  <li key={item.id}>
-                    <button
-                      type="button"
-                      className={item.readAt ? "notification-item" : "notification-item unread"}
-                      onClick={() => openNotification(item)}
-                    >
-                      <span className="notification-item-text">{notificationMessage(item, t)}</span>
-                      <time dateTime={item.createdAt}>
-                        {formatRelativeTime(item.createdAt, intlLocale) ?? t("community.post.justNow")}
-                      </time>
-                    </button>
-                  </li>
-                ))}
+                {items.map((item) => {
+                  const isModeration = isAdminModerationKind(item.kind);
+                  return (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        className={`notification-item${item.readAt ? "" : " unread"}${isModeration ? " is-moderation" : ""}`}
+                        onClick={() => openNotification(item)}
+                      >
+                        {isModeration ? (
+                          <span className="notification-review-pill">
+                            <ShieldAlert size={12} aria-hidden="true" />
+                            {t("notifications.reviewTag")}
+                          </span>
+                        ) : null}
+                        <span className="notification-item-text">{notificationMessage(item, t)}</span>
+                        <time dateTime={item.createdAt}>
+                          {formatRelativeTime(item.createdAt, intlLocale) ?? t("community.post.justNow")}
+                        </time>
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
               {hasMore ? (
                 <button

@@ -116,6 +116,17 @@ async def _send_webhook(text: str) -> None:
             await response.aclose()
 
 
+async def send_post_share_message(text: str) -> None:
+    """Send a composed post-share message immediately through the configured Slack webhook."""
+    if not webhook_configured():
+        raise AppError("Webhook Slack chưa được cấu hình trên máy chủ.", 503)
+    try:
+        await _send_webhook(text)
+    except (httpx.HTTPError, RuntimeError) as error:
+        logger.warning("Post Slack share failed: error_type=%s", type(error).__name__)
+        raise AppError("Không thể gửi tin nhắn tới Slack. Vui lòng thử lại sau.", 502) from error
+
+
 async def _message_for(db: AsyncSession, activity: Activity, message: str, now: datetime) -> str:
     displayed = activity
     no_upcoming = False

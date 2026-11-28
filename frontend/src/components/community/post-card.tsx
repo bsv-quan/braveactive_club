@@ -1,22 +1,58 @@
 "use client";
 
-import { Check, ChevronLeft, ChevronRight, EllipsisVertical, FileText, MessageCircle, Pencil, Share2, Sparkles, Trash2, X } from "lucide-react";
+import {
+  Check,
+  ChevronLeft,
+  ChevronRight,
+  Clapperboard,
+  Cpu,
+  EllipsisVertical,
+  FileText,
+  HeartHandshake,
+  Images,
+  Landmark,
+  type LucideIcon,
+  MessageCircle,
+  Newspaper,
+  Pencil,
+  Send,
+  Trash2,
+  Trophy,
+  Users,
+  X,
+} from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
+import { useAuth } from "@/components/auth/auth-provider";
 import { UserAvatar } from "@/components/ui/user-avatar";
 import { EmojiTextField } from "@/components/ui/emoji-text-field";
 import { IconButton } from "@/components/ui/button";
 import { useDialog } from "@/components/ui/confirm-dialog";
 import { Alert } from "@/components/ui/form-controls";
-import { communityApi, type CommunityPost } from "@/lib/api/community";
+import { communityApi, type CommunityPost, type PostCategory } from "@/lib/api/community";
 import { errorMessage } from "@/lib/api/client";
-import { copyToClipboard } from "@/lib/clipboard";
+import {
+  extractEditorialArticle,
+  isAiCommunityPost,
+  isPostCategory,
+} from "@/lib/community-filters";
 import { formatRelativeTime, splitLinks } from "@/lib/format";
 import { useI18n } from "@/i18n/i18n-provider";
 import { CommentSection } from "./comment-section";
 import { LikeButton } from "./like-button";
 import { LinkPreviewCard } from "./link-preview-card";
+import { PostLikersDialog } from "./post-likers-dialog";
+import { PostShareSlackDialog } from "./post-share-slack-dialog";
+
+export const POST_CATEGORY_ICONS: Record<PostCategory, LucideIcon> = {
+  culture: Landmark,
+  society: Users,
+  entertainment: Clapperboard,
+  lifestyle: HeartHandshake,
+  sports: Trophy,
+  technology: Cpu,
+};
 
 type Props = {
   post: CommunityPost;
@@ -29,6 +65,7 @@ type Props = {
   loginNext?: string;
   showFullContent?: boolean;
   showActionsMenu?: boolean;
+  onSelectCategory?: (category: PostCategory) => void;
   onPatch: (postId: string, patch: Partial<CommunityPost>) => void;
   onRemove: (postId: string) => void;
 };
@@ -39,11 +76,13 @@ function PostText({
   expanded,
   onExpandedChange,
   showFullContent = false,
+  className = "post-text",
 }: {
   content: string;
   expanded: boolean;
   onExpandedChange: (expanded: boolean) => void;
   showFullContent?: boolean;
+  className?: string;
 }) {
   const { t } = useI18n();
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -104,7 +143,7 @@ function PostText({
 
   return (
     <div ref={wrapperRef} className={isExpanded ? "post-text-wrap expanded" : "post-text-wrap"}>
-      <p className="post-text">
+      <p className={className}>
         {parts.map((part, index) =>
           part.url ? (
             <a key={index} href={part.url} target="_blank" rel="noopener noreferrer nofollow ugc">
@@ -123,7 +162,7 @@ function PostText({
           </span>
         ) : null}
       </p>
-      <p ref={measurementRef} className="post-text post-text-measurement" aria-hidden="true" />
+      <p ref={measurementRef} className={`${className} post-text-measurement`} aria-hidden="true" />
     </div>
   );
 }
@@ -139,26 +178,35 @@ function PostCardBase({
   loginNext = "/community",
   showFullContent = false,
   showActionsMenu = true,
+  onSelectCategory,
   onPatch,
   onRemove,
 }: Props) {
   const { t, intlLocale } = useI18n();
+  const { user } = useAuth();
   const { confirm } = useDialog();
   const router = useRouter();
   const [showComments, setShowComments] = useState(initialCommentsOpen);
+  const [showLikers, setShowLikers] = useState(false);
+  const [showShareSlack, setShowShareSlack] = useState(false);
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [postTextExpanded, setPostTextExpanded] = useState(false);
   const [draft, setDraft] = useState(post.content);
   const [saving, setSaving] = useState(false);
   const [showPostMenu, setShowPostMenu] = useState(false);
-  const [shareNotice, setShareNotice] = useState("");
+  const [sharedToSlack, setSharedToSlack] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState<number | null>(null);
   const [imageOrientation, setImageOrientation] = useState<"landscape" | "portrait">("landscape");
   const imageTriggerRef = useRef<HTMLButtonElement>(null);
-  const imageCloseRef = useRef<HTMLButtonElement>(null);
+  const imageDialogRef = useRef<HTMLDialogElement>(null);
   const postMenuRef = useRef<HTMLDivElement>(null);
+  const shareTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const postImages = post.imageUrls?.length ? post.imageUrls : post.imageUrl ? [post.imageUrl] : [];
+
+  useEffect(() => () => {
+    if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!showPostMenu) return;
@@ -177,28 +225,25 @@ function PostCardBase({
   }, [showPostMenu]);
 
   useEffect(() => {
-    if (imageViewerIndex === null) return;
-    imageCloseRef.current?.focus();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setImageViewerIndex(null);
-        imageTriggerRef.current?.focus();
-      } else if (event.key === "ArrowRight" && postImages.length > 1) {
-        setImageViewerIndex((index) => (index === null ? 0 : (index + 1) % postImages.length));
-      } else if (event.key === "ArrowLeft" && postImages.length > 1) {
-        setImageViewerIndex((index) =>
-          index === null ? 0 : (index - 1 + postImages.length) % postImages.length,
-        );
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [imageViewerIndex, postImages.length]);
+    const dialog = imageDialogRef.current;
+    if (imageViewerIndex === null || !dialog) return;
+    if (!dialog.open) dialog.showModal();
+
+    if (!("closedBy" in HTMLDialogElement.prototype)) {
+      const handleBackdropClick = (event: MouseEvent) => {
+        if (event.target !== dialog) return;
+        const rect = dialog.getBoundingClientRect();
+        const isDialogContent =
+          rect.top <= event.clientY &&
+          event.clientY <= rect.top + rect.height &&
+          rect.left <= event.clientX &&
+          event.clientX <= rect.left + rect.width;
+        if (!isDialogContent) dialog.close();
+      };
+      dialog.addEventListener("click", handleBackdropClick);
+      return () => dialog.removeEventListener("click", handleBackdropClick);
+    }
+  }, [imageViewerIndex]);
 
   async function toggleLike() {
     if (!viewerId) {
@@ -251,46 +296,106 @@ function PostCardBase({
     }
   }
 
-  async function handleShare() {
+  function handleOpenShareSlack() {
     setShowPostMenu(false);
-    setShareNotice("");
-    const url = new URL(`/community/posts/${encodeURIComponent(post.id)}`, window.location.origin).toString();
-    try {
-      if (navigator.share) {
-        await navigator.share({ title: post.content.slice(0, 100), text: post.content, url });
-      } else {
-        await copyToClipboard(url);
-        setShareNotice(t("community.post.linkCopied"));
-      }
-    } catch (err) {
-      if (err instanceof DOMException && err.name === "AbortError") return;
-      setError(errorMessage(err, t("common.genericError")));
+    if (!viewerId) {
+      router.push(`/login?next=${encodeURIComponent(loginNext)}`);
+      return;
     }
+    setShowShareSlack(true);
+  }
+
+  function handleSharedToSlack() {
+    setSharedToSlack(true);
+    if (shareTimerRef.current) clearTimeout(shareTimerRef.current);
+    shareTimerRef.current = setTimeout(() => setSharedToSlack(false), 3000);
   }
 
   const canDelete = viewerId !== null && viewerId === post.author.id;
   const canEdit = viewerId !== null && viewerId === post.author.id;
-  const isAiPost = post.author.displayName.toLowerCase().includes("braveactive ai");
+  const hasMenuActions = canEdit || canDelete || !showFullContent;
+  const isAiPost = isAiCommunityPost(post);
+  const editorial = useMemo(
+    () => extractEditorialArticle(post.content, isAiPost),
+    [post.content, isAiPost],
+  );
+  const isEditorialCard = isAiPost || Boolean(editorial.headline);
+  const postCategory = isPostCategory(post.category) ? post.category : null;
+  const CategoryIcon = postCategory ? POST_CATEGORY_ICONS[postCategory] : null;
+  const categoryLabel = postCategory ? t(`community.categories.${postCategory}`) : "";
+  const relativeTime = formatRelativeTime(post.createdAt, intlLocale) ?? t("community.post.justNow");
+  const detailHref = `/community/posts/${encodeURIComponent(post.id)}`;
+
+  const cardClasses = [
+    "post-card",
+    featured ? "post-card-featured" : "",
+    isAiPost ? "post-card-ai" : "",
+    isEditorialCard ? "post-card-editorial" : "post-card-social",
+  ]
+    .filter(Boolean)
+    .join(" ");
 
   return (
-    <article className={`post-card${featured ? " post-card-featured" : ""}${isAiPost ? " post-card-ai" : ""}`}>
-      {featured || isAiPost ? (
-        <div className="post-editorial-badges">
-          {featured ? <span className="post-editorial-pill is-latest">{t("community.editorial.latest")}</span> : null}
-          {isAiPost ? (
-            <span className="post-editorial-pill is-ai">
-              <Sparkles size={12} aria-hidden /> {t("community.editorial.aiNews")}
+    <article className={cardClasses}>
+      {featured || isAiPost || postCategory ? (
+        <div className="post-editorial-rubric">
+          {featured ? (
+            <span className="post-rubric-tag is-lead">
+              <span className="post-rubric-square" aria-hidden="true" />
+              {t("community.editorial.leadStory")}
             </span>
+          ) : null}
+          {isAiPost ? (
+            <span className="post-rubric-tag is-digest">
+              <Newspaper size={13} aria-hidden="true" />
+              {t("community.editorial.aiNews")}
+            </span>
+          ) : null}
+          {postCategory && CategoryIcon ? (
+            onSelectCategory ? (
+              <button
+                type="button"
+                className={`post-category-tag is-${postCategory}`}
+                aria-label={t("community.filters.filterByCategory", { category: categoryLabel })}
+                onClick={() => onSelectCategory(postCategory)}
+              >
+                <CategoryIcon size={12} aria-hidden="true" />
+                <span>{categoryLabel}</span>
+              </button>
+            ) : (
+              <span className={`post-category-tag is-${postCategory}`}>
+                <CategoryIcon size={12} aria-hidden="true" />
+                <span>{categoryLabel}</span>
+              </span>
+            )
           ) : null}
         </div>
       ) : null}
+
       <header className="post-header">
-        <UserAvatar name={post.author.displayName} avatarUrl={post.author.avatarUrl} online={online} />
+        <UserAvatar
+          name={post.author.displayName}
+          avatarUrl={post.author.avatarUrl}
+          online={online}
+          size={isEditorialCard && !featured ? 34 : 38}
+        />
         <div className="post-byline">
           <strong>{post.author.displayName}</strong>
-          <small>{formatRelativeTime(post.createdAt, intlLocale) ?? t("community.post.justNow")}</small>
+          {!showFullContent ? (
+            <Link
+              className="post-timestamp-link"
+              href={detailHref}
+              aria-label={`${relativeTime} — ${post.author.displayName}`}
+            >
+              <time dateTime={post.createdAt}>{relativeTime}</time>
+            </Link>
+          ) : (
+            <small>
+              <time dateTime={post.createdAt}>{relativeTime}</time>
+            </small>
+          )}
         </div>
-        {showActionsMenu ? (
+        {showActionsMenu && hasMenuActions ? (
           <div className="post-menu-wrap" ref={postMenuRef}>
             <IconButton
               icon={EllipsisVertical}
@@ -311,12 +416,19 @@ function PostCardBase({
                       setEditing(true);
                     }}
                   >
-                    <Pencil size={16} aria-hidden /> {t("community.post.edit")}
+                    <Pencil size={16} aria-hidden="true" /> {t("community.post.edit")}
                   </button>
                 ) : null}
                 {canDelete ? (
-                  <button type="button" role="menuitem" onClick={() => { setShowPostMenu(false); void handleDelete(); }}>
-                    <Trash2 size={16} aria-hidden /> {t("community.post.delete")}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowPostMenu(false);
+                      void handleDelete();
+                    }}
+                  >
+                    <Trash2 size={16} aria-hidden="true" /> {t("community.post.delete")}
                   </button>
                 ) : null}
                 {!showFullContent ? (
@@ -325,26 +437,23 @@ function PostCardBase({
                     role="menuitem"
                     onClick={() => {
                       setShowPostMenu(false);
-                      router.push(`/community/posts/${encodeURIComponent(post.id)}`);
+                      router.push(detailHref);
                     }}
                   >
-                    <FileText size={16} aria-hidden /> {t("community.post.details")}
+                    <FileText size={16} aria-hidden="true" /> {t("community.post.details")}
                   </button>
                 ) : null}
-                <button type="button" role="menuitem" onClick={() => void handleShare()}>
-                  <Share2 size={16} aria-hidden /> {t("community.post.share")}
-                </button>
               </div>
             ) : null}
           </div>
         ) : null}
       </header>
+
       {!post.approved && !isAdmin && viewerId === post.author.id ? (
         <p className="post-pending-notice">{t("community.admin.pending")}</p>
       ) : null}
 
       {error ? <Alert tone="error">{error}</Alert> : null}
-      {shareNotice ? <Alert tone="success">{shareNotice}</Alert> : null}
       {editing ? (
         <form className="post-edit-form" onSubmit={(event) => void handleUpdate(event)}>
           <EmojiTextField
@@ -358,126 +467,151 @@ function PostCardBase({
           {postImages.length ? <small>{t("community.post.imageEditNotice")}</small> : null}
           <div className="post-edit-actions">
             <button type="button" className="ui-button ui-button-ghost ui-button-sm" onClick={() => setEditing(false)}>
-              <X size={15} aria-hidden /> {t("community.post.cancelEdit")}
+              <X size={15} aria-hidden="true" /> {t("community.post.cancelEdit")}
             </button>
             <button
               type="submit"
               className="ui-button ui-button-primary ui-button-sm"
               disabled={saving || (!draft.trim() && !postImages.length)}
             >
-              <Check size={15} aria-hidden /> {saving ? t("community.post.saving") : t("community.post.save")}
+              <Check size={15} aria-hidden="true" /> {saving ? t("community.post.saving") : t("community.post.save")}
             </button>
           </div>
         </form>
       ) : post.content ? (
-        <PostText
-          content={post.content}
-          expanded={postTextExpanded}
-          onExpandedChange={setPostTextExpanded}
-          showFullContent={showFullContent}
-        />
+        <div className="post-editorial-copy">
+          {editorial.headline ? (
+            <h2 className="post-editorial-headline">
+              {!showFullContent ? (
+                <Link className="post-editorial-headline-link" href={detailHref}>
+                  {editorial.headline}
+                </Link>
+              ) : (
+                editorial.headline
+              )}
+            </h2>
+          ) : null}
+          <PostText
+            content={editorial.body}
+            expanded={postTextExpanded}
+            onExpandedChange={setPostTextExpanded}
+            showFullContent={showFullContent}
+            className={editorial.headline ? "post-text post-editorial-deck" : "post-text"}
+          />
+        </div>
       ) : null}
 
       {postImages.length ? (
         <>
-          <div
-            className="post-image-gallery"
-            data-count={postImages.length}
-            data-orientation={imageOrientation}
-          >
-            {postImages.map((imageUrl, index) => (
-              <button
-                key={imageUrl}
-                ref={index === 0 ? imageTriggerRef : undefined}
-                className="post-image-button"
-                type="button"
-                aria-label={t("community.post.viewImage", { name: post.author.displayName })}
-                onClick={() => setImageViewerIndex(index)}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  className="post-image"
-                  src={imageUrl}
-                  alt=""
-                  loading="lazy"
-                  decoding="async"
-                  onLoad={(event) => {
-                    if (index === 0) {
-                      const image = event.currentTarget;
-                      setImageOrientation(image.naturalHeight > image.naturalWidth ? "portrait" : "landscape");
-                    }
-                  }}
-                />
-              </button>
-            ))}
-          </div>
-          {imageViewerIndex !== null && typeof document !== "undefined"
-            ? createPortal(
-                <div
-                  className="post-image-viewer-backdrop"
-                  role="dialog"
-                  aria-modal="true"
+          <div className="post-image-gallery-frame">
+            <div
+              className="post-image-gallery"
+              data-count={postImages.length}
+              data-orientation={imageOrientation}
+            >
+              {postImages.map((imageUrl, index) => (
+                <button
+                  key={imageUrl}
+                  ref={index === 0 ? imageTriggerRef : undefined}
+                  className="post-image-button"
+                  type="button"
                   aria-label={t("community.post.viewImage", { name: post.author.displayName })}
-                  onClick={() => {
-                    setImageViewerIndex(null);
-                    imageTriggerRef.current?.focus();
-                  }}
+                  onClick={() => setImageViewerIndex(index)}
                 >
-                  <button
-                    ref={imageCloseRef}
-                    type="button"
-                    className="post-image-viewer-close"
-                    aria-label={t("common.close")}
-                    title={t("common.close")}
-                    onClick={() => {
-                      setImageViewerIndex(null);
-                      imageTriggerRef.current?.focus();
-                    }}
-                  >
-                    <X size={20} aria-hidden />
-                  </button>
-                  {postImages.length > 1 ? (
-                    <>
-                      <button
-                        type="button"
-                        className="post-image-viewer-nav post-image-viewer-prev"
-                        aria-label={t("community.post.previousImage")}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setImageViewerIndex((index) =>
-                            index === null ? 0 : (index - 1 + postImages.length) % postImages.length,
-                          );
-                        }}
-                      >
-                        <ChevronLeft size={28} aria-hidden />
-                      </button>
-                      <button
-                        type="button"
-                        className="post-image-viewer-nav post-image-viewer-next"
-                        aria-label={t("community.post.nextImage")}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          setImageViewerIndex((index) => (index === null ? 0 : (index + 1) % postImages.length));
-                        }}
-                      >
-                        <ChevronRight size={28} aria-hidden />
-                      </button>
-                      <span className="post-image-viewer-count">
-                        {imageViewerIndex + 1} / {postImages.length}
-                      </span>
-                    </>
-                  ) : null}
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
-                    className="post-image-viewer"
-                    src={postImages[imageViewerIndex]}
-                    alt={t("community.post.imageAlt", { name: post.author.displayName })}
-                    onClick={(event) => event.stopPropagation()}
+                    className="post-image"
+                    src={imageUrl}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onLoad={(event) => {
+                      if (index === 0) {
+                        const image = event.currentTarget;
+                        setImageOrientation(image.naturalHeight > image.naturalWidth ? "portrait" : "landscape");
+                      }
+                    }}
                   />
-                </div>,
-                document.body,
-              )
-            : null}
+                </button>
+              ))}
+            </div>
+            {postImages.length > 1 ? (
+              <span className="post-gallery-count" aria-hidden="true">
+                <Images size={13} aria-hidden="true" />
+                {t("community.post.photoCount", { count: postImages.length })}
+              </span>
+            ) : null}
+          </div>
+          {imageViewerIndex !== null ? (
+            <dialog
+              ref={imageDialogRef}
+              className="post-image-dialog"
+              {...({ closedby: "any" } as Record<string, string>)}
+              aria-label={t("community.post.viewImage", { name: post.author.displayName })}
+              onClose={() => {
+                setImageViewerIndex(null);
+                imageTriggerRef.current?.focus();
+              }}
+              onKeyDown={(event) => {
+                if (postImages.length <= 1) return;
+                if (event.key === "ArrowRight") {
+                  event.preventDefault();
+                  setImageViewerIndex((index) => (index === null ? 0 : (index + 1) % postImages.length));
+                } else if (event.key === "ArrowLeft") {
+                  event.preventDefault();
+                  setImageViewerIndex((index) =>
+                    index === null ? 0 : (index - 1 + postImages.length) % postImages.length,
+                  );
+                }
+              }}
+            >
+              <div className="post-image-dialog-stage">
+                <button
+                  type="button"
+                  className="post-image-viewer-close"
+                  aria-label={t("common.close")}
+                  onClick={() => imageDialogRef.current?.close()}
+                >
+                  <X size={20} aria-hidden="true" />
+                </button>
+                {postImages.length > 1 ? (
+                  <>
+                    <button
+                      type="button"
+                      className="post-image-viewer-nav post-image-viewer-prev"
+                      aria-label={t("community.post.previousImage")}
+                      onClick={() =>
+                        setImageViewerIndex((index) =>
+                          index === null ? 0 : (index - 1 + postImages.length) % postImages.length,
+                        )
+                      }
+                    >
+                      <ChevronLeft size={28} aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      className="post-image-viewer-nav post-image-viewer-next"
+                      aria-label={t("community.post.nextImage")}
+                      onClick={() =>
+                        setImageViewerIndex((index) => (index === null ? 0 : (index + 1) % postImages.length))
+                      }
+                    >
+                      <ChevronRight size={28} aria-hidden="true" />
+                    </button>
+                    <span className="post-image-viewer-count">
+                      {imageViewerIndex + 1} / {postImages.length}
+                    </span>
+                  </>
+                ) : null}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  className="post-image-viewer"
+                  src={postImages[imageViewerIndex]}
+                  alt={t("community.post.imageAlt", { name: post.author.displayName })}
+                />
+              </div>
+            </dialog>
+          ) : null}
         </>
       ) : null}
       {!showFullContent && !editing && post.content && postTextExpanded ? (
@@ -493,20 +627,15 @@ function PostCardBase({
         <LinkPreviewCard preview={post.linkPreview} />
       ) : null}
 
-      {post.approved && (post.likeCount > 0 || post.commentCount > 0) ? (
-        <div className="post-stats">
-          <span>{post.likeCount > 0 ? t("community.post.likes", { count: post.likeCount }) : ""}</span>
-          <span>{post.commentCount > 0 ? t("community.post.comments", { count: post.commentCount }) : ""}</span>
-        </div>
-      ) : null}
-
       {post.approved ? (
         <footer className="post-actions">
           <LikeButton
             liked={post.likedByMe}
-            count={0}
+            count={post.likeCount}
             label={post.likedByMe ? t("community.post.unlike") : t("community.post.like")}
+            countAriaLabel={t("community.post.viewLikes", { count: post.likeCount })}
             onToggle={() => void toggleLike()}
+            onShowLikers={() => setShowLikers(true)}
           />
           <button
             type="button"
@@ -514,8 +643,18 @@ function PostCardBase({
             aria-expanded={showComments}
             onClick={() => setShowComments((open) => !open)}
           >
-            <MessageCircle size={18} aria-hidden />
+            <MessageCircle size={18} aria-hidden="true" />
             <span>{t("community.post.comment")}</span>
+            {post.commentCount > 0 ? <span className="post-action-count">{post.commentCount}</span> : null}
+          </button>
+          <button
+            type="button"
+            className={sharedToSlack ? "post-action shared" : "post-action"}
+            aria-haspopup="dialog"
+            onClick={handleOpenShareSlack}
+          >
+            {sharedToSlack ? <Check size={17} aria-hidden="true" /> : <Send size={16} aria-hidden="true" />}
+            <span>{sharedToSlack ? t("community.post.sharedSlack") : t("community.post.share")}</span>
           </button>
         </footer>
       ) : null}
@@ -526,6 +665,23 @@ function PostCardBase({
           commentCount={post.commentCount}
           loginNext={loginNext}
           onCountChange={(count) => onPatch(post.id, { commentCount: count })}
+        />
+      ) : null}
+
+      {showLikers ? (
+        <PostLikersDialog
+          postId={post.id}
+          likeCount={post.likeCount}
+          onClose={() => setShowLikers(false)}
+        />
+      ) : null}
+
+      {showShareSlack ? (
+        <PostShareSlackDialog
+          post={post}
+          sharerName={user?.displayName ?? t("feedback.anonymous")}
+          onShared={handleSharedToSlack}
+          onClose={() => setShowShareSlack(false)}
         />
       ) : null}
     </article>
