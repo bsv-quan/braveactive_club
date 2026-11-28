@@ -2047,6 +2047,274 @@ def _go_ai(state, difficulty):
     return _choose_near_best(scored_payloads, tolerance, rng)
 
 
+# ------------------------------ Caro (15x15) ------------------------------
+
+_CARO_SIZE = 15
+_CARO_AXES = ((0, 1), (1, 0), (1, 1), (1, -1))
+
+
+def _caro_base_state():
+    return {
+        "game_type": "caro",
+        "board": [["."] * _CARO_SIZE for _ in range(_CARO_SIZE)],
+        "turn": "x",
+        "to_move": "x",
+        "human": "x",
+        "ai": "o",
+        "result": "ongoing",
+        "winner": None,
+        "terminal": False,
+        "difficulty": None,
+        "last_move": None,
+        "winning_line": None,
+        "history": [],
+        "position_history": [],
+    }
+
+
+def _caro_winning_line(board, r, c, piece):
+    for dr, dc in _CARO_AXES:
+        line = [(r, c)]
+        nr, nc = r + dr, c + dc
+        while 0 <= nr < _CARO_SIZE and 0 <= nc < _CARO_SIZE and board[nr][nc] == piece:
+            line.append((nr, nc))
+            nr += dr
+            nc += dc
+        nr, nc = r - dr, c - dc
+        while 0 <= nr < _CARO_SIZE and 0 <= nc < _CARO_SIZE and board[nr][nc] == piece:
+            line.append((nr, nc))
+            nr -= dr
+            nc -= dc
+        if len(line) >= 5:
+            line.sort()
+            return [[lr, lc] for lr, lc in line]
+    return None
+
+
+def _caro_play_legal(state, move):
+    if not isinstance(move, dict) or "at" not in move:
+        raise ValueError("caro move must provide 'at' coordinates")
+    (r, c) = _coords(move, ("at",))[0]
+    if not _inside(r, c, _CARO_SIZE, _CARO_SIZE):
+        raise ValueError("caro move out of bounds")
+    board = state["board"]
+    if board[r][c] != ".":
+        raise ValueError("caro square is already occupied")
+
+    side = state["turn"]
+    piece = "X" if side == "x" else "O"
+    board[r][c] = piece
+    state["last_move"] = {"at": [r, c]}
+    state["history"].append({"side": side, "at": [r, c]})
+
+    win_line = _caro_winning_line(board, r, c, piece)
+    if win_line is not None:
+        state["winning_line"] = win_line
+        _terminal(state, winner=side, result=f"{side}_win")
+        return
+
+    if all(cell != "." for row in board for cell in row):
+        state["winning_line"] = None
+        _terminal(state, winner=None, result="draw")
+        return
+
+    next_side = "o" if side == "x" else "x"
+    state["turn"] = next_side
+    state["to_move"] = next_side
+    state["winning_line"] = None
+
+
+def _caro_candidates(board):
+    occupied = [(r, c) for r in range(_CARO_SIZE) for c in range(_CARO_SIZE) if board[r][c] != "."]
+    if not occupied:
+        return [(_CARO_SIZE // 2, _CARO_SIZE // 2)]
+    cand = set()
+    for r, c in occupied:
+        r0 = max(0, r - 2)
+        r1 = min(_CARO_SIZE - 1, r + 2)
+        c0 = max(0, c - 2)
+        c1 = min(_CARO_SIZE - 1, c + 2)
+        for nr in range(r0, r1 + 1):
+            for nc in range(c0, c1 + 1):
+                if board[nr][nc] == ".":
+                    cand.add((nr, nc))
+    return list(cand)
+
+
+def _caro_score_point(board, r, c, piece):
+    """Evaluate tactical strength of placing `piece` at empty square (r, c)."""
+    total = 14 - (abs(r - 7) + abs(c - 7))
+    open_threes = 0
+    closed_fours = 0
+
+    for dr, dc in _CARO_AXES:
+        # Count contiguous stones in positive and negative directions.
+        pos = 0
+        nr, nc = r + dr, c + dc
+        while 0 <= nr < _CARO_SIZE and 0 <= nc < _CARO_SIZE and board[nr][nc] == piece:
+            pos += 1
+            nr += dr
+            nc += dc
+        pos_open = 0 <= nr < _CARO_SIZE and 0 <= nc < _CARO_SIZE and board[nr][nc] == "."
+        # Check one-gap extension beyond open space (e.g. X_XX).
+        pos_gap = 0
+        if pos_open:
+            gr, gc = nr + dr, nc + dc
+            while 0 <= gr < _CARO_SIZE and 0 <= gc < _CARO_SIZE and board[gr][gc] == piece:
+                pos_gap += 1
+                gr += dr
+                gc += dc
+            pos_gap_open = 0 <= gr < _CARO_SIZE and 0 <= gc < _CARO_SIZE and board[gr][gc] == "."
+        else:
+            pos_gap_open = False
+
+        neg = 0
+        nr, nc = r - dr, c - dc
+        while 0 <= nr < _CARO_SIZE and 0 <= nc < _CARO_SIZE and board[nr][nc] == piece:
+            neg += 1
+            nr -= dr
+            nc -= dc
+        neg_open = 0 <= nr < _CARO_SIZE and 0 <= nc < _CARO_SIZE and board[nr][nc] == "."
+        neg_gap = 0
+        if neg_open:
+            gr, gc = nr - dr, nc - dc
+            while 0 <= gr < _CARO_SIZE and 0 <= gc < _CARO_SIZE and board[gr][gc] == piece:
+                neg_gap += 1
+                gr -= dr
+                gc -= dc
+            neg_gap_open = 0 <= gr < _CARO_SIZE and 0 <= gc < _CARO_SIZE and board[gr][gc] == "."
+        else:
+            neg_gap_open = False
+
+        run = 1 + pos + neg
+        open_ends = int(pos_open) + int(neg_open)
+
+        if run >= 5:
+            return 1_000_000
+
+        if run == 4:
+            if open_ends == 2:
+                total += 140_000
+            elif open_ends == 1:
+                total += 18_000
+                closed_fours += 1
+        elif run == 3:
+            if open_ends == 2:
+                total += 14_000
+                open_threes += 1
+            elif open_ends == 1:
+                total += 1_400
+        elif run == 2:
+            if open_ends == 2:
+                total += 450
+            elif open_ends == 1:
+                total += 70
+        elif run == 1 and open_ends == 2:
+            total += 18
+
+        # Split-pattern bonus (broken four / broken three).
+        if pos_gap > 0 and run + pos_gap >= 4:
+            total += 12_000
+            closed_fours += 1
+        elif pos_gap > 0 and run + pos_gap == 3 and neg_open and pos_gap_open:
+            total += 6_500
+            open_threes += 1
+
+        if neg_gap > 0 and run + neg_gap >= 4:
+            total += 12_000
+            closed_fours += 1
+        elif neg_gap > 0 and run + neg_gap == 3 and pos_open and neg_gap_open:
+            total += 6_500
+            open_threes += 1
+
+    # Fork bonuses (double-three, four-three, double-four).
+    if closed_fours >= 2:
+        total += 110_000
+    elif closed_fours >= 1 and open_threes >= 1:
+        total += 95_000
+    elif open_threes >= 2:
+        total += 65_000
+
+    return total
+
+
+def _caro_rank_candidates(board, my_piece, opp_piece):
+    cands = _caro_candidates(board)
+    scored = []
+    for r, c in cands:
+        atk = _caro_score_point(board, r, c, my_piece)
+        dfd = _caro_score_point(board, r, c, opp_piece)
+        if atk >= 1_000_000:
+            return [(r, c, 10_000_000, atk, dfd)]
+        score = int(atk * 1.12) + dfd
+        scored.append((r, c, score, atk, dfd))
+    scored.sort(key=lambda item: item[2], reverse=True)
+    return scored
+
+
+def _caro_ai(state, difficulty):
+    board = state["board"]
+    ai_piece = "O" if state["ai"] == "o" else "X"
+    human_piece = "X" if ai_piece == "O" else "O"
+    rng = random.Random()
+
+    ranked = _caro_rank_candidates(board, ai_piece, human_piece)
+    if not ranked:
+        raise ValueError("no legal caro moves")
+
+    # Immediate win for AI.
+    if ranked[0][3] >= 1_000_000:
+        return {"at": [ranked[0][0], ranked[0][1]]}
+
+    # Immediate block if human has a 5-in-a-row threat.
+    urgent_blocks = [item for item in ranked if item[4] >= 1_000_000]
+    if urgent_blocks:
+        return {"at": [urgent_blocks[0][0], urgent_blocks[0][1]]}
+
+    if difficulty == "easy":
+        pool = ranked[: min(4, len(ranked))]
+        weights = [max(1, item[2]) for item in pool]
+        chosen = rng.choices(pool, weights=weights, k=1)[0]
+        return {"at": [chosen[0], chosen[1]]}
+
+    if difficulty == "medium":
+        top_score = ranked[0][2]
+        near = [item for item in ranked[:3] if item[2] >= top_score * 0.94]
+        chosen = rng.choice(near)
+        return {"at": [chosen[0], chosen[1]]}
+
+    # Hard: 2-ply tactical lookahead across top candidate moves.
+    shortlist = ranked[: min(10, len(ranked))]
+    best_move = (shortlist[0][0], shortlist[0][1])
+    best_val = -10_000_000
+
+    for r, c, base_score, atk, _ in shortlist:
+        if atk >= 140_000:
+            return {"at": [r, c]}
+        board[r][c] = ai_piece
+        opp_ranked = _caro_rank_candidates(board, human_piece, ai_piece)
+        if not opp_ranked:
+            val = base_score
+        else:
+            # Human's strongest reply after AI plays (r, c).
+            orow, ocol, _, opp_atk, opp_dfd = opp_ranked[0]
+            if opp_atk >= 1_000_000:
+                val = -900_000
+            else:
+                board[orow][ocol] = human_piece
+                ai_follow = _caro_rank_candidates(board, ai_piece, human_piece)
+                follow_atk = ai_follow[0][3] if ai_follow else 0
+                follow_dfd = ai_follow[0][4] if ai_follow else 0
+                board[orow][ocol] = "."
+                val = base_score + int(follow_atk * 0.45) - int(opp_atk * 0.72) - int(follow_dfd * 0.25) + int(opp_dfd * 0.1)
+        board[r][c] = "."
+        if val > best_val:
+            best_val = val
+            best_move = (r, c)
+
+    return {"at": [best_move[0], best_move[1]]}
+
+
 # --------------------------- Public API ---------------------------
 
 
@@ -2063,7 +2331,7 @@ def _none_to_dot(state):
 
 
 def _validate_game_type(game_type):
-    if game_type not in ("chess","xiangqi","go"):
+    if game_type not in ("chess","xiangqi","go","caro"):
         raise ValueError("unknown game_type")
 
 
@@ -2075,11 +2343,12 @@ def _validate_state(game_type,state):
     if state.get("terminal") is not False or state.get("result") != "ongoing":
         raise ValueError("game is already terminal")
 
-    dimensions = {"chess": (8, 8), "xiangqi": (10, 9), "go": (9, 9)}
+    dimensions = {"chess": (8, 8), "xiangqi": (10, 9), "go": (9, 9), "caro": (15, 15)}
     pieces = {
         "chess": set(".prnbqkPRNBQK"),
         "xiangqi": set(".rheakcpRHEAKCP"),
         "go": {".", "B", "W"},
+        "caro": {".", "X", "O"},
     }
     rows, columns = dimensions[game_type]
     board = state.get("board")
@@ -2099,6 +2368,7 @@ def _validate_state(game_type,state):
         "chess": ("white", "black", {"white", "black"}),
         "xiangqi": ("red", "black", {"red", "black"}),
         "go": ("black", "white", {"black", "white"}),
+        "caro": ("x", "o", {"x", "o"}),
     }[game_type]
     if (
         state.get("human") != human
@@ -2151,6 +2421,7 @@ def create_game(game_type):
     _validate_game_type(game_type)
     if game_type=="chess":state=_chess_base_state()
     elif game_type=="xiangqi":state=_x_base_state()
+    elif game_type=="caro":state=_caro_base_state()
     else:state=_go_base_state()
     return _none_to_dot(state)
 
@@ -2175,6 +2446,8 @@ def apply_player_move(game_type,state,move):
         legal=_x_legal(out)
         if (a,b) not in legal:raise ValueError("illegal xiangqi move")
         _x_make(out,a,b)
+    elif game_type=="caro":
+        _caro_play_legal(out,move)
     else:
         _go_play_legal(out,move)
     return _none_to_dot(out)
@@ -2192,6 +2465,8 @@ def forfeit_game(game_type, state):
         out.update(result="black_win", winner="black", terminal=True)
     elif game_type == "xiangqi":
         out.update(result="black_win", winner="black", terminal=True)
+    elif game_type == "caro":
+        out.update(result="o_win", winner="o", terminal=True)
     else:
         out.update(result="white_win", winner="white", terminal=True)
     out["forfeit"] = True
@@ -2218,6 +2493,9 @@ def apply_ai_move(game_type,state,difficulty):
     elif game_type=="xiangqi":
         m=_x_ai(out,difficulty)
         _x_make(out,m[0],m[1])
+    elif game_type=="caro":
+        m=_caro_ai(out,difficulty)
+        _caro_play_legal(out,m)
     else:
         m = _go_ai(out, difficulty)
         try:

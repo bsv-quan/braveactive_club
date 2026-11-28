@@ -17,9 +17,11 @@ import {
   type GameDifficulty,
 } from "@/lib/api/community";
 import {
+  CaroMark,
   ChessPiece,
   describePiece,
   getBoardMoveCoordinates,
+  getCaroWinningSet,
   getGoMoveCoordinate,
   getTurnMessageKey,
   isHumanSide,
@@ -94,7 +96,8 @@ export function BoardGameArena({
     gameType === "chess" || gameType === "xiangqi"
       ? getBoardMoveCoordinates(game?.state.last_move)
       : null;
-  const goLastMove = gameType === "go" ? getGoMoveCoordinate(game?.state.last_move) : null;
+  const goLastMove = gameType === "go" || gameType === "caro" ? getGoMoveCoordinate(game?.state.last_move) : null;
+  const caroWinningSet = gameType === "caro" ? getCaroWinningSet(game?.state.winning_line) : null;
   const resumeError = t("community.games.board.resumeError");
   const grid = game?.state.board ?? [];
   const columns = grid[0]?.length ?? 0;
@@ -102,7 +105,8 @@ export function BoardGameArena({
     game?.state.result.endsWith("_win") &&
       ((gameType === "go" && game.state.result === "black_win") ||
         (gameType === "xiangqi" && game.state.result === "red_win") ||
-        (gameType === "chess" && game.state.result === "white_win")),
+        (gameType === "chess" && game.state.result === "white_win") ||
+        (gameType === "caro" && game.state.result === "x_win")),
   );
   const finished = Boolean(game && game.state.result !== "ongoing");
 
@@ -110,7 +114,7 @@ export function BoardGameArena({
     onActiveChange(Boolean(game && !finished));
   }, [game, finished, onActiveChange]);
 
-  const inCheck = Boolean(game && !finished && gameType !== "go" && game.state.check);
+  const inCheck = Boolean(game && !finished && (gameType === "chess" || gameType === "xiangqi") && game.state.check);
   const checkedKingChar = inCheck && game ? (game.state.turn === game.state.human ? "K" : "k") : null;
 
   useEffect(() => {
@@ -359,7 +363,7 @@ export function BoardGameArena({
     if (!game || isLoading || finished || botTurnError || game.state.turn !== game.state.human) return;
     const target = game.state.board[row]?.[column] ?? "";
     const targetOccupied = Boolean(target && target !== "." && target !== "-");
-    if (gameType === "go") {
+    if (gameType === "go" || gameType === "caro") {
       if (!targetOccupied) void sendMove({ at: [row, column] });
       else setError(t("community.games.board.illegalMove"));
       return;
@@ -531,10 +535,14 @@ export function BoardGameArena({
                     const isGoLastMove = Boolean(
                       goLastMove && goLastMove[0] === rowIndex && goLastMove[1] === columnIndex && isOccupied,
                     );
+                    const isCaroWinCell = Boolean(
+                      caroWinningSet && caroWinningSet.has(`${rowIndex}-${columnIndex}`),
+                    );
+                    const isCaroCenter = gameType === "caro" && rowIndex === 7 && columnIndex === 7;
                     const isKingInCheck = Boolean(checkedKingChar && piece === checkedKingChar);
                     const squareTone = (rowIndex + columnIndex) % 2 === 0 ? " square-light" : " square-dark";
                     const sideClass =
-                      isOccupied && gameType !== "go"
+                      isOccupied && gameType !== "go" && gameType !== "caro"
                         ? piece === piece.toUpperCase()
                           ? " piece-light-side"
                           : " piece-dark-side"
@@ -550,7 +558,9 @@ export function BoardGameArena({
                           isLastMovedPiece ? " piece-move-active piece-move-target" : ""
                         }${isLastMoveOrigin ? " piece-move-origin" : ""}${
                           isKingInCheck ? " in-check-king" : ""
-                        }${isGoLastMove ? " go-last-move" : ""}${
+                        }${isGoLastMove ? (gameType === "caro" ? " caro-last-move" : " go-last-move") : ""}${
+                          isCaroWinCell ? " caro-win-cell" : ""
+                        }${isCaroCenter && !isOccupied ? " caro-center-cell" : ""}${
                           gameType === "go" && isOccupied ? ` stone-${piece.toLowerCase()}` : ""
                         }`}
                         aria-label={t("community.games.board.cell", {
@@ -604,6 +614,8 @@ export function BoardGameArena({
                               <ChessPiece piece={piece} />
                             ) : gameType === "xiangqi" ? (
                               <XiangqiPiece piece={piece} />
+                            ) : gameType === "caro" ? (
+                              <CaroMark piece={piece} />
                             ) : (
                               pieceSymbol(piece)
                             )}

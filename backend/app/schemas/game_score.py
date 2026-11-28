@@ -9,8 +9,8 @@ from pydantic import Field, model_validator
 from app.schemas.base import CamelModel
 
 LeaderboardPeriod = Literal["week", "month", "all"]
-BoardGameType = Literal["chess", "xiangqi", "go"]
-GameType = Literal["all", "word_search", "strategy", "chess", "xiangqi", "go", "dev_vs_ai"]
+BoardGameType = Literal["chess", "xiangqi", "go", "caro"]
+GameType = Literal["all", "word_search", "strategy", "chess", "xiangqi", "go", "caro", "sudoku", "dev_vs_ai"]
 ArcadeRankTier = Literal["rookie", "challenger", "master", "grandmaster", "legend"]
 
 
@@ -19,12 +19,12 @@ class BoardGameStartRequest(CamelModel):
 
 
 class BoardGameMove(CamelModel):
-    from_position: tuple[Annotated[int, Field(ge=0, le=9)], Annotated[int, Field(ge=0, le=9)]] | None = Field(
+    from_position: tuple[Annotated[int, Field(ge=0, le=14)], Annotated[int, Field(ge=0, le=14)]] | None = Field(
         default=None,
         alias="from",
     )
-    to: tuple[Annotated[int, Field(ge=0, le=9)], Annotated[int, Field(ge=0, le=9)]] | None = None
-    at: tuple[Annotated[int, Field(ge=0, le=9)], Annotated[int, Field(ge=0, le=9)]] | None = None
+    to: tuple[Annotated[int, Field(ge=0, le=14)], Annotated[int, Field(ge=0, le=14)]] | None = None
+    at: tuple[Annotated[int, Field(ge=0, le=14)], Annotated[int, Field(ge=0, le=14)]] | None = None
     pass_turn: bool = Field(default=False, alias="pass")
     promotion: Literal["q", "r", "b", "n"] | None = None
 
@@ -137,6 +137,57 @@ class StrategyAnswerResult(CamelModel):
     score_awarded: int
     score: int
     complete: bool
+
+
+class SudokuStartRequest(CamelModel):
+    difficulty: Literal["easy", "medium", "hard"]
+
+
+class SudokuSyncRequest(CamelModel):
+    board: list[list[Annotated[int, Field(ge=0, le=9)]]] = Field(min_length=9, max_length=9)
+
+    @model_validator(mode="after")
+    def validate_square_grid(self):
+        if any(len(row) != 9 for row in self.board):
+            raise ValueError("Sudoku board must be a 9x9 grid.")
+        return self
+
+
+class SudokuHintRequest(CamelModel):
+    row: Annotated[int, Field(ge=0, le=8)] | None = None
+    col: Annotated[int, Field(ge=0, le=8)] | None = None
+    board: list[list[Annotated[int, Field(ge=0, le=9)]]] | None = Field(default=None, min_length=9, max_length=9)
+
+    @model_validator(mode="after")
+    def validate_optional_board(self):
+        if self.board is not None and any(len(r) != 9 for r in self.board):
+            raise ValueError("Sudoku board must be a 9x9 grid.")
+        return self
+
+
+class SudokuStateResponse(CamelModel):
+    round_id: UUID | None
+    difficulty: Literal["easy", "medium", "hard"]
+    puzzle: list[list[int]]
+    board: list[list[int]]
+    hinted_cells: list[list[int]] = Field(default_factory=list)
+    solution: list[list[int]] | None = None
+    completed: bool
+    score: int
+    score_awarded: int
+
+
+class SudokuHintResponse(CamelModel):
+    row: int | None
+    col: int | None
+    value: int | None
+    board: list[list[int]]
+    hinted_cells: list[list[int]] = Field(default_factory=list)
+    completed: bool
+    score: int
+    score_awarded: int
+    free_hints_remaining: int
+    total_points: int = 0
 
 
 class LeaderboardEntry(CamelModel):

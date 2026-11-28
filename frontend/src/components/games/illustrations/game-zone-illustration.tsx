@@ -25,6 +25,10 @@ export function GameZoneIllustration({
       return <XiangqiScene className={className} />;
     case "go":
       return <GoScene className={className} />;
+    case "caro":
+      return <CaroScene className={className} />;
+    case "sudoku":
+      return <SudokuScene className={className} />;
   }
 }
 
@@ -482,6 +486,271 @@ function GoScene({ className }: { className?: string }) {
           ) : null}
         </g>
       ))}
+    </svg>
+  );
+}
+
+function CaroScene({ className }: { className?: string }) {
+  const uid = useId();
+  const cols = [44, 78, 112, 146, 180, 214, 248, 282, 316];
+  const rows = [24, 54, 84, 114, 144, 174];
+  const xCells: [number, number][] = [
+    [1, 4],
+    [2, 3],
+    [3, 2],
+    [4, 1],
+    [5, 0],
+    [2, 1],
+    [5, 3],
+  ];
+  const oCells: [number, number][] = [
+    [1, 2],
+    [2, 2],
+    [3, 1],
+    [4, 2],
+    [3, 4],
+    [4, 3],
+    [6, 1],
+  ];
+  return (
+    <svg className={className} viewBox="0 0 360 186" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={`caro-bg-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#fff8f5" />
+          <stop offset="0.55" stopColor="#fef2f2" />
+          <stop offset="1" stopColor="#eff6ff" />
+        </linearGradient>
+        <linearGradient id={`caro-strike-${uid}`} x1="0" y1="1" x2="1" y2="0">
+          <stop offset="0" stopColor="#2563eb" />
+          <stop offset="1" stopColor="#0ea5e9" />
+        </linearGradient>
+      </defs>
+
+      <rect width="360" height="186" rx="14" fill={`url(#caro-bg-${uid})`} />
+
+      {/* Notebook Sheet Card */}
+      <rect x="26" y="12" width="308" height="162" rx="12" fill="#ffffff" stroke="#e2e8f0" strokeWidth="1.5" />
+      <line x1="56" y1="12" x2="56" y2="174" stroke="#fda4af" strokeOpacity="0.55" strokeWidth="1.5" />
+
+      {/* Graph Grid Lines */}
+      <g stroke="#cbd5e1" strokeOpacity="0.65" strokeWidth="1">
+        {cols.map((x) => (
+          <line key={`cx-${x}`} x1={x} y1="14" x2={x} y2="172" />
+        ))}
+        {rows.map((y) => (
+          <line key={`cy-${y}`} x1="28" y1={y} x2="332" y2={y} />
+        ))}
+      </g>
+
+      {/* Winning 5-in-a-row Diagonal Glow */}
+      <line
+        x1="88"
+        y1="158"
+        x2="238"
+        y2="38"
+        stroke={`url(#caro-strike-${uid})`}
+        strokeWidth="12"
+        strokeLinecap="round"
+        strokeOpacity="0.18"
+      />
+      <line
+        x1="88"
+        y1="158"
+        x2="238"
+        y2="38"
+        stroke={`url(#caro-strike-${uid})`}
+        strokeWidth="3.5"
+        strokeLinecap="round"
+        strokeDasharray="6 6"
+      />
+
+      {/* O Marks (Coral Red) */}
+      {oCells.map(([c, r]) => {
+        const cx = 61 + c * 34;
+        const cy = 39 + r * 30;
+        return (
+          <circle
+            key={`o-${c}-${r}`}
+            cx={cx}
+            cy={cy}
+            r="9.5"
+            fill="none"
+            stroke="#e11d48"
+            strokeWidth="3.2"
+          />
+        );
+      })}
+
+      {/* X Marks (Cobalt Blue) */}
+      {xCells.map(([c, r], idx) => {
+        const cx = 61 + c * 34;
+        const cy = 39 + r * 30;
+        const isWin = idx < 5;
+        return (
+          <g key={`x-${c}-${r}`} transform={`translate(${cx} ${cy})`}>
+            {isWin ? <circle r="13" fill="#3b82f6" fillOpacity="0.14" /> : null}
+            <path
+              d="M-8.5 -8.5 L8.5 8.5 M8.5 -8.5 L-8.5 8.5"
+              stroke={isWin ? "#1d4ed8" : "#3b82f6"}
+              strokeWidth="3.4"
+              strokeLinecap="round"
+            />
+          </g>
+        );
+      })}
+
+      {/* Corner 5-IN-A-ROW Badge */}
+      <g transform="translate(248 134)">
+        <rect width="74" height="26" rx="8" fill="#0f172a" />
+        <text x="37" y="16.5" textAnchor="middle" fill="#38bdf8" fontSize="9.5" fontWeight="900" fontFamily="monospace">
+          5 IN A ROW
+        </text>
+      </g>
+    </svg>
+  );
+}
+
+function SudokuScene({ className }: { className?: string }) {
+  const uid = useId();
+  const miniGrid = [
+    ["5", "3", "", "6", "7", "8"],
+    ["6", "", "2", "1", "9", "5"],
+    ["", "9", "8", "3", "", "2"],
+    ["8", "5", "9", "7", "6", "1"],
+  ];
+  return (
+    <svg className={className} viewBox="0 0 360 186" aria-hidden="true" focusable="false">
+      <defs>
+        <linearGradient id={`sdk-bg-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#1e1b4b" />
+          <stop offset="0.55" stopColor="#312e81" />
+          <stop offset="1" stopColor="#1e293b" />
+        </linearGradient>
+        <linearGradient id={`sdk-glow-${uid}`} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="#6366f1" />
+          <stop offset="1" stopColor="#38bdf8" />
+        </linearGradient>
+      </defs>
+
+      <rect width="360" height="186" rx="14" fill={`url(#sdk-bg-${uid})`} />
+      <circle cx="322" cy="30" r="56" fill="#6366f1" fillOpacity="0.2" />
+      <circle cx="38" cy="166" r="44" fill="#38bdf8" fillOpacity="0.14" />
+
+      {/* Main 6x4 Sudoku Board Preview */}
+      <g transform="translate(24 19)">
+        <rect width="204" height="148" rx="12" fill="#f8fafc" stroke="#c7d2fe" strokeWidth="1.5" />
+
+        {/* Highlighted 3x3 Block Backdrop */}
+        <rect x="4" y="4" width="98" height="106" rx="8" fill="#e0e7ff" fillOpacity="0.65" />
+
+        {/* Active Focus Cell (row 1, col 1) */}
+        <rect
+          x="38"
+          y="40"
+          width="30"
+          height="32"
+          rx="6"
+          fill={`url(#sdk-glow-${uid})`}
+        />
+
+        {/* Thin Cell Lines */}
+        <g stroke="#cbd5e1" strokeWidth="1">
+          <line x1="36" y1="4" x2="36" y2="144" />
+          <line x1="70" y1="4" x2="70" y2="144" />
+          <line x1="136" y1="4" x2="136" y2="144" />
+          <line x1="170" y1="4" x2="170" y2="144" />
+          <line x1="4" y1="38" x2="200" y2="38" />
+          <line x1="4" y1="74" x2="200" y2="74" />
+        </g>
+
+        {/* Bold 3x3 Subgrid Divider */}
+        <line x1="102" y1="4" x2="102" y2="144" stroke="#312e81" strokeWidth="2.4" />
+        <line x1="4" y1="110" x2="200" y2="110" stroke="#312e81" strokeWidth="2.4" />
+
+        {/* Digits */}
+        {miniGrid.map((row, rIdx) =>
+          row.map((digit, cIdx) => {
+            const x = 19 + cIdx * 33;
+            const y = 26 + rIdx * 35;
+            if (rIdx === 1 && cIdx === 1) {
+              return (
+                <text
+                  key={`d-${rIdx}-${cIdx}`}
+                  x={x}
+                  y={y}
+                  textAnchor="middle"
+                  fill="#ffffff"
+                  fontSize="16"
+                  fontWeight="900"
+                  fontFamily="Manrope, system-ui, sans-serif"
+                >
+                  7
+                </text>
+              );
+            }
+            if (!digit) {
+              return (
+                <g key={`n-${rIdx}-${cIdx}`} fill="#6366f1" fontSize="7.5" fontWeight="700" fontFamily="monospace">
+                  <text x={x - 7} y={y - 6}>1</text>
+                  <text x={x + 4} y={y - 6}>4</text>
+                  <text x={x - 7} y={y + 4}>9</text>
+                </g>
+              );
+            }
+            const isPlayerDigit = (rIdx === 0 && cIdx === 5) || (rIdx === 3 && cIdx === 4);
+            return (
+              <text
+                key={`d-${rIdx}-${cIdx}`}
+                x={x}
+                y={y}
+                textAnchor="middle"
+                fill={isPlayerDigit ? "#4f46e5" : "#0f172a"}
+                fontSize="14.5"
+                fontWeight="800"
+                fontFamily="Manrope, system-ui, sans-serif"
+              >
+                {digit}
+              </text>
+            );
+          }),
+        )}
+      </g>
+
+      {/* Right Numpad Card */}
+      <g transform="translate(242 28)">
+        <rect width="94" height="130" rx="12" fill="#0f172acc" stroke="#818cf866" />
+        <text x="47" y="21" textAnchor="middle" fill="#a5b4fc" fontSize="9" fontWeight="800" letterSpacing="0.8">
+          9 × 9 LOGIC
+        </text>
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num, idx) => {
+          const col = idx % 3;
+          const row = Math.floor(idx / 3);
+          const x = 11 + col * 25;
+          const y = 32 + row * 28;
+          const active = num === 7;
+          return (
+            <g key={num} transform={`translate(${x} ${y})`}>
+              <rect
+                width="22"
+                height="22"
+                rx="6"
+                fill={active ? "#6366f1" : "#1e293b"}
+                stroke={active ? "#a5b4fc" : "#334155"}
+              />
+              <text
+                x="11"
+                y="15"
+                textAnchor="middle"
+                fill={active ? "#ffffff" : "#cbd5e1"}
+                fontSize="11"
+                fontWeight="800"
+              >
+                {num}
+              </text>
+            </g>
+          );
+        })}
+      </g>
     </svg>
   );
 }

@@ -373,3 +373,71 @@ def test_go_hard_captures_stone_in_atari_and_is_fast():
     assert moved["last_move"] == {"at": [4, 5]}
     assert moved["board"][4][4] == "."
     assert elapsed < 1.2
+
+
+def test_caro_initial_state_and_five_in_a_row_wins():
+    state = create_game("caro")
+    assert len(state["board"]) == 15
+    assert all(len(row) == 15 for row in state["board"])
+    assert state["turn"] == "x"
+
+    # Place 4 X stones diagonally and trigger winning 5th stone
+    for idx in range(4):
+        state["board"][5 + idx][5 + idx] = "X"
+    moved = apply_player_move("caro", state, {"at": [9, 9]})
+    assert moved["terminal"] is True
+    assert moved["winner"] == "x"
+    assert moved["result"] == "x_win"
+    assert moved["winning_line"] == [[5, 5], [6, 6], [7, 7], [8, 8], [9, 9]]
+
+    # Occupied square is rejected
+    fresh = create_game("caro")
+    fresh = apply_player_move("caro", fresh, {"at": [7, 7]})
+    fresh["turn"] = "x"
+    fresh["to_move"] = "x"
+    with pytest.raises(ValueError):
+        apply_player_move("caro", fresh, {"at": [7, 7]})
+
+
+@pytest.mark.parametrize("difficulty", ["easy", "medium", "hard"])
+def test_caro_ai_blocks_and_takes_winning_five(difficulty):
+    import time
+
+    # 1. AI takes immediate 5-in-a-row win
+    win_state = create_game("caro")
+    for c in range(4, 8):
+        win_state["board"][7][c] = "O"
+    win_state["board"][7][3] = "X"  # Block left side so only (7, 8) wins
+    win_state["turn"] = "o"
+    win_state["to_move"] = "o"
+
+    t0 = time.perf_counter()
+    won = apply_ai_move("caro", win_state, difficulty)
+    assert won["terminal"] is True
+    assert won["winner"] == "o"
+    assert won["last_move"] == {"at": [7, 8]}
+    assert time.perf_counter() - t0 < 0.8
+
+    # 2. AI blocks human immediate 5-in-a-row threat
+    block_state = create_game("caro")
+    for r in range(3, 7):
+        block_state["board"][r][7] = "X"
+    block_state["board"][2][7] = "O"  # Block top so only (7, 7) stops human
+    block_state["turn"] = "o"
+    block_state["to_move"] = "o"
+
+    blocked = apply_ai_move("caro", block_state, difficulty)
+    assert blocked["terminal"] is False
+    assert blocked["last_move"] == {"at": [7, 7]}
+
+
+@pytest.mark.parametrize("difficulty", ["easy", "medium", "hard"])
+def test_sudoku_generator_produces_unique_solvable_puzzles(difficulty):
+    from app.services import sudoku
+
+    puzzle, solution = sudoku.generate_sudoku(difficulty, seed=42)
+    assert sudoku.is_solved_sudoku(solution)
+    assert sudoku.respects_givens(solution, puzzle)
+    assert sudoku.count_solutions(puzzle, limit=2) == 1
+    clues = sum(1 for row in puzzle for v in row if v != 0)
+    assert 24 <= clues <= 45

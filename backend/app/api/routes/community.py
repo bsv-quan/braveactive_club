@@ -47,6 +47,11 @@ from app.schemas.game_score import (
     LeaderboardPeriod,
     StrategyAnswerRequest,
     StrategyAnswerResult,
+    SudokuHintRequest,
+    SudokuHintResponse,
+    SudokuStartRequest,
+    SudokuStateResponse,
+    SudokuSyncRequest,
     WordSearchGuessRequest,
     WordSearchGuessResult,
     WordSearchHintResult,
@@ -275,6 +280,60 @@ async def complete_dev_vs_ai_round(
         body.stars_earned,
         body.endless_wave,
     )
+
+
+@router.post(
+    "/games/sudoku/start",
+    response_model=SudokuStateResponse,
+    dependencies=[Depends(rate_limit("sudoku-start", 30, 3600))],
+)
+async def start_sudoku_game(
+    body: SudokuStartRequest,
+    db: DbSession,
+    user: OptionalUser,
+):
+    return await game_scores.start_sudoku_game(db, user, body.difficulty)
+
+
+@router.get(
+    "/games/sudoku/active",
+    response_model=SudokuStateResponse | None,
+)
+async def get_active_sudoku_game(db: DbSession, user: CurrentUser):
+    return await game_scores.get_active_sudoku_game(db, user)
+
+
+@router.delete("/games/sudoku/active")
+async def abandon_active_sudoku_game(db: DbSession, user: CurrentUser):
+    await game_scores.abandon_active_sudoku_game(db, user)
+    return {"ok": True}
+
+
+@router.post(
+    "/games/sudoku/{round_id}/sync",
+    response_model=SudokuStateResponse,
+    dependencies=[Depends(rate_limit("sudoku-sync", 600, 3600))],
+)
+async def sync_sudoku_board(
+    round_id: uuid.UUID,
+    body: SudokuSyncRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    return await game_scores.sync_sudoku_board(db, user, round_id, body.board)
+
+
+@router.post(
+    "/games/sudoku/{round_id}/hint",
+    response_model=SudokuHintResponse,
+)
+async def hint_sudoku_cell(
+    round_id: uuid.UUID,
+    body: SudokuHintRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    return await game_scores.use_sudoku_hint(db, user, round_id, body.row, body.col, body.board)
 
 
 @router.get("/games/achievements", response_model=GameAchievementsOut)

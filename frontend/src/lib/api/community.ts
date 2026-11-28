@@ -66,9 +66,9 @@ export type WordSearchPuzzle = {
 };
 export type WordSearchDifficulty = "easy" | "medium" | "hard";
 export type GameLeaderboardPeriod = "week" | "month" | "all";
-export type GameType = "word_search" | "chess" | "xiangqi" | "go" | "dev_vs_ai";
+export type GameType = "word_search" | "chess" | "xiangqi" | "go" | "caro" | "sudoku" | "dev_vs_ai";
 export type LeaderboardScope = "all" | GameType;
-export type BoardGameApiType = "chess" | "xiangqi" | "go";
+export type BoardGameApiType = "chess" | "xiangqi" | "go" | "caro";
 export type GameDifficulty = "easy" | "medium" | "hard";
 export type ArcadeRankTier = "rookie" | "challenger" | "master" | "grandmaster" | "legend";
 export type GameLeaderboard = {
@@ -143,8 +143,9 @@ export type GameAchievements = {
 export type BoardGameState = {
   board: string[][];
   turn: string;
-  result: "ongoing" | "white_win" | "black_win" | "red_win" | "draw";
+  result: "ongoing" | "white_win" | "black_win" | "red_win" | "x_win" | "o_win" | "draw";
   last_move?: Record<string, unknown> | null;
+  winning_line?: [number, number][] | null;
   [key: string]: unknown;
 };
 export type BoardMove = {
@@ -159,6 +160,29 @@ export type BoardGameResponse = {
   state: BoardGameState;
   score: number;
   scoreAwarded: number;
+};
+export type SudokuStateResponse = {
+  roundId: string | null;
+  difficulty: GameDifficulty;
+  puzzle: number[][];
+  board: number[][];
+  hintedCells: [number, number][];
+  solution?: number[][] | null;
+  completed: boolean;
+  score: number;
+  scoreAwarded: number;
+};
+export type SudokuHintResponse = {
+  row: number | null;
+  col: number | null;
+  value: number | null;
+  board: number[][];
+  hintedCells: [number, number][];
+  completed: boolean;
+  score: number;
+  scoreAwarded: number;
+  freeHintsRemaining: number;
+  totalPoints: number;
 };
 export type PostLiker = {
   id: string;
@@ -336,6 +360,25 @@ export const communityApi = {
     apiJson<BoardGameResponse>(`/api/games/board/${gameType}/bot-turn`, {
       method: "POST",
       json: { difficulty, roundId, state: roundId ? undefined : state },
+    }),
+  startSudoku: (difficulty: GameDifficulty) =>
+    apiJson<SudokuStateResponse>("/api/games/sudoku/start", {
+      method: "POST",
+      json: { difficulty },
+    }),
+  getActiveSudoku: () =>
+    apiJson<SudokuStateResponse | null>("/api/games/sudoku/active", { cache: "no-store" }),
+  abandonActiveSudoku: () =>
+    apiJson<{ ok: boolean }>("/api/games/sudoku/active", { method: "DELETE" }),
+  syncSudoku: (roundId: string, board: number[][]) =>
+    apiJson<SudokuStateResponse>(`/api/games/sudoku/${encodeURIComponent(roundId)}/sync`, {
+      method: "POST",
+      json: { board },
+    }),
+  useSudokuHint: (roundId: string, input: { row?: number; col?: number; board?: number[][] } = {}) =>
+    apiJson<SudokuHintResponse>(`/api/games/sudoku/${encodeURIComponent(roundId)}/hint`, {
+      method: "POST",
+      json: input,
     }),
   startStrategyRound: () =>
     apiJson<{ roundId: string }>("/api/games/strategy/start", { method: "POST" }),

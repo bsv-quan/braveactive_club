@@ -29,6 +29,14 @@ const guidePages: Record<ArcadeGameSlug, { title: MessageKey; body: MessageKey }
     { title: "community.games.guide.go.page2Title", body: "community.games.guide.go.page2Body" },
     { title: "community.games.guide.go.page3Title", body: "community.games.guide.go.page3Body" },
   ],
+  caro: [
+    { title: "community.games.guide.caro.page1Title", body: "community.games.guide.caro.page1Body" },
+    { title: "community.games.guide.caro.page2Title", body: "community.games.guide.caro.page2Body" },
+  ],
+  sudoku: [
+    { title: "community.games.guide.sudoku.page1Title", body: "community.games.guide.sudoku.page1Body" },
+    { title: "community.games.guide.sudoku.page2Title", body: "community.games.guide.sudoku.page2Body" },
+  ],
 };
 
 export function GameGuideDialog({

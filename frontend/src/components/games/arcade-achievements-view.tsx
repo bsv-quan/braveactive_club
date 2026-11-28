@@ -48,6 +48,8 @@ const LEADERBOARD_SCOPES: readonly LeaderboardScope[] = [
   "chess",
   "xiangqi",
   "go",
+  "caro",
+  "sudoku",
 ];
 
 const LEADERBOARD_PERIODS: readonly GameLeaderboardPeriod[] = ["week", "month", "all"];
