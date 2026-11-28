@@ -167,3 +167,91 @@ async def notify_comment_created(
             db, followed_post, actor, "post_commented_followed", post_id, content
         )
     )
+
+
+async def _create_for_admins(
+    db: AsyncSession,
+    actor_id: uuid.UUID | None,
+    actor_name: str,
+    kind: str,
+    post_id: uuid.UUID | None,
+    context: str,
+) -> list[tuple[uuid.UUID, int]]:
+    admin_ids = set(
+        await db.scalars(
+            select(User.id).where(User.role == "admin", User.is_active.is_(True))
+        )
+    )
+    if actor_id is not None:
+        admin_ids.discard(actor_id)
+    if not admin_ids:
+        return []
+    safe_actor_name = (actor_name.strip() or "Member")[:40]
+    records = [
+        Notification(
+            recipient_id=admin_id,
+            actor_id=actor_id,
+            actor_name=safe_actor_name,
+            kind=kind,
+            post_id=post_id,
+            context=context.strip()[:240],
+        )
+        for admin_id in admin_ids
+    ]
+    db.add_all(records)
+    await db.commit()
+    counts = await db.execute(
+        select(Notification.recipient_id, func.count())
+        .where(Notification.recipient_id.in_(admin_ids), Notification.read_at.is_(None))
+        .group_by(Notification.recipient_id)
+    )
+    unread_by_user = dict(counts.all())
+    return [(admin_id, unread_by_user.get(admin_id, 0)) for admin_id in admin_ids]
+
+
+async def notify_admins_pending_post(
+    db: AsyncSession,
+    actor: User,
+    post_id: uuid.UUID,
+    context: str,
+) -> list[tuple[uuid.UUID, int]]:
+    return await _create_for_admins(
+        db,
+        actor.id,
+        actor.display_name,
+        "admin_pending_post",
+        post_id,
+        context.strip() or "photo",
+    )
+
+
+async def notify_admins_pending_request(
+    db: AsyncSession,
+    actor_name: str,
+    email: str,
+    purpose: str,
+) -> list[tuple[uuid.UUID, int]]:
+    label = f"{purpose}:{email}" if purpose else email
+    return await _create_for_admins(
+        db,
+        None,
+        actor_name or email.split("@", 1)[0],
+        "admin_pending_request",
+        None,
+        label,
+    )
+
+
+async def notify_admins_pending_activity(
+    db: AsyncSession,
+    actor: User,
+    title: str,
+) -> list[tuple[uuid.UUID, int]]:
+    return await _create_for_admins(
+        db,
+        actor.id,
+        actor.display_name,
+        "admin_pending_activity",
+        None,
+        title,
+    )

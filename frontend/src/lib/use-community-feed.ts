@@ -2,6 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { communityApi, type CommunityPost, type FeedEvent } from "@/lib/api/community";
+import {
+  matchesCommunityPostFilter,
+  type CommunityFeedFilter,
+} from "@/lib/community-filters";
 import { useFeedEvents } from "@/lib/use-feed-events";
 
 type FeedState = {
@@ -11,6 +15,11 @@ type FeedState = {
   error: boolean;
 };
 
+export type CommunityFeedOptions = {
+  category?: CommunityFeedFilter;
+  query?: string;
+};
+
 /** Merge posts by id, keeping newest-first order and the freshest copy of duplicates. */
 function mergePosts(existing: CommunityPost[], incoming: CommunityPost[]): CommunityPost[] {
   const byId = new Map(existing.map((post) => [post.id, post]));
@@ -18,17 +27,31 @@ function mergePosts(existing: CommunityPost[], incoming: CommunityPost[]): Commu
   return [...byId.values()].sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
 }
 
-function applyEvent(posts: CommunityPost[], event: FeedEvent): CommunityPost[] {
+function applyEvent(
+  posts: CommunityPost[],
+  event: FeedEvent,
+  category: CommunityFeedFilter,
+  query: string,
+): CommunityPost[] {
   switch (event.type) {
-    case "post.created":
-      // Skip posts we already added locally.
+    case "post.created": {
+      if (!matchesCommunityPostFilter(event.post, category, query)) return posts;
       return posts.some((p) => p.id === event.post.id)
         ? posts
         : mergePosts(posts, [{ ...event.post, likedByMe: false }]);
-    case "post.updated":
-      return posts.map((post) =>
-        post.id === event.post.id ? { ...event.post, likedByMe: post.likedByMe } : post,
-      );
+    }
+    case "post.updated": {
+      if (!matchesCommunityPostFilter(event.post, category, query)) {
+        return posts.filter((post) => post.id !== event.post.id);
+      }
+      const existing = posts.find((post) => post.id === event.post.id);
+      if (existing) {
+        return posts.map((post) =>
+          post.id === event.post.id ? { ...event.post, likedByMe: post.likedByMe } : post,
+        );
+      }
+      return mergePosts(posts, [{ ...event.post, likedByMe: false }]);
+    }
     case "post.deleted":
       return posts.filter((p) => p.id !== event.postId);
     case "post.liked":
@@ -37,7 +60,6 @@ function applyEvent(posts: CommunityPost[], event: FeedEvent): CommunityPost[] {
     case "comment.deleted":
       return posts.map((p) => (p.id === event.postId ? { ...p, commentCount: event.commentCount } : p));
     case "comment.updated":
-      return posts;
     case "notification.created":
     case "presence.changed":
       return posts;
@@ -45,59 +67,89 @@ function applyEvent(posts: CommunityPost[], event: FeedEvent): CommunityPost[] {
 }
 
 /**
- * Cursor-paginated community feed with live updates.
- * The first page is fetched on mount; `loadMore` appends older posts.
+ * Cursor-paginated community feed with server-side category & search filtering and live updates.
  */
-export function useCommunityFeed() {
-  const [state, setState] = useState<FeedState>({ posts: [], nextCursor: null, loading: true, error: false });
-  const inFlight = useRef(false);
-  // undefined = nothing loaded yet; null = reached the end.
+export function useCommunityFeed(options: CommunityFeedOptions = {}) {
+  const activeCategory = options.category ?? "all";
+  const normalizedQuery = options.query?.trim() ?? "";
+  const [state, setState] = useState<FeedState>({
+    posts: [],
+    nextCursor: null,
+    loading: true,
+    error: false,
+  });
+  const requestIdRef = useRef(0);
+  const loadingMoreRef = useRef(false);
+  // undefined = nothing loaded for current filter yet; null = reached the end.
   const cursorRef = useRef<string | null | undefined>(undefined);
+  const filtersRef = useRef({ category: activeCategory, query: normalizedQuery });
+  filtersRef.current = { category: activeCategory, query: normalizedQuery };
 
-  const fetchPage = useCallback(async (cursor: string | null, isRefresh: boolean) => {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setState((s) => ({ ...s, loading: true, error: false }));
-    try {
-      const page = await communityApi.listPosts(cursor);
-      // A refresh of the newest page must not rewind a user who already paged deeper.
-      if (!isRefresh || cursorRef.current === undefined) cursorRef.current = page.nextCursor;
-      setState((s) => ({
-        posts: mergePosts(s.posts, page.posts),
-        nextCursor: cursorRef.current ?? null,
-        loading: false,
+  const fetchPage = useCallback(
+    async (cursor: string | null, mode: "reset" | "append" | "refresh") => {
+      if (mode === "append" && loadingMoreRef.current) return;
+      const requestId = ++requestIdRef.current;
+      if (mode === "append") loadingMoreRef.current = true;
+      setState((current) => ({
+        posts: mode === "reset" ? [] : current.posts,
+        nextCursor: mode === "reset" ? null : current.nextCursor,
+        loading: true,
         error: false,
       }));
-    } catch {
-      setState((s) => ({ ...s, loading: false, error: true }));
-    } finally {
-      inFlight.current = false;
-    }
-  }, []);
+      try {
+        const page = await communityApi.listPosts(cursor, 10, {
+          category: activeCategory === "all" ? null : activeCategory,
+          q: normalizedQuery || null,
+        });
+        if (requestId !== requestIdRef.current) return;
+        if (mode !== "refresh" || cursorRef.current === undefined) {
+          cursorRef.current = page.nextCursor;
+        }
+        setState((current) => ({
+          posts: mode === "reset" ? page.posts : mergePosts(current.posts, page.posts),
+          nextCursor: cursorRef.current ?? null,
+          loading: false,
+          error: false,
+        }));
+      } catch {
+        if (requestId !== requestIdRef.current) return;
+        setState((current) => ({ ...current, loading: false, error: true }));
+      } finally {
+        if (mode === "append") loadingMoreRef.current = false;
+      }
+    },
+    [activeCategory, normalizedQuery],
+  );
 
   useEffect(() => {
-    void fetchPage(null, true);
+    cursorRef.current = undefined;
+    loadingMoreRef.current = false;
+    void fetchPage(null, "reset");
   }, [fetchPage]);
 
   const loadMore = useCallback(() => {
     if (cursorRef.current === undefined) {
-      void fetchPage(null, true);
+      void fetchPage(null, "reset");
     } else if (cursorRef.current) {
-      void fetchPage(cursorRef.current, false);
+      void fetchPage(cursorRef.current, "append");
     }
   }, [fetchPage]);
 
-  // After a WebSocket reconnect, refresh the newest page to catch up on missed events.
+  // After a WebSocket reconnect, refresh the newest page matching active filters.
   const refresh = useCallback(() => {
-    void fetchPage(null, true);
+    void fetchPage(null, "refresh");
   }, [fetchPage]);
 
   useFeedEvents((event) => {
-    setState((s) => ({ ...s, posts: applyEvent(s.posts, event) }));
+    const { category, query } = filtersRef.current;
+    setState((s) => ({ ...s, posts: applyEvent(s.posts, event, category, query) }));
   }, refresh);
 
   const addLocalPost = useCallback((post: CommunityPost) => {
-    if (post.approved) setState((s) => ({ ...s, posts: mergePosts(s.posts, [post]) }));
+    if (!post.approved) return;
+    const { category, query } = filtersRef.current;
+    if (!matchesCommunityPostFilter(post, category, query)) return;
+    setState((s) => ({ ...s, posts: mergePosts(s.posts, [post]) }));
   }, []);
 
   const patchPost = useCallback((postId: string, patch: Partial<CommunityPost>) => {

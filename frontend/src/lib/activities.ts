@@ -85,3 +85,65 @@ export function isActivityCategory(value: unknown): value is ActivityCategory {
     activityCategories.some((category) => category === value)
   );
 }
+
+export type UpcomingActivityItem = {
+  activity: ClubActivity;
+  day: string;
+  detailId: string;
+};
+
+/** Whole calendar days from local `now` to a `YYYY-MM-DD` activity day (`0` = today, `1` = tomorrow). */
+export function upcomingDayOffset(day: string, now: Date = new Date()): number {
+  const parts = day.split("-").map(Number);
+  if (parts.length !== 3 || parts.some((part) => !Number.isFinite(part))) return -1;
+  const targetUtc = Date.UTC(parts[0], parts[1] - 1, parts[2]);
+  const todayUtc = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((targetUtc - todayUtc) / 86_400_000);
+}
+
+export function selectUpcomingActivities(
+  activities: ClubActivity[],
+  now: Date = new Date(),
+  limit = 3,
+): UpcomingActivityItem[] {
+  if (limit <= 0) return [];
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  const candidates = activities
+    .filter((item) => {
+      if (item.approved === false || item.scheduleType !== "scheduled") return false;
+      const day = activityDay(item);
+      if (!day || day < todayKey) return false;
+      if (item.date?.includes("T")) {
+        const timestamp = new Date(item.date).getTime();
+        if (Number.isFinite(timestamp) && timestamp < now.getTime()) return false;
+      }
+      return true;
+    })
+    .sort((first, second) => {
+      const firstDay = activityDay(first) ?? "";
+      const secondDay = activityDay(second) ?? "";
+      if (firstDay !== secondDay) return firstDay.localeCompare(secondDay);
+      const firstTime = first.date ?? firstDay;
+      const secondTime = second.date ?? secondDay;
+      if (firstTime !== secondTime) return firstTime.localeCompare(secondTime);
+      return first.title.localeCompare(second.title);
+    });
+
+  const seenSeries = new Set<string>();
+  const picked: UpcomingActivityItem[] = [];
+  for (const activity of candidates) {
+    if (activity.recurrenceSeriesId) {
+      if (seenSeries.has(activity.recurrenceSeriesId)) continue;
+      seenSeries.add(activity.recurrenceSeriesId);
+    }
+    const day = activityDay(activity);
+    if (!day) continue;
+    picked.push({
+      activity,
+      day,
+      detailId: activityDetailId(activity, activities),
+    });
+    if (picked.length >= limit) break;
+  }
+  return picked;
+}

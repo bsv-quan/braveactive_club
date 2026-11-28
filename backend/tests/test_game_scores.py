@@ -709,6 +709,102 @@ def test_streak_counts_consecutive_vietnam_calendar_days():
     ) == 3
     assert game_scores._current_streak([today - timedelta(days=1)], today) == 1
     assert game_scores._current_streak([today - timedelta(days=2)], today) == 0
+    assert game_scores._longest_streak(
+        [
+            today,
+            today - timedelta(days=3),
+            today - timedelta(days=4),
+            today - timedelta(days=5),
+            today - timedelta(days=6),
+        ]
+    ) == 4
+
+
+async def test_shared_points_streak_and_achievements_across_all_games(client, monkeypatch):
+    csrf = await register(client, email="arcade@bravesoft.com.vn", name="Arcade Hero")
+
+    # 1. Complete a Dev vs AI 3-star stage (+350 pts) and verify streak + shared points
+    started_dev = await client.post(
+        "/api/games/dev-vs-ai/start",
+        headers=csrf,
+        json={"stageId": "1-1"},
+    )
+    assert started_dev.status_code == 200
+    dev_round_id = started_dev.json()["roundId"]
+
+    completed_dev = await client.post(
+        f"/api/games/dev-vs-ai/{dev_round_id}/complete",
+        headers=csrf,
+        json={"status": "victory", "starsEarned": 3, "endlessWave": 0},
+    )
+    assert completed_dev.status_code == 200
+    assert completed_dev.json()["scoreAwarded"] == 350
+    assert completed_dev.json()["totalPoints"] == 350
+    assert completed_dev.json()["playedToday"] is True
+    assert completed_dev.json()["streakDays"] == 1
+
+    # Replaying the same completed Dev vs AI round is rejected
+    replayed_dev = await client.post(
+        f"/api/games/dev-vs-ai/{dev_round_id}/complete",
+        headers=csrf,
+        json={"status": "victory", "starsEarned": 3, "endlessWave": 0},
+    )
+    assert replayed_dev.status_code == 409
+
+    # 2. Spend shared points earned in Dev vs AI on a paid Word Search hint
+    puzzle = WordSearchPuzzle(
+        grid=[
+            ["C", "A", "T", "S"],
+            ["D", "O", "G", "S"],
+            ["B", "I", "K", "E"],
+            ["R", "A", "T", "S"],
+        ],
+        words=[
+            {"answer": "CATS", "displayAnswer": "Cats", "clue": "Clue 1"},
+            {"answer": "DOGS", "displayAnswer": "Dogs", "clue": "Clue 2"},
+            {"answer": "BIKE", "displayAnswer": "Bike", "clue": "Clue 3"},
+        ],
+        size=4,
+    )
+    monkeypatch.setattr(ai_content, "generate_word_search", lambda _: _async_value(puzzle))
+    ws_round = await client.post(
+        "/api/games/word-search",
+        headers=csrf,
+        json={"difficulty": "easy", "locale": "en"},
+    )
+    ws_id = ws_round.json()["roundId"]
+    # Exhaust 2 free hints, then spend 100 shared points from Dev vs AI
+    await client.post(f"/api/games/word-search/{ws_id}/hint", headers=csrf)
+    await client.post(f"/api/games/word-search/{ws_id}/hint", headers=csrf)
+    paid_hint = await client.post(f"/api/games/word-search/{ws_id}/hint", headers=csrf)
+    assert paid_hint.status_code == 200
+    assert paid_hint.json()["scoreAwarded"] == -100
+    assert paid_hint.json()["totalPoints"] == 250
+
+    # 3. Verify unified leaderboard (gameType=all, period=all) and personal/club achievements
+    all_leaderboard = await client.get("/api/games/leaderboard?period=all&gameType=all")
+    assert all_leaderboard.status_code == 200
+    assert all_leaderboard.json()["gameType"] == "all"
+    assert all_leaderboard.json()["entries"][0]["displayName"] == "Arcade Hero"
+    assert all_leaderboard.json()["entries"][0]["score"] == 350  # completed rounds sum
+
+    achievements = await client.get("/api/games/achievements", headers=csrf)
+    assert achievements.status_code == 200
+    payload = achievements.json()
+    assert payload["me"] is not None
+    assert payload["me"]["totalPoints"] == 250
+    assert payload["me"]["streakDays"] == 1
+    assert payload["me"]["rank"] == 1
+    assert payload["me"]["tier"] == "rookie"
+    assert payload["club"]["totalPlayers"] >= 1
+    assert any(b["id"] == "first_round" and b["unlocked"] is True for b in payload["me"]["badges"])
+
+    # Guest achievements endpoint returns club overview with me=None
+    client.cookies.clear()
+    guest_achievements = await client.get("/api/games/achievements")
+    assert guest_achievements.status_code == 200
+    assert guest_achievements.json()["me"] is None
+    assert guest_achievements.json()["club"]["totalPlayers"] >= 1
 
 
 async def _async_value(value):

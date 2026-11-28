@@ -8,9 +8,10 @@ from pydantic import Field, model_validator
 
 from app.schemas.base import CamelModel
 
-LeaderboardPeriod = Literal["week", "month"]
+LeaderboardPeriod = Literal["week", "month", "all"]
 BoardGameType = Literal["chess", "xiangqi", "go"]
-GameType = Literal["word_search", "strategy", "chess", "xiangqi", "go"]
+GameType = Literal["all", "word_search", "strategy", "chess", "xiangqi", "go", "dev_vs_ai"]
+ArcadeRankTier = Literal["rookie", "challenger", "master", "grandmaster", "legend"]
 
 
 class BoardGameStartRequest(CamelModel):
@@ -95,13 +96,35 @@ class WordSearchHintResult(CamelModel):
     score: int
     free_hints_remaining: int
     word_search_points: int
+    total_points: int = 0
 
 
 class GameStatus(CamelModel):
     streak_days: int
+    longest_streak_days: int = 0
     played_today: bool
     free_hints_remaining: int
     word_search_points: int
+    total_points: int = 0
+    total_rounds: int = 0
+
+
+class DevVsAiStartRequest(CamelModel):
+    stage_id: str = Field(min_length=1, max_length=32)
+
+
+class DevVsAiCompleteRequest(CamelModel):
+    status: Literal["victory", "defeat"]
+    stars_earned: Annotated[int, Field(ge=0, le=3)] = 0
+    endless_wave: Annotated[int, Field(ge=0, le=999)] = 0
+
+
+class DevVsAiCompleteResult(CamelModel):
+    score_awarded: int
+    score: int
+    total_points: int
+    streak_days: int
+    played_today: bool
 
 
 class StrategyAnswerRequest(CamelModel):
@@ -120,11 +143,59 @@ class LeaderboardEntry(CamelModel):
     rank: int
     user_id: UUID
     display_name: str
+    avatar_url: str | None = None
     score: int
+    rounds_played: int = 0
 
 
 class LeaderboardOut(CamelModel):
     period: LeaderboardPeriod
     game_type: GameType
     entries: list[LeaderboardEntry]
+    updated_at: datetime
+
+
+class MiniGameStatOut(CamelModel):
+    game_type: str
+    rounds_played: int
+    wins: int
+    total_score: int
+    best_score: int
+
+
+class AchievementBadgeOut(CamelModel):
+    id: str
+    unlocked: bool
+    progress: int
+    target: int
+
+
+class PersonalAchievementsOut(CamelModel):
+    user_id: UUID
+    display_name: str
+    avatar_url: str | None = None
+    rank: int | None = None
+    tier: ArcadeRankTier
+    next_tier_points: int | None = None
+    total_points: int
+    total_rounds: int
+    total_wins: int
+    streak_days: int
+    longest_streak_days: int
+    active_days: int
+    played_today: bool
+    games_explored: int
+    per_game: list[MiniGameStatOut]
+    badges: list[AchievementBadgeOut]
+
+
+class ClubArcadeOverviewOut(CamelModel):
+    total_players: int
+    total_rounds: int
+    total_points: int
+
+
+class GameAchievementsOut(CamelModel):
+    me: PersonalAchievementsOut | None = None
+    club: ClubArcadeOverviewOut
     updated_at: datetime

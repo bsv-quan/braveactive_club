@@ -65,6 +65,54 @@ async def test_detect_activity_location_uses_structured_ai_output(monkeypatch):
     assert request_args["json_schema"]["additionalProperties"] is False
 
 
+async def test_detect_post_category_uses_structured_ai_output_and_fallback(monkeypatch):
+    request = AsyncMock(return_value=article_response({"category": "culture"}))
+    monkeypatch.setattr(ai_content, "_request_response", request)
+
+    detected = await ai_content.detect_post_category(
+        "Triển lãm di sản văn hoá truyền thống tại bảo tàng mỹ thuật.",
+        link_url="https://vnexpress.net/giai-tri/trien-lam-di-san.html",
+        link_site="vnexpress.net",
+    )
+
+    assert detected == "culture"
+    request.assert_awaited_once()
+    request_args = request.await_args.kwargs
+    assert request_args["schema_name"] == "post_category"
+    assert request_args["json_schema"]["properties"]["category"]["enum"] == [
+        "culture",
+        "society",
+        "entertainment",
+        "lifestyle",
+        "sports",
+        "technology",
+    ]
+    assert request_args["json_schema"]["additionalProperties"] is False
+
+    assert (
+        ai_content.infer_post_category_fallback(
+            "Bản tin AI mới nhất",
+            link_url="https://techcrunch.com/2026/11/28/ai-news/",
+            link_site="techcrunch.com",
+        )
+        == "technology"
+    )
+    assert (
+        ai_content.infer_post_category_fallback(
+            "Giao lưu cầu lông tối thứ Sáu",
+            activity_category="CẦU LÔNG",
+        )
+        == "sports"
+    )
+    assert (
+        ai_content.infer_post_category_fallback(
+            "Đi bộ gây quỹ từ thiện mùa đông",
+            activity_category="TỪ THIỆN",
+        )
+        == "society"
+    )
+
+
 async def test_word_search_generation_validates_and_places_words_in_multiple_directions(monkeypatch):
     generated_words = [
         {"answer": "WARM UP", "display_answer": "Warm up", "clue": "What gentle movements prepare the body for exercise?"},

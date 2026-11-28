@@ -1,24 +1,14 @@
 import { notFound } from "next/navigation";
-import { GameScreen, type GameSlug } from "@/components/games/game-screen";
-import { AppShell } from "@/components/layout/app-shell";
+import { ArcadeHub } from "@/components/games/arcade-hub";
+import { isArcadeGameSlug } from "@/lib/games/registry";
 
-const gameSlugs = new Set<GameSlug>(["word-search", "chess", "xiangqi", "go"]);
-
-function isGameSlug(value: string): value is GameSlug {
-  return gameSlugs.has(value as GameSlug);
-}
-
-export default async function GamePage({
+export default async function GameZonePage({
   params,
 }: {
   params: Promise<{ game: string }>;
 }) {
   const { game } = await params;
-  if (!isGameSlug(game)) notFound();
+  if (!isArcadeGameSlug(game)) notFound();
 
-  return (
-    <AppShell currentPage="community">
-      <GameScreen game={game} />
-    </AppShell>
-  );
+  return <ArcadeHub initialGame={game} />;
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, Maximize2, Minimize2, Unlock, Volume2, VolumeX } from "lucide-react";
+import { ArrowLeft, Maximize2, Minimize2, Sparkles, Unlock, Volume2, VolumeX } from "lucide-react";
 import { useI18n } from "@/i18n/i18n-provider";
+import { communityApi } from "@/lib/api/community";
 import { getStageById, STAGES, type GameScreenMode, type GameState } from "@/lib/dev-vs-ai/core";
 import {
   defaultProgress,
@@ -20,16 +21,40 @@ import { RobotDexView } from "./robot-dex-view";
 import { WorldMapView } from "./world-map-view";
 import styles from "./dev-vs-ai.module.css";
 
-export function DevVsAiShell() {
+type DevVsAiShellProps = {
+  embedded?: boolean;
+  isMember?: boolean;
+  onActiveChange?: (active: boolean) => void;
+  onRoundCompleted?: (scoreAwarded: number) => void;
+};
+
+export function DevVsAiShell({
+  embedded = false,
+  isMember = false,
+  onActiveChange,
+  onRoundCompleted,
+}: DevVsAiShellProps = {}) {
   const { t } = useI18n();
   const [screen, setScreen] = useState<GameScreenMode>("menu");
   const [activeStageId, setActiveStageId] = useState<string>("1-1");
   const [expanded, setExpanded] = useState(false);
   const [progress, setProgress] = useState<DevVsAiProgress>(() => defaultProgress());
+  const [lastAwardedPoints, setLastAwardedPoints] = useState<number | null>(null);
+  const activeRoundIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     setProgress(loadProgress());
   }, []);
+
+  useEffect(() => {
+    onActiveChange?.(screen === "playing");
+  }, [screen, onActiveChange]);
+
+  useEffect(() => {
+    if (lastAwardedPoints === null) return;
+    const timer = window.setTimeout(() => setLastAwardedPoints(null), 5500);
+    return () => window.clearTimeout(timer);
+  }, [lastAwardedPoints]);
 
   const toggleMute = () => {
     setProgress((prev) => {
@@ -47,33 +72,73 @@ export function DevVsAiShell() {
     });
   };
 
-  const launchStage = useCallback((stageId: string) => {
-    setActiveStageId(stageId);
-    setScreen("playing");
-  }, []);
+  const launchStage = useCallback(
+    (stageId: string) => {
+      setActiveStageId(stageId);
+      setLastAwardedPoints(null);
+      setScreen("playing");
+      activeRoundIdRef.current = null;
+      if (isMember) {
+        void communityApi
+          .startDevVsAiRound(stageId)
+          .then((started) => {
+            activeRoundIdRef.current = started.roundId;
+          })
+          .catch(() => {
+            activeRoundIdRef.current = null;
+          });
+      }
+    },
+    [isMember],
+  );
 
-  const handleStageFinished = useCallback((finishedState: GameState) => {
-    if (finishedState.status === "victory") {
-      setProgress((prev) =>
-        recordStageVictory(
-          prev,
-          finishedState.stage.id,
-          finishedState.starsEarned,
-          finishedState.tokensCollected,
-        ),
-      );
-    } else if (finishedState.stage.isEndless && finishedState.endlessWave > 0) {
-      setProgress((prev) => {
-        const next: DevVsAiProgress = {
-          ...prev,
-          bestEndlessWave: Math.max(prev.bestEndlessWave, finishedState.endlessWave),
-          totalTokensCollected: prev.totalTokensCollected + finishedState.tokensCollected,
-        };
-        saveProgress(next);
-        return next;
-      });
-    }
-  }, []);
+  const handleStageFinished = useCallback(
+    (finishedState: GameState) => {
+      if (finishedState.status === "victory") {
+        setProgress((prev) =>
+          recordStageVictory(
+            prev,
+            finishedState.stage.id,
+            finishedState.starsEarned,
+            finishedState.tokensCollected,
+          ),
+        );
+      } else if (finishedState.stage.isEndless && finishedState.endlessWave > 0) {
+        setProgress((prev) => {
+          const next: DevVsAiProgress = {
+            ...prev,
+            bestEndlessWave: Math.max(prev.bestEndlessWave, finishedState.endlessWave),
+            totalTokensCollected: prev.totalTokensCollected + finishedState.tokensCollected,
+          };
+          saveProgress(next);
+          return next;
+        });
+      }
+
+      const roundId = activeRoundIdRef.current;
+      activeRoundIdRef.current = null;
+      if (isMember && roundId) {
+        void communityApi
+          .completeDevVsAiRound(roundId, {
+            status: finishedState.status === "victory" ? "victory" : "defeat",
+            starsEarned: finishedState.starsEarned,
+            endlessWave: finishedState.endlessWave,
+          })
+          .then((result) => {
+            if (result.scoreAwarded > 0) {
+              setLastAwardedPoints(result.scoreAwarded);
+            }
+            onRoundCompleted?.(result.scoreAwarded);
+          })
+          .catch(() => {
+            onRoundCompleted?.(0);
+          });
+      } else if (finishedState.status === "victory" || finishedState.endlessWave > 0) {
+        onRoundCompleted?.(0);
+      }
+    },
+    [isMember, onRoundCompleted],
+  );
 
   const handleQuickPlay = useCallback(() => {
     const unlocked = getEffectiveUnlockedStages(progress);
@@ -88,18 +153,26 @@ export function DevVsAiShell() {
   const unlockedRobots = getEffectiveUnlockedRobots(progress);
 
   return (
-    <div className={styles.arcadeRoot}>
+    <div className={`${styles.arcadeRoot}${embedded ? " arcade-embedded-dev-vs-ai" : ""}`}>
       <header className={styles.topStrip}>
         <div className={styles.topLeft}>
-          <Link href="/community" className={styles.backLink}>
-            <ArrowLeft size={15} aria-hidden="true" />
-            <span>{t("community.games.devVsAi.backToCommunity")}</span>
-          </Link>
+          {!embedded ? (
+            <Link href="/games" className={styles.backLink}>
+              <ArrowLeft size={15} aria-hidden="true" />
+              <span>{t("community.games.arcade.backToLobby")}</span>
+            </Link>
+          ) : null}
           <span className={styles.brandBadge}>
             <span className={styles.brandDev}>DEV</span>
             <span className={styles.brandVs}>vs</span>
             <span className={styles.brandAi}>AI</span>
           </span>
+          {lastAwardedPoints !== null && lastAwardedPoints > 0 ? (
+            <span className="arcade-dev-points-toast" role="status">
+              <Sparkles size={13} aria-hidden="true" />
+              {t("community.games.arcade.devVsAiPointsToast", { points: lastAwardedPoints })}
+            </span>
+          ) : null}
         </div>
 
         <div className={styles.topRight}>

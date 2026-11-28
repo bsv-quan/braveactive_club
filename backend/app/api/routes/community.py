@@ -18,8 +18,11 @@ from app.schemas.community import (
     CommentOut,
     LikeOut,
     LinkPreviewOut,
+    PostCategory,
+    PostLikerOut,
     PostOut,
     PostPage,
+    PostShareSlackRequest,
     PostUpdate,
     CommentUpdate,
 )
@@ -33,6 +36,10 @@ from app.schemas.game_score import (
     BoardGameResponse,
     BoardGameStartRequest,
     BoardGameType,
+    DevVsAiCompleteRequest,
+    DevVsAiCompleteResult,
+    DevVsAiStartRequest,
+    GameAchievementsOut,
     GameStatus,
     GameType,
     GameRoundStarted,
@@ -45,7 +52,7 @@ from app.schemas.game_score import (
     WordSearchHintResult,
 )
 from app.schemas.auth import MessageOut
-from app.services import ai_content, community, game_scores, notifications, uploads
+from app.services import ai_content, community, game_scores, notifications, slack_notifications, uploads
 from app.services.link_preview import get_link_preview, normalize_url
 from app.services.realtime import manager, publish, publish_to_user
 from app.db.session import SessionFactory
@@ -67,9 +74,18 @@ async def list_posts(
     viewer: OptionalUser,
     cursor: str | None = Query(default=None, max_length=100),
     limit: int = Query(default=10, ge=1, le=30),
+    category: PostCategory | None = Query(default=None),
+    q: str | None = Query(default=None, max_length=120),
 ):
-    """Public feed (guests can read everything)."""
-    return await community.list_posts(db, viewer, cursor, limit)
+    """Public feed (guests can read everything), with optional category filter and search."""
+    return await community.list_posts(
+        db,
+        viewer,
+        cursor,
+        limit,
+        category=category,
+        search_query=q,
+    )
 
 
 @router.post(
@@ -227,6 +243,45 @@ async def answer_strategy_question(
     )
 
 
+@router.post(
+    "/games/dev-vs-ai/start",
+    response_model=GameRoundStarted,
+    dependencies=[Depends(rate_limit("dev-vs-ai-start", 60, 3600))],
+)
+async def start_dev_vs_ai_round(
+    body: DevVsAiStartRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    game_round = await game_scores.start_dev_vs_ai_round(db, user, body.stage_id)
+    return {"round_id": game_round.id}
+
+
+@router.post(
+    "/games/dev-vs-ai/{round_id}/complete",
+    response_model=DevVsAiCompleteResult,
+)
+async def complete_dev_vs_ai_round(
+    round_id: uuid.UUID,
+    body: DevVsAiCompleteRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    return await game_scores.complete_dev_vs_ai_round(
+        db,
+        user,
+        round_id,
+        body.status,
+        body.stars_earned,
+        body.endless_wave,
+    )
+
+
+@router.get("/games/achievements", response_model=GameAchievementsOut)
+async def get_game_achievements(db: DbSession, viewer: OptionalUser):
+    return await game_scores.get_game_achievements(db, viewer)
+
+
 @router.get("/games/leaderboard", response_model=LeaderboardOut)
 async def list_game_leaderboard(
     db: DbSession,
@@ -363,6 +418,12 @@ async def create_post(
         for recipient_id, unread_count in notice_recipients:
             await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
         await publish("post.created", post=post.model_dump(mode="json", by_alias=True))
+    else:
+        admin_recipients = await notifications.notify_admins_pending_post(
+            db, user, post.id, post.content or "photo"
+        )
+        for recipient_id, unread_count in admin_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     return post
 
 
@@ -385,7 +446,32 @@ async def update_post(post_id: uuid.UUID, body: PostUpdate, db: DbSession, user:
         await publish("post.updated", post=post.model_dump(mode="json", by_alias=True))
     else:
         await publish("post.deleted", postId=str(post_id))
+        admin_recipients = await notifications.notify_admins_pending_post(
+            db, user, post.id, post.content or "photo"
+        )
+        for recipient_id, unread_count in admin_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     return post
+
+
+@router.get("/posts/{post_id}/likes", response_model=list[PostLikerOut])
+async def list_post_likes(post_id: uuid.UUID, db: DbSession, viewer: OptionalUser):
+    return await community.list_post_likes(db, post_id, viewer)
+
+
+@router.post("/posts/{post_id}/share-slack", response_model=MessageOut)
+async def share_post_to_slack(
+    post_id: uuid.UUID,
+    body: PostShareSlackRequest,
+    db: DbSession,
+    user: CurrentUser,
+):
+    enforce_limit(f"share-slack:{user.id}", 10, 3600)
+    post = await db.get(Post, post_id)
+    if not post or post.hidden or not post.approved:
+        raise AppError("Không tìm thấy bài đăng.", 404)
+    await slack_notifications.send_post_share_message(body.message)
+    return MessageOut(message="Đã chia sẻ bài viết lên Slack.")
 
 
 @router.put("/posts/{post_id}/like", response_model=LikeOut)

@@ -490,3 +490,189 @@ async def test_post_with_unsafe_link_still_posts_without_preview(client):
     response = await client.post("/api/posts", data={"content": "see http://127.0.0.1:80/admin"}, headers=csrf)
     assert response.status_code == 201
     assert response.json()["linkPreview"] is None
+
+
+async def test_posts_are_categorized_and_filterable_by_category_and_search(client, monkeypatch):
+    from app.models import Post
+    from app.services import ai_content, post_category_migration
+
+    csrf = await register(client, "editor@bravesoft.com.vn", "Minh Anh")
+    await promote_to_admin("editor@bravesoft.com.vn")
+
+    sports_post = await client.post(
+        "/api/posts",
+        data={"content": "Tối nay giao lưu cầu lông tại sân Phú Thọ nhé mọi người!"},
+        headers=csrf,
+    )
+    assert sports_post.status_code == 201
+    assert sports_post.json()["category"] == "sports"
+
+    tech_post = await client.post(
+        "/api/posts",
+        data={"content": "OpenAI vừa giới thiệu mô hình lập trình Python và TypeScript mới."},
+        headers=csrf,
+    )
+    assert tech_post.status_code == 201
+    assert tech_post.json()["category"] == "technology"
+
+    monkeypatch.setattr(
+        ai_content,
+        "detect_post_category",
+        AsyncMock(return_value="culture"),
+    )
+    culture_post = await client.post(
+        "/api/posts",
+        data={"content": "Cuối tuần ghé bảo tàng xem triển lãm gốm cổ Việt Nam."},
+        headers=csrf,
+    )
+    assert culture_post.status_code == 201
+    assert culture_post.json()["category"] == "culture"
+
+    only_sports = (await client.get("/api/posts", params={"category": "sports"})).json()["posts"]
+    assert [item["id"] for item in only_sports] == [sports_post.json()["id"]]
+
+    unaccented_search = (await client.get("/api/posts", params={"q": "cau long phu tho"})).json()["posts"]
+    assert [item["id"] for item in unaccented_search] == [sports_post.json()["id"]]
+
+    author_and_topic = (
+        await client.get("/api/posts", params={"category": "culture", "q": "Minh Anh gom co"})
+    ).json()["posts"]
+    assert [item["id"] for item in author_and_topic] == [culture_post.json()["id"]]
+
+    literal_wildcard = (await client.get("/api/posts", params={"q": "100%_not_present"})).json()["posts"]
+    assert literal_wildcard == []
+
+    # Verify idempotent AI backfill scans unchecked posts and skips already-checked ones.
+    calls = []
+
+    async def fake_detect(content, **kwargs):
+        calls.append((content, kwargs.get("link_site")))
+        return "sports" if "cầu lông" in content.lower() else "technology"
+
+    monkeypatch.setattr(post_category_migration, "detect_post_category", fake_detect)
+    async with SessionFactory() as db:
+        processed, categorized = await post_category_migration.backfill_post_categories(db)
+        assert (processed, categorized) == (2, 2)
+        rows = list((await db.scalars(select(Post).order_by(Post.created_at))).all())
+        assert [row.category for row in rows] == ["sports", "technology", "culture"]
+        assert all(row.category_checked_at is not None for row in rows)
+
+        again = await post_category_migration.backfill_post_categories(db)
+        assert again == (0, 0)
+        assert len(calls) == 2
+
+
+async def test_list_post_likes_returns_likers_and_hides_unapproved_posts(client):
+    admin_csrf = await register(client, email="admin_likes@bravesoft.com.vn", name="Admin Likes")
+    await promote_to_admin("admin_likes@bravesoft.com.vn")
+    created = await client.post("/api/posts", headers=admin_csrf, data={"content": "Cùng thích bài này nhé!"})
+    assert created.status_code == 201
+    post_id = created.json()["id"]
+
+    await client.put(f"/api/posts/{post_id}/like", headers=admin_csrf)
+
+    member_csrf = await register(client, email="liker1@bravesoft.com.vn", name="Minh Liker")
+    await client.put(f"/api/posts/{post_id}/like", headers=member_csrf)
+
+    # Guests and members can view who liked an approved public post
+    client.cookies.clear()
+    likers_resp = await client.get(f"/api/posts/{post_id}/likes")
+    assert likers_resp.status_code == 200
+    likers = likers_resp.json()
+    assert len(likers) == 2
+    assert {item["displayName"] for item in likers} == {"Admin Likes", "Minh Liker"}
+    assert all("likedAt" in item and "id" in item for item in likers)
+
+
+async def test_admins_receive_notifications_for_pending_requests_and_pending_posts(client):
+    await register(client, email="mod_admin@bravesoft.com.vn", name="Mod Admin")
+    await promote_to_admin("mod_admin@bravesoft.com.vn")
+
+    # 1. Guest submits a registration request -> admin receives admin_pending_request
+    client.cookies.clear()
+    reg_req = await client.post(
+        "/api/auth/register",
+        json={"email": "newcomer@bravesoft.com.vn", "displayName": "Newcomer"},
+    )
+    assert reg_req.status_code == 202
+
+    # 2. Regular member submits a pending post -> admin receives admin_pending_post
+    member_csrf = await register(client, email="writer@bravesoft.com.vn", name="Club Writer")
+    pending_post = await client.post(
+        "/api/posts",
+        headers=member_csrf,
+        data={"content": "Bài viết mới cần duyệt từ thành viên"},
+    )
+    assert pending_post.status_code == 201
+    assert pending_post.json()["approved"] is False
+
+    # Log back in as admin and verify both pending notifications arrived
+    client.cookies.clear()
+    login_resp = await client.post(
+        "/api/auth/login",
+        json={"email": "mod_admin@bravesoft.com.vn", "password": "TestPass123"},
+    )
+    assert login_resp.status_code == 200
+    inbox = await client.get("/api/notifications", params={"limit": 20})
+    assert inbox.status_code == 200
+    items = inbox.json()["notifications"]
+    kinds = {item["kind"] for item in items}
+    assert "admin_pending_request" in kinds
+    assert "admin_pending_post" in kinds
+    assert any(
+        item["kind"] == "admin_pending_post" and item["postId"] == pending_post.json()["id"]
+        for item in items
+    )
+    assert any(
+        item["kind"] == "admin_pending_request" and "newcomer@bravesoft.com.vn" in item["context"]
+        for item in items
+    )
+
+
+async def test_share_post_to_slack_uses_configured_webhook(client, monkeypatch):
+    from app.core.config import get_settings
+    from app.services import slack_notifications
+
+    admin_csrf = await register(client, email="slack_sharer@bravesoft.com.vn", name="Slack Sharer")
+    await promote_to_admin("slack_sharer@bravesoft.com.vn")
+    created = await client.post("/api/posts", headers=admin_csrf, data={"content": "Tin nóng câu lạc bộ hôm nay!"})
+    assert created.status_code == 201
+    post_id = created.json()["id"]
+
+    # Without webhook configured -> 503
+    monkeypatch.setattr(get_settings(), "slack_webhook_url", "")
+    unconfigured = await client.post(
+        f"/api/posts/{post_id}/share-slack",
+        headers=admin_csrf,
+        json={"message": "Chia sẻ bài viết này lên Slack!"},
+    )
+    assert unconfigured.status_code == 503
+
+    # With valid webhook configured -> sends composed message through existing webhook
+    sent_messages: list[str] = []
+
+    async def fake_send_webhook(text: str) -> None:
+        sent_messages.append(text)
+
+    monkeypatch.setattr(
+        get_settings(),
+        "slack_webhook_url",
+        "https://hooks.slack.com/services/T000/B000/XXX",
+    )
+    monkeypatch.setattr(slack_notifications, "_send_webhook", fake_send_webhook)
+
+    shared = await client.post(
+        f"/api/posts/{post_id}/share-slack",
+        headers=admin_csrf,
+        json={"message": "  📣 Mọi người xem bài viết này nhé!  "},
+    )
+    assert shared.status_code == 200
+    assert sent_messages == ["📣 Mọi người xem bài viết này nhé!"]
+
+    # Guest cannot share to Slack
+    client.cookies.clear()
+    guest_attempt = await client.post(
+        f"/api/posts/{post_id}/share-slack",
+        json={"message": "Guest attempt"},
+    )
+    assert guest_attempt.status_code == 401

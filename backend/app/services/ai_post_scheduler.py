@@ -13,7 +13,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.errors import AppError
 from app.db.session import SessionFactory
 from app.models import AIPostScheduleRun, Post
-from app.services import ai_content
+from app.services import ai_content, notifications
+from app.services.realtime import publish_to_user
 
 logger = logging.getLogger("app.ai_post_scheduler")
 
@@ -164,14 +165,29 @@ async def _post_scheduled_article(
     candidate = candidates[0]
     draft = await ai_content._generate_article(candidate)
     author = await ai_content._get_ai_user(db)
+    post_content = f"{draft.title.strip()}\n\n{draft.content.strip()}"
+    link_title = candidate.title[:300]
+    link_description = (
+        candidate.description[:600]
+        or "Bản tóm tắt có AI hỗ trợ. Xem bài viết gốc tại nguồn."
+    )
+    detected_category, checked_at = await ai_content.classify_post_category(
+        post_content,
+        link_url=candidate.url,
+        link_title=link_title,
+        link_description=link_description,
+        link_site=candidate.source_domain,
+        rss_topic=candidate.topic,
+    )
     post = Post(
         author_id=author.id,
-        content=f"{draft.title.strip()}\n\n{draft.content.strip()}",
+        content=post_content,
+        category=detected_category,
+        category_checked_at=checked_at,
         approved=author.role == "admin",
         link_url=candidate.url,
-        link_title=candidate.title[:300],
-        link_description=candidate.description[:600]
-        or "Bản tóm tắt có AI hỗ trợ. Xem bài viết gốc tại nguồn.",
+        link_title=link_title,
+        link_description=link_description,
         link_site=candidate.source_domain,
     )
     db.add(post)
@@ -182,6 +198,12 @@ async def _post_scheduled_article(
         .values(status="posted", post_id=post.id, next_attempt_at=None, last_error=None)
     )
     await db.commit()
+    if not post.approved:
+        admin_recipients = await notifications.notify_admins_pending_post(
+            db, author, post.id, post.content
+        )
+        for recipient_id, unread_count in admin_recipients:
+            await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
     logger.info(
         "Scheduled AI post created: slot=%s post_id=%s topic=%s source=%s",
         slot.key,

@@ -6,7 +6,7 @@ import asyncio
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
@@ -18,6 +18,11 @@ DAILY_FREE_HINTS = 2
 HINT_COST = 100
 WORD_SEARCH_COMPLETION_POINTS = {"easy": 100, "medium": 250, "hard": 500}
 BOARD_GAME_WIN_POINTS = {"easy": 100, "medium": 200, "hard": 500}
+DEV_VS_AI_STAGE_POINTS = {1: 150, 2: 250, 3: 350}
+DEV_VS_AI_BOSS_POINTS = 500
+DEV_VS_AI_ENDLESS_WAVE_POINTS = 50
+DEV_VS_AI_ENDLESS_MAX_POINTS = 500
+SCORED_GAME_TYPES = ("dev_vs_ai", "word_search", "chess", "xiangqi", "go")
 VIETNAM_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
@@ -469,12 +474,14 @@ async def use_word_search_hint(
         None,
     )
     if answer_index is None:
+        shared_points = await _total_points(db, user.id)
         return {
             "cell": None,
             "score_awarded": 0,
             "score": game_round.score,
             "free_hints_remaining": await _free_hints_remaining(db, user.id),
-            "word_search_points": await _word_search_points(db, user.id),
+            "word_search_points": shared_points,
+            "total_points": shared_points,
         }
 
     await _lock_user(db, user.id)
@@ -484,9 +491,9 @@ async def use_word_search_hint(
     if activity.free_hints_used < DAILY_FREE_HINTS:
         activity.free_hints_used += 1
     else:
-        points = await _word_search_points(db, user.id)
+        points = await _total_points(db, user.id)
         if points < HINT_COST:
-            raise AppError("Bạn chưa đủ 100 điểm Ô chữ để dùng gợi ý.", 409)
+            raise AppError("Bạn chưa đủ 100 điểm giải trí để dùng gợi ý.", 409)
         game_round.score -= HINT_COST
         score_awarded = -HINT_COST
     hinted.append(answer_index)
@@ -494,12 +501,79 @@ async def use_word_search_hint(
     state["hinted"] = hinted
     game_round.state = json.dumps(state)
     await db.commit()
+    shared_points = await _total_points(db, user.id)
     return {
         "cell": cell,
         "score_awarded": score_awarded,
         "score": game_round.score,
         "free_hints_remaining": DAILY_FREE_HINTS - activity.free_hints_used,
-        "word_search_points": await _word_search_points(db, user.id),
+        "word_search_points": shared_points,
+        "total_points": shared_points,
+    }
+
+
+async def start_dev_vs_ai_round(
+    db: AsyncSession,
+    user: User,
+    stage_id: str,
+) -> GameRound:
+    cleaned_stage = stage_id.strip()
+    if not cleaned_stage or len(cleaned_stage) > 32:
+        raise AppError("Màn chơi không hợp lệ.", 400)
+    game_round = _new_round(
+        user.id,
+        "dev_vs_ai",
+        {"stage_id": cleaned_stage},
+    )
+    db.add(game_round)
+    await db.commit()
+    await db.refresh(game_round)
+    return game_round
+
+
+async def complete_dev_vs_ai_round(
+    db: AsyncSession,
+    user: User,
+    round_id: uuid.UUID,
+    status: str,
+    stars_earned: int,
+    endless_wave: int,
+) -> dict:
+    game_round = await _get_open_round(db, user, round_id, "dev_vs_ai")
+    state = json.loads(game_round.state)
+    stage_id = str(state.get("stage_id", "1-1"))
+
+    if status == "victory":
+        if stage_id == "3-4":
+            score_awarded = DEV_VS_AI_BOSS_POINTS
+        else:
+            clamped_stars = max(1, min(3, int(stars_earned or 1)))
+            score_awarded = DEV_VS_AI_STAGE_POINTS[clamped_stars]
+    elif stage_id == "on-call" and endless_wave > 0:
+        score_awarded = min(
+            DEV_VS_AI_ENDLESS_MAX_POINTS,
+            max(0, int(endless_wave)) * DEV_VS_AI_ENDLESS_WAVE_POINTS,
+        )
+    else:
+        score_awarded = 0
+
+    state["status"] = status
+    state["stars_earned"] = int(stars_earned)
+    state["endless_wave"] = int(endless_wave)
+    game_round.state = json.dumps(state)
+    game_round.score += score_awarded
+    game_round.completed_at = datetime.now(timezone.utc)
+    await _record_attendance(db, user.id)
+    await db.commit()
+
+    today = _vietnam_today()
+    activity_dates = await _user_activity_dates(db, user.id)
+    return {
+        "score_awarded": score_awarded,
+        "score": game_round.score,
+        "total_points": await _total_points(db, user.id),
+        "streak_days": _current_streak(activity_dates, today),
+        "played_today": today in activity_dates,
     }
 
 
@@ -508,14 +582,31 @@ async def _free_hints_remaining(db: AsyncSession, user_id: uuid.UUID) -> int:
     return DAILY_FREE_HINTS - activity.free_hints_used if activity else DAILY_FREE_HINTS
 
 
-async def _word_search_points(db: AsyncSession, user_id: uuid.UUID) -> int:
+async def _total_points(db: AsyncSession, user_id: uuid.UUID) -> int:
     points = await db.scalar(
         select(func.coalesce(func.sum(GameRound.score), 0)).where(
             GameRound.user_id == user_id,
-            GameRound.game_type == "word_search",
+            GameRound.game_type.in_(SCORED_GAME_TYPES),
         )
     )
     return int(points or 0)
+
+
+async def _word_search_points(db: AsyncSession, user_id: uuid.UUID) -> int:
+    return await _total_points(db, user_id)
+
+
+async def _user_activity_dates(db: AsyncSession, user_id: uuid.UUID) -> list[date]:
+    return list(
+        await db.scalars(
+            select(GameDailyActivity.activity_date)
+            .where(
+                GameDailyActivity.user_id == user_id,
+                GameDailyActivity.attended.is_(True),
+            )
+            .order_by(GameDailyActivity.activity_date.desc())
+        )
+    )
 
 
 def _current_streak(activity_dates: list[date], today: date) -> int:
@@ -534,26 +625,55 @@ def _current_streak(activity_dates: list[date], today: date) -> int:
     return streak
 
 
+def _longest_streak(activity_dates: list[date]) -> int:
+    if not activity_dates:
+        return 0
+    longest = 1
+    current = 1
+    for index in range(1, len(activity_dates)):
+        if activity_dates[index - 1] - activity_dates[index] == timedelta(days=1):
+            current += 1
+            if current > longest:
+                longest = current
+        else:
+            current = 1
+    return longest
+
+
+def _rank_tier(total_points: int) -> tuple[str, int | None]:
+    if total_points < 300:
+        return "rookie", 300
+    if total_points < 1000:
+        return "challenger", 1000
+    if total_points < 2500:
+        return "master", 2500
+    if total_points < 5000:
+        return "grandmaster", 5000
+    return "legend", None
+
+
 async def get_game_status(db: AsyncSession, user: User) -> dict:
     today = _vietnam_today()
-    activity_dates = list(
-        await db.scalars(
-            select(GameDailyActivity.activity_date)
-            .where(
-                GameDailyActivity.user_id == user.id,
-                GameDailyActivity.attended.is_(True),
-            )
-            .order_by(GameDailyActivity.activity_date.desc())
+    activity_dates = await _user_activity_dates(db, user.id)
+    activity = await _daily_activity(db, user.id, today)
+    shared_points = await _total_points(db, user.id)
+    completed_rounds = await db.scalar(
+        select(func.count(GameRound.id)).where(
+            GameRound.user_id == user.id,
+            GameRound.game_type.in_(SCORED_GAME_TYPES),
+            GameRound.completed_at.is_not(None),
         )
     )
-    activity = await _daily_activity(db, user.id, today)
     return {
         "streak_days": _current_streak(activity_dates, today),
+        "longest_streak_days": _longest_streak(activity_dates),
         "played_today": today in activity_dates,
         "free_hints_remaining": DAILY_FREE_HINTS - activity.free_hints_used
         if activity
         else DAILY_FREE_HINTS,
-        "word_search_points": await _word_search_points(db, user.id),
+        "word_search_points": shared_points,
+        "total_points": shared_points,
+        "total_rounds": int(completed_rounds or 0),
     }
 
 
@@ -597,32 +717,44 @@ async def get_leaderboard(
             "entries": [],
             "updated_at": now,
         }
-    local_now = now.astimezone(VIETNAM_TIMEZONE)
-    if period == "week":
-        local_start = (local_now - timedelta(days=local_now.weekday())).replace(
-            hour=0, minute=0, second=0, microsecond=0,
-        )
+    conditions = [GameRound.completed_at.is_not(None)]
+    if game_type == "all":
+        conditions.append(GameRound.game_type.in_(SCORED_GAME_TYPES))
     else:
-        local_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    start = local_start.astimezone(timezone.utc)
+        conditions.append(GameRound.game_type == game_type)
+
+    if period != "all":
+        local_now = now.astimezone(VIETNAM_TIMEZONE)
+        if period == "week":
+            local_start = (local_now - timedelta(days=local_now.weekday())).replace(
+                hour=0, minute=0, second=0, microsecond=0,
+            )
+        else:
+            local_start = local_now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+        conditions.append(GameRound.completed_at >= local_start.astimezone(timezone.utc))
+
     rows = await db.execute(
         select(
             User.id,
             User.display_name,
-            func.sum(GameRound.score).label("score"),
+            User.avatar_name,
+            func.coalesce(func.sum(GameRound.score), 0).label("score"),
+            func.count(GameRound.id).label("rounds_played"),
         )
         .join(GameRound, GameRound.user_id == User.id)
-        .where(GameRound.game_type == game_type, GameRound.completed_at >= start)
-        .group_by(User.id, User.display_name)
-        .order_by(func.sum(GameRound.score).desc(), User.display_name.asc())
-        .limit(10)
+        .where(*conditions)
+        .group_by(User.id, User.display_name, User.avatar_name)
+        .order_by(func.coalesce(func.sum(GameRound.score), 0).desc(), User.display_name.asc())
+        .limit(25)
     )
     entries = [
         {
             "rank": rank,
             "user_id": row.id,
             "display_name": row.display_name,
-            "score": row.score,
+            "avatar_url": f"/media/{row.avatar_name}" if row.avatar_name else None,
+            "score": int(row.score or 0),
+            "rounds_played": int(row.rounds_played or 0),
         }
         for rank, row in enumerate(rows, start=1)
     ]
@@ -630,5 +762,172 @@ async def get_leaderboard(
         "period": period,
         "game_type": game_type,
         "entries": entries,
+        "updated_at": now,
+    }
+
+
+async def get_game_achievements(
+    db: AsyncSession,
+    user: User | None,
+) -> dict:
+    now = datetime.now(timezone.utc)
+    club_row = (
+        await db.execute(
+            select(
+                func.count(func.distinct(GameRound.user_id)).label("total_players"),
+                func.count(GameRound.id).label("total_rounds"),
+                func.coalesce(func.sum(case((GameRound.score > 0, GameRound.score), else_=0)), 0).label("total_points"),
+            ).where(
+                GameRound.game_type.in_(SCORED_GAME_TYPES),
+                GameRound.completed_at.is_not(None),
+            )
+        )
+    ).one()
+
+    club = {
+        "total_players": int(club_row.total_players or 0),
+        "total_rounds": int(club_row.total_rounds or 0),
+        "total_points": int(club_row.total_points or 0),
+    }
+
+    if user is None:
+        return {
+            "me": None,
+            "club": club,
+            "updated_at": now,
+        }
+
+    today = _vietnam_today()
+    activity_dates = await _user_activity_dates(db, user.id)
+    streak_days = _current_streak(activity_dates, today)
+    longest_streak = _longest_streak(activity_dates)
+    active_days = len(activity_dates)
+    played_today = today in activity_dates
+
+    per_game_rows = await db.execute(
+        select(
+            GameRound.game_type,
+            func.count(GameRound.id).label("rounds_played"),
+            func.coalesce(func.sum(case((GameRound.score > 0, 1), else_=0)), 0).label("wins"),
+            func.coalesce(func.sum(GameRound.score), 0).label("total_score"),
+            func.coalesce(func.max(GameRound.score), 0).label("best_score"),
+        )
+        .where(
+            GameRound.user_id == user.id,
+            GameRound.game_type.in_(SCORED_GAME_TYPES),
+            GameRound.completed_at.is_not(None),
+        )
+        .group_by(GameRound.game_type)
+    )
+    by_type = {
+        row.game_type: {
+            "game_type": row.game_type,
+            "rounds_played": int(row.rounds_played or 0),
+            "wins": int(row.wins or 0),
+            "total_score": max(0, int(row.total_score or 0)),
+            "best_score": max(0, int(row.best_score or 0)),
+        }
+        for row in per_game_rows
+    }
+
+    per_game = [
+        by_type.get(
+            gtype,
+            {
+                "game_type": gtype,
+                "rounds_played": 0,
+                "wins": 0,
+                "total_score": 0,
+                "best_score": 0,
+            },
+        )
+        for gtype in SCORED_GAME_TYPES
+    ]
+
+    total_points = await _total_points(db, user.id)
+    total_rounds = sum(item["rounds_played"] for item in per_game)
+    total_wins = sum(item["wins"] for item in per_game)
+    games_explored = sum(1 for item in per_game if item["rounds_played"] > 0)
+    tier, next_tier_points = _rank_tier(max(0, total_points))
+
+    user_rank: int | None = None
+    if total_rounds > 0:
+        all_ranks = await db.execute(
+            select(
+                User.id,
+                func.coalesce(func.sum(GameRound.score), 0).label("score"),
+            )
+            .join(GameRound, GameRound.user_id == User.id)
+            .where(
+                GameRound.game_type.in_(SCORED_GAME_TYPES),
+                GameRound.completed_at.is_not(None),
+            )
+            .group_by(User.id, User.display_name)
+            .order_by(func.coalesce(func.sum(GameRound.score), 0).desc(), User.display_name.asc())
+        )
+        for idx, row in enumerate(all_ranks, start=1):
+            if row.id == user.id:
+                user_rank = idx
+                break
+
+    badges = [
+        {
+            "id": "first_round",
+            "unlocked": total_rounds >= 1,
+            "progress": min(total_rounds, 1),
+            "target": 1,
+        },
+        {
+            "id": "streak_3",
+            "unlocked": longest_streak >= 3,
+            "progress": min(longest_streak, 3),
+            "target": 3,
+        },
+        {
+            "id": "streak_7",
+            "unlocked": longest_streak >= 7,
+            "progress": min(longest_streak, 7),
+            "target": 7,
+        },
+        {
+            "id": "explorer",
+            "unlocked": games_explored >= 3,
+            "progress": min(games_explored, 3),
+            "target": 3,
+        },
+        {
+            "id": "tactician",
+            "unlocked": total_wins >= 5,
+            "progress": min(total_wins, 5),
+            "target": 5,
+        },
+        {
+            "id": "points_1000",
+            "unlocked": total_points >= 1000,
+            "progress": min(max(0, total_points), 1000),
+            "target": 1000,
+        },
+    ]
+
+    return {
+        "me": {
+            "user_id": user.id,
+            "display_name": user.display_name,
+            "avatar_url": user.avatar_url,
+            "rank": user_rank,
+            "tier": tier,
+            "next_tier_points": next_tier_points,
+            "total_points": total_points,
+            "total_rounds": total_rounds,
+            "total_wins": total_wins,
+            "streak_days": streak_days,
+            "longest_streak_days": longest_streak,
+            "active_days": active_days,
+            "played_today": played_today,
+            "games_explored": games_explored,
+            "per_game": per_game,
+            "badges": badges,
+        },
+        "club": club,
         "updated_at": now,
     }

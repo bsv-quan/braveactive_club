@@ -99,7 +99,16 @@ async def preview_ai_post(body: AIPostPreviewRequest, db: DbSession, _: Admin):
 @router.post("/ai-posts/publish", response_model=PostOut, status_code=201)
 async def publish_ai_post(body: AIPostPublishRequest, db: DbSession, user: Admin):
     post = await ai_content.publish_preview(db, body)
-    return await community.get_post_out(db, post.id, user, include_hidden=True)
+    post_out = await community.get_post_out(db, post.id, user, include_hidden=True)
+    if not post.approved:
+        author = await db.get(User, post.author_id)
+        if author is not None:
+            admin_recipients = await notifications.notify_admins_pending_post(
+                db, author, post.id, post.content or body.title
+            )
+            for recipient_id, unread_count in admin_recipients:
+                await publish_to_user(str(recipient_id), "notification.created", unreadCount=unread_count)
+    return post_out
 
 
 @router.get("/feedback", response_model=FeedbackPage)

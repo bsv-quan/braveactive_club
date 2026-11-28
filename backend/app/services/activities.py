@@ -25,6 +25,7 @@ from app.models import (
     User,
 )
 from app.schemas.club import ActivityCommentOut, ActivityCreate, ActivityEdit, ActivityOut
+from app.services import ai_content
 from app.services.ai_content import detect_activity_location
 
 logger = logging.getLogger("app.activities")
@@ -294,16 +295,27 @@ async def _activate_activity(
         local_when = activity.date.astimezone(timezone(timedelta(hours=7))) if activity.date else None
         activity_url = f"{get_settings().frontend_base_url.rstrip('/')}/activities/{activity.id}"
         scheduled_time = f"{local_when:%d/%m/%Y %H:%M}" if local_when else ""
+        post_content = (
+            f"Hoạt động mới: {activity.title}\n"
+            "Nội dung:\n"
+            f"{activity.description}\n\n"
+            f"Loại hoạt động: {activity.category}\n"
+            f"Thời gian: {scheduled_time}\n"
+            f"Chi tiết và đăng ký:\n{activity_url}"
+        )
+        detected_category, checked_at = await ai_content.classify_post_category(
+            post_content,
+            link_url=activity_url,
+            link_title=activity.title,
+            link_description=activity.description,
+            link_site="braveActive",
+            activity_category=activity.category,
+        )
         post = Post(
             author_id=activity.created_by,
-            content=(
-                f"Hoạt động mới: {activity.title}\n"
-                "Nội dung:\n"
-                f"{activity.description}\n\n"
-                f"Loại hoạt động: {activity.category}\n"
-                f"Thời gian: {scheduled_time}\n"
-                f"Chi tiết và đăng ký:\n{activity_url}"
-            ),
+            content=post_content,
+            category=detected_category,
+            category_checked_at=checked_at,
             link_url=activity_url,
             link_title=activity.title,
             link_description=activity.description,

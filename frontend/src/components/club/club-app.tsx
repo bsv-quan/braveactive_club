@@ -1,5 +1,6 @@
 "use client";
 
+import { CalendarCheck2, Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -514,21 +515,39 @@ export default function ClubApp({ initialView }: { initialView: View }) {
           </>
         ) : initialView === "activities" ? (
           <section className="activities-page activities-agenda-page">
-            <header className="activities-masthead">
-              <div>
-                <span className="community-masthead-kicker">{t("club.activities.eyebrow")}</span>
-                <h1>{t("club.activities.title")}</h1>
-                <p>{t("club.activities.subtitle")}</p>
+            <header className="editorial-folio-masthead activities-masthead">
+              <div className="editorial-folio-top">
+                <div className="community-dateline">
+                  <span className="community-edition-tag">{t("club.activities.eyebrow")}</span>
+                  {!activitiesLoading ? (
+                    <span className="editorial-folio-stat">
+                      <CalendarCheck2 size={13} aria-hidden="true" />
+                      {t("club.agenda.upcomingBadge", {
+                        count: activities.filter((item) => {
+                          if (item.scheduleType === "poll" || !item.date) return false;
+                          const key = item.day ?? dateKey(new Date(item.date));
+                          return key >= dateKey(new Date());
+                        }).length,
+                      })}
+                    </span>
+                  ) : null}
+                </div>
               </div>
-              {user ? (
-                <button className="button-primary" type="button" onClick={openCreateActivity}>
-                  <span className="create-button-plus">+</span> {t("club.calendar.createActivity")}
-                </button>
-              ) : (
-                <Link className="button-primary" href={loginHref}>
-                  <span className="create-button-plus">+</span> {t("club.calendar.createActivity")}
-                </Link>
-              )}
+              <div className="editorial-folio-main">
+                <div className="editorial-folio-copy">
+                  <h1>{t("club.activities.title")}</h1>
+                  <p>{t("club.activities.subtitle")}</p>
+                </div>
+                {user ? (
+                  <button className="button-primary editorial-folio-cta" type="button" onClick={openCreateActivity}>
+                    <Plus size={16} aria-hidden="true" /> {t("club.calendar.createActivity")}
+                  </button>
+                ) : (
+                  <Link className="button-primary editorial-folio-cta" href={loginHref}>
+                    <Plus size={16} aria-hidden="true" /> {t("club.calendar.createActivity")}
+                  </Link>
+                )}
+              </div>
             </header>
             {activitySubmissionNotice && (
               <p className="activity-pending-notice" role="status">
