@@ -807,5 +807,152 @@ async def test_shared_points_streak_and_achievements_across_all_games(client, mo
     assert guest_achievements.json()["club"]["totalPlayers"] >= 1
 
 
+async def test_caro_board_endpoints_and_scoring(client):
+    csrf = await register(client, email="caro@bravesoft.com.vn", name="Caro Master")
+
+    started = await client.post(
+        "/api/games/board/caro/start",
+        headers=csrf,
+        json={"difficulty": "medium"},
+    )
+    assert started.status_code == 200
+    payload = started.json()
+    round_id = payload["roundId"]
+    assert len(payload["state"]["board"]) == 15
+    assert payload["state"]["turn"] == "x"
+
+    # Active round can be resumed
+    active = await client.get("/api/games/board/caro/active", headers=csrf)
+    assert active.status_code == 200
+    assert active.json()["roundId"] == round_id
+
+    # Move + AI bot turn work cleanly
+    moved = await client.post(
+        "/api/games/board/caro/move",
+        headers=csrf,
+        json={"difficulty": "medium", "roundId": round_id, "move": {"at": [7, 7]}},
+    )
+    assert moved.status_code == 200
+    assert moved.json()["state"]["board"][7][7] == "X"
+    assert moved.json()["state"]["turn"] == "o"
+
+    bot = await client.post(
+        "/api/games/board/caro/bot-turn",
+        headers=csrf,
+        json={"difficulty": "medium", "roundId": round_id},
+    )
+    assert bot.status_code == 200
+    assert bot.json()["state"]["turn"] == "x"
+
+    # Seed 4-in-a-row directly on stored round and play the winning 5th move
+    async with SessionFactory() as db:
+        game_round = await db.get(GameRound, uuid.UUID(round_id))
+        assert game_round is not None
+        st = json.loads(game_round.state)
+        for col in range(1, 5):
+            st["board"][0][col] = "X"
+        st["board"][0][5] = "."
+        st["turn"] = "x"
+        st["to_move"] = "x"
+        game_round.state = json.dumps(st)
+        await db.commit()
+
+    winning = await client.post(
+        "/api/games/board/caro/move",
+        headers=csrf,
+        json={"difficulty": "medium", "roundId": round_id, "move": {"at": [0, 5]}},
+    )
+    assert winning.status_code == 200
+    assert winning.json()["state"]["result"] == "x_win"
+    assert winning.json()["scoreAwarded"] == 200
+    assert winning.json()["score"] == 200
+
+    lb = await client.get("/api/games/leaderboard?period=all&gameType=caro")
+    assert lb.status_code == 200
+    assert lb.json()["entries"][0]["displayName"] == "Caro Master"
+    assert lb.json()["entries"][0]["score"] == 200
+
+
+async def test_sudoku_endpoints_hint_completion_and_shared_streak(client):
+    # Guest receives solution for local browser play
+    guest_started = await client.post("/api/games/sudoku/start", json={"difficulty": "easy"})
+    assert guest_started.status_code == 200
+    assert guest_started.json()["roundId"] is None
+    assert guest_started.json()["solution"] is not None
+
+    csrf = await register(client, email="sudoku@bravesoft.com.vn", name="Sudoku Solver")
+
+    # Member starts server-authoritative round without solution leak
+    started = await client.post(
+        "/api/games/sudoku/start",
+        headers=csrf,
+        json={"difficulty": "medium"},
+    )
+    assert started.status_code == 200
+    data = started.json()
+    round_id = data["roundId"]
+    assert round_id is not None
+    assert data["solution"] is None
+    assert data["completed"] is False
+
+    # Active round can be resumed
+    resumed = await client.get("/api/games/sudoku/active", headers=csrf)
+    assert resumed.status_code == 200
+    assert resumed.json()["roundId"] == round_id
+
+    # Altering a given cell is rejected with 400
+    tampered = [row[:] for row in data["puzzle"]]
+    given_r, given_c = next(
+        (r, c) for r in range(9) for c in range(9) if data["puzzle"][r][c] != 0
+    )
+    tampered[given_r][given_c] = (tampered[given_r][given_c] % 9) + 1
+    bad_sync = await client.post(
+        f"/api/games/sudoku/{round_id}/sync",
+        headers=csrf,
+        json={"board": tampered},
+    )
+    assert bad_sync.status_code == 400
+
+    # Hint reveals a real cell using daily free hint
+    hint = await client.post(
+        f"/api/games/sudoku/{round_id}/hint",
+        headers=csrf,
+        json={},
+    )
+    assert hint.status_code == 200
+    assert hint.json()["value"] in range(1, 10)
+    assert hint.json()["freeHintsRemaining"] == 1
+
+    # Read true solution from DB and submit completed board
+    async with SessionFactory() as db:
+        game_round = await db.get(GameRound, uuid.UUID(round_id))
+        assert game_round is not None
+        solution = json.loads(game_round.state)["solution"]
+
+    solved = await client.post(
+        f"/api/games/sudoku/{round_id}/sync",
+        headers=csrf,
+        json={"board": solution},
+    )
+    assert solved.status_code == 200
+    assert solved.json()["completed"] is True
+    assert solved.json()["scoreAwarded"] == 250
+    assert solved.json()["score"] == 250
+
+    # Appears on Sudoku leaderboard and updates shared achievements + streak
+    lb = await client.get("/api/games/leaderboard?period=all&gameType=sudoku")
+    assert lb.status_code == 200
+    assert lb.json()["entries"][0]["displayName"] == "Sudoku Solver"
+    assert lb.json()["entries"][0]["score"] == 250
+
+    ach = await client.get("/api/games/achievements", headers=csrf)
+    assert ach.status_code == 200
+    me = ach.json()["me"]
+    assert me["totalPoints"] == 250
+    assert me["streakDays"] == 1
+    assert any(item["gameType"] == "sudoku" and item["wins"] == 1 for item in me["perGame"])
+    assert any(item["gameType"] == "caro" for item in me["perGame"])
+
+
 async def _async_value(value):
     return value

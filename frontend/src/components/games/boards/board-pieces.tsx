@@ -10,6 +10,8 @@ const SIDE_MESSAGE_KEYS: Record<string, MessageKey> = {
   black: "community.games.board.sides.black",
   red: "community.games.board.sides.red",
   blue: "community.games.board.sides.blue",
+  x: "community.games.caro.sides.x",
+  o: "community.games.caro.sides.o",
   human: "community.games.board.sides.human",
   ai: "community.games.board.sides.ai",
 };
@@ -51,6 +53,10 @@ const PIECE_MESSAGE_KEYS: Record<BoardGameApiType, Record<string, MessageKey>> =
     b: "community.games.go.pieces.b",
     w: "community.games.go.pieces.w",
   },
+  caro: {
+    X: "community.games.caro.pieces.X",
+    O: "community.games.caro.pieces.O",
+  },
 };
 
 export function getTurnMessageKey(gameType: BoardGameApiType, turn: string): MessageKey {
@@ -58,11 +64,15 @@ export function getTurnMessageKey(gameType: BoardGameApiType, turn: string): Mes
     if (turn === "black") return "community.games.go.sides.black";
     if (turn === "white") return "community.games.go.sides.white";
   }
+  if (gameType === "caro") {
+    if (turn === "x") return "community.games.caro.sides.x";
+    if (turn === "o") return "community.games.caro.sides.o";
+  }
   return SIDE_MESSAGE_KEYS[turn] ?? "community.games.board.sides.human";
 }
 
 function isBoardCoordinate(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 9;
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 && value <= 14;
 }
 
 export function getBoardMoveCoordinates(
@@ -92,7 +102,19 @@ export function getGoMoveCoordinate(
 
 export function isHumanSide(game: BoardGameApiType, piece: string): boolean {
   if (game === "go") return piece === "B";
+  if (game === "caro") return piece === "X";
   return piece === piece.toUpperCase();
+}
+
+export function getCaroWinningSet(winningLine: unknown): Set<string> {
+  const result = new Set<string>();
+  if (!Array.isArray(winningLine)) return result;
+  for (const item of winningLine) {
+    if (Array.isArray(item) && item.length === 2 && isBoardCoordinate(item[0]) && isBoardCoordinate(item[1])) {
+      result.add(`${item[0]}-${item[1]}`);
+    }
+  }
+  return result;
 }
 
 export function describePiece(
@@ -216,6 +238,24 @@ export function XiangqiPiece({ piece }: { piece: string }) {
       {symbol}
     </span>
   );
+}
+
+export function CaroMark({ piece }: { piece: string }) {
+  if (piece === "X") {
+    return (
+      <svg className="caro-mark-art is-x" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+        <path d="M9 9 L27 27 M27 9 L9 27" stroke="currentColor" strokeWidth="4.4" strokeLinecap="round" />
+      </svg>
+    );
+  }
+  if (piece === "O") {
+    return (
+      <svg className="caro-mark-art is-o" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+        <circle cx="18" cy="18" r="10.2" fill="none" stroke="currentColor" strokeWidth="4.1" />
+      </svg>
+    );
+  }
+  return null;
 }
 
 export function pieceSymbol(piece: string): string {

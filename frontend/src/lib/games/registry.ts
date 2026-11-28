@@ -3,28 +3,31 @@
  * Kept free of local imports so Node.js native test runner (`node --test`) can import it directly.
  */
 
-export type ArcadeGameSlug = "dev-vs-ai" | "word-search" | "chess" | "xiangqi" | "go";
-export type ArcadeGameApiType = "dev_vs_ai" | "word_search" | "chess" | "xiangqi" | "go";
-export type ArcadeGameI18nKey = "devVsAi" | "wordSearch" | "chess" | "xiangqi" | "go";
+export type ArcadeGameSlug = "dev-vs-ai" | "word-search" | "chess" | "xiangqi" | "go" | "caro" | "sudoku";
+export type ArcadeGameApiType = "dev_vs_ai" | "word_search" | "chess" | "xiangqi" | "go" | "caro" | "sudoku";
+export type ArcadeGameI18nKey = "devVsAi" | "wordSearch" | "chess" | "xiangqi" | "go" | "caro" | "sudoku";
 
 export type ArcadeZoneEntry = {
   slug: ArcadeGameSlug;
   apiType: ArcadeGameApiType;
   i18nKey: ArcadeGameI18nKey;
-  zoneIndex: 1 | 2 | 3 | 4 | 5;
+  zoneIndex: 1 | 2 | 3 | 4 | 5 | 6 | 7;
   zoneTagKey:
     | "community.games.arcade.zone1Tag"
     | "community.games.arcade.zone2Tag"
     | "community.games.arcade.zone3Tag"
     | "community.games.arcade.zone4Tag"
-    | "community.games.arcade.zone5Tag";
+    | "community.games.arcade.zone5Tag"
+    | "community.games.arcade.zone6Tag"
+    | "community.games.arcade.zone7Tag";
   rewardKey:
     | "community.games.arcade.zoneRewardDevVsAi"
     | "community.games.arcade.zoneRewardWordSearch"
-    | "community.games.arcade.zoneRewardBoard";
-  tone: "cyber" | "emerald" | "amber" | "crimson" | "sky";
+    | "community.games.arcade.zoneRewardBoard"
+    | "community.games.arcade.zoneRewardSudoku";
+  tone: "cyber" | "emerald" | "amber" | "crimson" | "sky" | "rose" | "indigo";
   featured: boolean;
-  kind: "campaign" | "word_search" | "board";
+  kind: "campaign" | "word_search" | "board" | "sudoku";
 };
 
 export const ARCADE_GAMES: readonly ArcadeZoneEntry[] = [
@@ -82,6 +85,28 @@ export const ARCADE_GAMES: readonly ArcadeZoneEntry[] = [
     tone: "sky",
     featured: false,
     kind: "board",
+  },
+  {
+    slug: "caro",
+    apiType: "caro",
+    i18nKey: "caro",
+    zoneIndex: 6,
+    zoneTagKey: "community.games.arcade.zone6Tag",
+    rewardKey: "community.games.arcade.zoneRewardBoard",
+    tone: "rose",
+    featured: false,
+    kind: "board",
+  },
+  {
+    slug: "sudoku",
+    apiType: "sudoku",
+    i18nKey: "sudoku",
+    zoneIndex: 7,
+    zoneTagKey: "community.games.arcade.zone7Tag",
+    rewardKey: "community.games.arcade.zoneRewardSudoku",
+    tone: "indigo",
+    featured: false,
+    kind: "sudoku",
   },
 ] as const;
 

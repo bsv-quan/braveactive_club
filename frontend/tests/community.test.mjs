@@ -389,14 +389,18 @@ test("workday movement feature ('Vận động') provides trilingual labels, gui
 });
 
 test("unified Arcade Hub, Profile v3, Admin moderation notifications, and Post Likers dialog are wired cleanly", () => {
-  assert.equal(ARCADE_GAMES.length, 5);
+  assert.equal(ARCADE_GAMES.length, 7);
   assert.deepEqual(
     ARCADE_GAMES.map((g) => g.slug),
-    ["dev-vs-ai", "word-search", "chess", "xiangqi", "go"],
+    ["dev-vs-ai", "word-search", "chess", "xiangqi", "go", "caro", "sudoku"],
   );
   assert.equal(isArcadeGameSlug("dev-vs-ai"), true);
+  assert.equal(isArcadeGameSlug("caro"), true);
+  assert.equal(isArcadeGameSlug("sudoku"), true);
   assert.equal(isArcadeGameSlug("unknown"), false);
   assert.equal(getArcadeGameBySlug("chess").apiType, "chess");
+  assert.equal(getArcadeGameBySlug("caro").apiType, "caro");
+  assert.equal(getArcadeGameBySlug("sudoku").apiType, "sudoku");
   assert.equal(getArcadeGameByApiType("dev_vs_ai")?.slug, "dev-vs-ai");
 
   const arcadeHubTsx = readFileSync(
@@ -431,9 +435,25 @@ test("unified Arcade Hub, Profile v3, Admin moderation notifications, and Post L
 
   assert.match(arcadeHubTsx, /GameZoneIllustration/);
   assert.match(arcadeHubTsx, /ArcadeAchievementsView/);
+  assert.match(arcadeHubTsx, /SudokuArena/);
   assert.match(achievementsTsx, /role="region"/);
   assert.match(achievementsTsx, /arcade-ranking-table/);
   assert.match(css, /@container\s*\(width < 520px\)/);
+  assert.match(css, /\.board-game-caro/);
+  assert.match(css, /\.sudoku-grid/);
+
+  const illustrationTsx = readFileSync(
+    new URL("../src/components/games/illustrations/game-zone-illustration.tsx", import.meta.url),
+    "utf8",
+  );
+  const sudokuArenaTsx = readFileSync(
+    new URL("../src/components/games/boards/sudoku-arena.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(illustrationTsx, /function CaroScene/);
+  assert.match(illustrationTsx, /function SudokuScene/);
+  assert.match(sudokuArenaTsx, /communityApi\.startSudoku/);
+  assert.match(sudokuArenaTsx, /communityApi\.syncSudoku/);
 
   assert.match(profileTsx, /profile-page-v3/);
   assert.match(profileTsx, /<dialog[\s\S]*className="avatar-crop-dialog"/);

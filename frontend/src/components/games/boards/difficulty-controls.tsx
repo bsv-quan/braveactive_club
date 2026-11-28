@@ -18,7 +18,7 @@ export function DifficultyPicker({
 }: {
   value: GameDifficulty;
   onChange: (value: GameDifficulty) => void;
-  game: "wordSearch" | "chess" | "xiangqi" | "go";
+  game: "wordSearch" | "chess" | "xiangqi" | "go" | "caro" | "sudoku";
   disabled?: boolean;
   showReward?: boolean;
 }) {
@@ -49,7 +49,7 @@ export function DifficultyDisplay({
   showReward = true,
 }: {
   value: GameDifficulty;
-  game: "wordSearch" | "chess" | "xiangqi" | "go";
+  game: "wordSearch" | "chess" | "xiangqi" | "go" | "caro" | "sudoku";
   showReward?: boolean;
 }) {
   const { t } = useI18n();

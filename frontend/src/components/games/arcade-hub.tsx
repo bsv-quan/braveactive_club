@@ -14,6 +14,7 @@ import {
 import { useAuth } from "@/components/auth/auth-provider";
 import { ArcadeAchievementsView } from "@/components/games/arcade-achievements-view";
 import { BoardGameArena } from "@/components/games/boards/board-game-arena";
+import { SudokuArena } from "@/components/games/boards/sudoku-arena";
 import { WordSearchArena } from "@/components/games/boards/word-search-arena";
 import { DevVsAiShell } from "@/components/games/dev-vs-ai/dev-vs-ai-shell";
 import { GameGuideDialog } from "@/components/games/game-guide-dialog";
@@ -608,6 +609,19 @@ export function ArcadeHub({ initialGame = null, initialMode = "lobby" }: ArcadeH
                 <section className="game-screen-play-area">
                   {activeZone.slug === "word-search" ? (
                     <WordSearchArena
+                      difficulty={difficulty}
+                      onDifficultyChange={setDifficulty}
+                      score={roundScore}
+                      onScoreChange={setRoundScore}
+                      onCompleted={handleRoundCompleted}
+                      onHintUsed={() => void refreshMemberData()}
+                      onActiveChange={setGameInProgress}
+                      freeHintsRemaining={status?.freeHintsRemaining ?? 2}
+                      pointsBalance={sharedPoints}
+                      isMember={Boolean(user)}
+                    />
+                  ) : activeZone.slug === "sudoku" ? (
+                    <SudokuArena
                       difficulty={difficulty}
                       onDifficultyChange={setDifficulty}
                       score={roundScore}

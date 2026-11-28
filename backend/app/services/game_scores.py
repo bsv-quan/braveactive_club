@@ -11,18 +11,19 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.errors import AppError
 from app.models import GameDailyActivity, GameRound, User
-from app.services import board_games
+from app.services import board_games, sudoku
 
 STRATEGY_CORRECT_ANSWERS = (0, 1, 0)
 DAILY_FREE_HINTS = 2
 HINT_COST = 100
 WORD_SEARCH_COMPLETION_POINTS = {"easy": 100, "medium": 250, "hard": 500}
+SUDOKU_COMPLETION_POINTS = {"easy": 100, "medium": 250, "hard": 500}
 BOARD_GAME_WIN_POINTS = {"easy": 100, "medium": 200, "hard": 500}
 DEV_VS_AI_STAGE_POINTS = {1: 150, 2: 250, 3: 350}
 DEV_VS_AI_BOSS_POINTS = 500
 DEV_VS_AI_ENDLESS_WAVE_POINTS = 50
 DEV_VS_AI_ENDLESS_MAX_POINTS = 500
-SCORED_GAME_TYPES = ("dev_vs_ai", "word_search", "chess", "xiangqi", "go")
+SCORED_GAME_TYPES = ("dev_vs_ai", "word_search", "chess", "xiangqi", "go", "caro", "sudoku")
 VIETNAM_TIMEZONE = ZoneInfo("Asia/Ho_Chi_Minh")
 
 
@@ -701,6 +702,196 @@ async def submit_strategy_answer(
         "score_awarded": 0,
         "score": game_round.score,
         "complete": complete,
+    }
+
+
+def _sudoku_response(
+    game_round: GameRound | None,
+    state: dict,
+    *,
+    score_awarded: int = 0,
+    include_solution: bool = False,
+) -> dict:
+    return {
+        "round_id": game_round.id if game_round is not None else None,
+        "difficulty": state["difficulty"],
+        "puzzle": state["puzzle"],
+        "board": state["board"],
+        "hinted_cells": state.get("hinted_cells", []),
+        "solution": state["solution"] if include_solution else None,
+        "completed": bool(state.get("completed", False)),
+        "score": game_round.score if game_round is not None else 0,
+        "score_awarded": score_awarded,
+    }
+
+
+async def start_sudoku_game(
+    db: AsyncSession,
+    user: User | None,
+    difficulty: str,
+) -> dict:
+    if user is not None:
+        game_round = await _active_board_round(db, user, "sudoku")
+        if game_round is not None:
+            return _sudoku_response(game_round, json.loads(game_round.state))
+        puzzle, solution = await asyncio.to_thread(sudoku.generate_sudoku, difficulty)
+        state = {
+            "difficulty": difficulty,
+            "puzzle": puzzle,
+            "board": [row[:] for row in puzzle],
+            "solution": solution,
+            "hinted_cells": [],
+            "completed": False,
+        }
+        game_round = _new_round(user.id, "sudoku", state)
+        db.add(game_round)
+        await db.commit()
+        await db.refresh(game_round)
+        return _sudoku_response(game_round, state)
+
+    puzzle, solution = await asyncio.to_thread(sudoku.generate_sudoku, difficulty)
+    state = {
+        "difficulty": difficulty,
+        "puzzle": puzzle,
+        "board": [row[:] for row in puzzle],
+        "solution": solution,
+        "hinted_cells": [],
+        "completed": False,
+    }
+    return _sudoku_response(None, state, include_solution=True)
+
+
+async def get_active_sudoku_game(db: AsyncSession, user: User) -> dict | None:
+    game_round = await _active_board_round(db, user, "sudoku")
+    if game_round is None:
+        return None
+    return _sudoku_response(game_round, json.loads(game_round.state))
+
+
+async def abandon_active_sudoku_game(db: AsyncSession, user: User) -> None:
+    await abandon_active_board_game(db, user, "sudoku")
+
+
+async def sync_sudoku_board(
+    db: AsyncSession,
+    user: User,
+    round_id: uuid.UUID,
+    board: list[list[int]],
+) -> dict:
+    game_round = await _get_open_round(db, user, round_id, "sudoku")
+    state = json.loads(game_round.state)
+    puzzle: list[list[int]] = state["puzzle"]
+    solution: list[list[int]] = state["solution"]
+
+    if not sudoku.validate_board_shape(board) or not sudoku.respects_givens(board, puzzle):
+        raise AppError("Bảng Sudoku không hợp lệ.", 400)
+
+    state["board"] = [row[:] for row in board]
+    score_awarded = 0
+    if board == solution or sudoku.is_solved_sudoku(board):
+        state["completed"] = True
+        game_round.completed_at = datetime.now(timezone.utc)
+        score_awarded = SUDOKU_COMPLETION_POINTS.get(state.get("difficulty", "medium"), 250)
+        game_round.score += score_awarded
+        await _record_attendance(db, user.id)
+
+    game_round.state = json.dumps(state)
+    await db.commit()
+    return _sudoku_response(game_round, state, score_awarded=score_awarded)
+
+
+async def use_sudoku_hint(
+    db: AsyncSession,
+    user: User,
+    round_id: uuid.UUID,
+    row: int | None = None,
+    col: int | None = None,
+    client_board: list[list[int]] | None = None,
+) -> dict:
+    game_round = await _get_open_round(db, user, round_id, "sudoku")
+    state = json.loads(game_round.state)
+    puzzle: list[list[int]] = state["puzzle"]
+    board: list[list[int]] = state["board"]
+    if client_board is not None and sudoku.validate_board_shape(client_board) and sudoku.respects_givens(client_board, puzzle):
+        board = [r[:] for r in client_board]
+    solution: list[list[int]] = state["solution"]
+    hinted_cells: list[list[int]] = state.get("hinted_cells", [])
+
+    target: tuple[int, int] | None = None
+    if (
+        row is not None
+        and col is not None
+        and puzzle[row][col] == 0
+        and board[row][col] != solution[row][col]
+    ):
+        target = (row, col)
+    else:
+        for r in range(9):
+            for c in range(9):
+                if puzzle[r][c] == 0 and board[r][c] != solution[r][c]:
+                    target = (r, c)
+                    break
+            if target is not None:
+                break
+
+    if target is None:
+        shared_points = await _total_points(db, user.id)
+        return {
+            "row": None,
+            "col": None,
+            "value": None,
+            "board": board,
+            "hinted_cells": hinted_cells,
+            "completed": bool(state.get("completed", False)),
+            "score": game_round.score,
+            "score_awarded": 0,
+            "free_hints_remaining": await _free_hints_remaining(db, user.id),
+            "total_points": shared_points,
+        }
+
+    await _lock_user(db, user.id)
+    today = _vietnam_today()
+    activity = await _get_or_create_daily_activity(db, user.id, today)
+    score_awarded = 0
+    if activity.free_hints_used < DAILY_FREE_HINTS:
+        activity.free_hints_used += 1
+    else:
+        points = await _total_points(db, user.id)
+        if points < HINT_COST:
+            raise AppError("Bạn chưa đủ 100 điểm giải trí để dùng gợi ý.", 409)
+        game_round.score -= HINT_COST
+        score_awarded = -HINT_COST
+
+    tr, tc = target
+    revealed = solution[tr][tc]
+    board[tr][tc] = revealed
+    if [tr, tc] not in hinted_cells:
+        hinted_cells.append([tr, tc])
+    state["board"] = board
+    state["hinted_cells"] = hinted_cells
+
+    if board == solution or sudoku.is_solved_sudoku(board):
+        state["completed"] = True
+        game_round.completed_at = datetime.now(timezone.utc)
+        completion_bonus = SUDOKU_COMPLETION_POINTS.get(state.get("difficulty", "medium"), 250)
+        game_round.score += completion_bonus
+        score_awarded += completion_bonus
+        await _record_attendance(db, user.id)
+
+    game_round.state = json.dumps(state)
+    await db.commit()
+    shared_points = await _total_points(db, user.id)
+    return {
+        "row": tr,
+        "col": tc,
+        "value": revealed,
+        "board": board,
+        "hinted_cells": hinted_cells,
+        "completed": bool(state.get("completed", False)),
+        "score": game_round.score,
+        "score_awarded": score_awarded,
+        "free_hints_remaining": DAILY_FREE_HINTS - activity.free_hints_used,
+        "total_points": shared_points,
     }
 
 
